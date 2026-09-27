@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from flask import (
     Blueprint,
@@ -393,12 +394,24 @@ def _review_values_from_form(form):
     }
 
 
+def _geometry_warnings(rows, overall_length):
+    """Checks on the rows as they stand on the review screen (edited values, included rows only)."""
+    features = [
+        SimpleNamespace(type=r["type"], diameter=_to_float(r.get("diameter")), length=_to_float(r.get("length")),
+                        radius=_to_float(r.get("radius")))
+        for r in rows if r["include"]
+    ]
+    return planner.geometry_warnings(features, overall_length)
+
+
 def _render_review(extraction, values, status=200):
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
+    data = services.extraction_data(extraction)
     page = render_template(
         "extraction_review.html",
         extraction=extraction,
-        data=services.extraction_data(extraction),
+        data=data,
+        geometry_warnings=_geometry_warnings(values["rows"], data.overall_length if data else None),
         values=values,
         materials=materials,
         feature_types=FEATURE_TYPES,

@@ -117,8 +117,13 @@ def _feature(type_, diameter=None, start_diameter=None, length=None, tolerance=N
 
 def expected_answer(part: dict) -> dict:
     sections = part["sections"]
+    # A groove is a section of its own (machinist's convention): the od_turn length excludes it.
+    groove_width = {i: 0 for i in range(len(sections))}
+    for g in part.get("grooves", []):
+        groove_width[sections.index(_section_at(part, g["x"]))] += g["width"]
     features = [
-        _feature("od_turn", s["d"], length=s["l"], tolerance=s.get("tol"), ra=s.get("ra")) for s in sections
+        _feature("od_turn", s["d"], length=s["l"] - groove_width[i], tolerance=s.get("tol"), ra=s.get("ra"))
+        for i, s in enumerate(sections)
     ]
     for g in part.get("grooves", []):
         features.append(_feature("groove", g["bottom_d"], start_diameter=_section_at(part, g["x"])["d"], length=g["width"]))

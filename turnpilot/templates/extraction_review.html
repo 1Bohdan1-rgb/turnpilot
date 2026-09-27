@@ -33,6 +33,13 @@
 </div>
 {% endif %}
 
+{% if geometry_warnings %}
+<div class="flash flash-error geometry-check">
+  <strong>Geometry check:</strong>
+  <ul>{% for w in geometry_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
 {% if data and data.warnings %}
 <div class="flash flash-error">
   <strong>Model warnings:</strong>

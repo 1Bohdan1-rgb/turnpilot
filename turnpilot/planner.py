@@ -279,6 +279,49 @@ class BlankSuggestion:
     notes: tuple[str, ...] = ()
 
 
+# --- geometry checks on data read from a drawing -------------------------------------------
+
+GEOMETRY_TOLERANCE_MM = 0.2
+# Sections that follow each other along the axis. Threads and chamfers lie on top of a section,
+# bores inside the part, so they are not part of the sum.
+AXIAL_SECTION_TYPES = ("od_turn", "taper", "groove", "fillet")
+
+
+def axial_length(feature) -> float | None:
+    """Length of a section along the axis. A fillet without a length takes its radius."""
+    if feature.type == "fillet" and feature.length is None:
+        return feature.radius
+    return feature.length
+
+
+def geometry_warnings(features, overall_length: float | None) -> list[str]:
+    """Consistency checks on the features of one part (duck-typed: type, diameter, length, radius).
+
+    - the axial sections add up to the overall length (±0.2 mm);
+    - a thread is not longer than the section it is cut on.
+    """
+    warnings = []
+    sections = [f for f in features if f.type in AXIAL_SECTION_TYPES]
+    if overall_length is not None and sections:
+        lengths = [axial_length(f) for f in sections]
+        total = round(sum(v for v in lengths if v is not None), 3)
+        if abs(total - overall_length) > GEOMETRY_TOLERANCE_MM:
+            missing = sum(v is None for v in lengths)
+            suffix = f" ({missing} section{'s' if missing > 1 else ''} without length)" if missing else ""
+            warnings.append(f"section lengths sum to {total:g}, overall length is {overall_length:g}{suffix}")
+
+    for thread in (f for f in features if f.type == "thread" and f.diameter and f.length):
+        section = next(
+            (f for f in features if f.type == "od_turn" and f.diameter and math.isclose(f.diameter, thread.diameter)),
+            None,
+        )
+        if section and section.length and thread.length > section.length + GEOMETRY_TOLERANCE_MM:
+            warnings.append(
+                f"thread Ø{thread.diameter:g} is {thread.length:g} long, longer than its section ({section.length:g})"
+            )
+    return warnings
+
+
 def suggest_blank(
     features: list[FeatureSpec],
     overall_length: float | None,

@@ -15,7 +15,7 @@ PNG = (FIXTURES / "02_threaded_shaft.png").read_bytes()
 THREADED_SHAFT = part(
     [
         feature("od_turn", 30, length=60, ra=1.6),
-        feature("od_turn", 20, length=30, confidence=0.5),  # low confidence
+        feature("od_turn", 20, length=27, confidence=0.5),  # low confidence; the 3 mm groove is its own section
         feature("groove", 17, start_diameter=20, length=3),
         feature("chamfer", 20, length=1),
         feature("thread", 20, length=25, tolerance="6g", pitch=1.5),
@@ -418,11 +418,11 @@ GOST_SHAFT = part(
     [
         feature("od_turn", 80, length=40.1, tolerance="+0.5/-1.3"),
         feature("fillet", radius=10, tolerance="±0.05"),
-        feature("od_turn", 60, length=60, tolerance="±0.05", confidence=0.8),
+        feature("od_turn", 60, length=40, tolerance="±0.05", confidence=0.8),
         feature("taper", 55, start_diameter=60, length=30),
         feature("groove", 44, start_diameter=48, length=4),
-        feature("od_turn", 48, length=20),
-        feature("thread", 48, length=20, tolerance="6g", pitch=1.5),
+        feature("od_turn", 48, length=16),
+        feature("thread", 48, length=16, tolerance="6g", pitch=1.5),
         feature("chamfer", 48, length=1.5),
     ],
     overall_length=140.1,
@@ -674,3 +674,38 @@ def test_too_complex_drawing_shows_clear_message(app, client):
     fake.messages.response = make_response(THREADED_SHAFT)
     _upload(client)
     assert len(fake.messages.calls) == 2 and _extractions()[-1].status == "extracted"
+
+
+# --- geometry check on the review screen --------------------------------------------------------
+
+def test_review_shows_geometry_warnings(app, client):
+    shaft = {**GOST_SHAFT, "features": [dict(f) for f in GOST_SHAFT["features"]]}
+    shaft["features"][5]["length"] = 20  # od_turn Ø48: groove width counted twice
+    shaft["features"][6]["length"] = 25  # thread longer than the Ø48 section
+    page = _review_page(app, client, shaft)
+    assert "Geometry check" in page
+    assert "section lengths sum to 144.1, overall length is 140.1" in page
+    assert "thread Ø48 is 25 long, longer than its section (20)" in page
+
+
+def test_review_without_geometry_problems(app, client):
+    assert "Geometry check" not in _review_page(app, client, GOST_SHAFT)
+
+
+def test_geometry_check_uses_edited_rows(app, client):
+    shaft = {**GOST_SHAFT, "features": [dict(f) for f in GOST_SHAFT["features"]]}
+    shaft["features"][5]["length"] = 20  # model mistake: sum 144.1
+    shaft["features"][6]["length"] = 20
+    _use_model(app, shaft)
+    _upload(client)
+    assert "Geometry check" in client.get("/extractions/1/review").data.decode()
+    form = {"name": "", "material_id": "1", "quantity": "1", "blank_diameter": "85", "blank_length": "146",
+            "feature_count": str(len(shaft["features"]))}
+    for i, f in enumerate(shaft["features"]):
+        form[f"f{i}-include"] = "1"
+        for key, value in f.items():
+            form[f"f{i}-{key}"] = "" if value is None else str(value)
+    form["f5-length"] = "16"
+    form["f6-length"] = "16"
+    page = client.post("/extractions/1/confirm", data=form).data.decode()  # name missing: page shown again
+    assert "Geometry check" not in page

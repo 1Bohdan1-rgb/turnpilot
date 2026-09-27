@@ -550,3 +550,51 @@ def test_blank_suggestion_counts_taper_diameters():
     s = _suggest([FeatureSpec(1, "od_turn", diameter=30, length=40),
                   FeatureSpec(2, "taper", diameter=34, start_diameter=38, length=20)], overall_length=60)
     assert s.diameter == 40  # taper start Ø38 + 2 = 40
+
+
+# --- geometry checks ------------------------------------------------------------------------
+
+from turnpilot.planner import geometry_warnings  # noqa: E402
+
+REAL_SHAFT = [  # the machinist-checked real shaft (lengths from baseline dimensions)
+    FeatureSpec(1, "od_turn", diameter=80, length=40.1),
+    FeatureSpec(2, "fillet", radius=10),
+    FeatureSpec(3, "od_turn", diameter=60, length=40),
+    FeatureSpec(4, "taper", diameter=55, start_diameter=60, length=30),
+    FeatureSpec(5, "groove", diameter=44, start_diameter=48, length=4),
+    FeatureSpec(6, "od_turn", diameter=48, length=16),
+    FeatureSpec(7, "thread", diameter=48, length=16, pitch=1.5),
+    FeatureSpec(8, "chamfer", diameter=48, length=1.5),
+]
+
+
+def test_consistent_geometry_has_no_warnings():
+    # 40.1 + 10 (fillet R10 along the axis) + 40 + 30 + 4 + 16 = 140.1; thread and chamfer lie on top
+    assert geometry_warnings(REAL_SHAFT, 140.1) == []
+
+
+def test_section_sum_mismatch():
+    # the model's typical mistake: the 20 mm dimension taken as the Ø48 section, groove included
+    features = [f if f.id != 6 else FeatureSpec(6, "od_turn", diameter=48, length=20) for f in REAL_SHAFT]
+    assert geometry_warnings(features, 140.1) == ["section lengths sum to 144.1, overall length is 140.1"]
+
+
+def test_sum_within_tolerance():
+    assert geometry_warnings(REAL_SHAFT, 140.25) == []
+    assert geometry_warnings(REAL_SHAFT, 140.35) != []
+
+
+def test_missing_lengths_are_reported():
+    features = [f if f.id != 3 else FeatureSpec(3, "od_turn", diameter=60) for f in REAL_SHAFT]
+    assert geometry_warnings(features, 140.1) == [
+        "section lengths sum to 100.1, overall length is 140.1 (1 section without length)"
+    ]
+
+
+def test_thread_longer_than_its_section():
+    features = [f if f.id != 7 else FeatureSpec(7, "thread", diameter=48, length=20, pitch=1.5) for f in REAL_SHAFT]
+    assert geometry_warnings(features, 140.1) == ["thread Ø48 is 20 long, longer than its section (16)"]
+
+
+def test_no_overall_length_skips_the_sum():
+    assert geometry_warnings([FeatureSpec(1, "od_turn", diameter=20, length=5)], None) == []
