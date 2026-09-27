@@ -50,7 +50,7 @@ def test_api_error_counts_as_wrong():
     class Broken:
         class messages:
             @staticmethod
-            def create(**kwargs):
+            def stream(**kwargs):
                 raise RuntimeError("boom")
 
     result = eval_extraction.run_one(Broken(), "m", "01_stepped_shaft", "pdf")

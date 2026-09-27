@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 
@@ -19,6 +20,14 @@ from pydantic import ValidationError
 from .extraction_schema import RECORD_PART_TOOL, TOOL_NAME, DrawingData
 
 DEFAULT_MODEL = "claude-sonnet-5"
+
+log = logging.getLogger(__name__)
+
+# Output budget per reading, thinking included. With adaptive thinking a detailed drawing used all
+# of 16000 tokens on thinking before answering, so the budget is 4x that (the model allows 128K).
+# A budget this large needs a streaming request to stay within the HTTP timeout.
+MAX_OUTPUT_TOKENS = 64000
+TOO_COMPLEX_MESSAGE = "Drawing too complex, try again"
 
 # Claude API limits: 8000x8000 px and 10 MB (base64) per image. Current models see up to a
 # 2576 px long edge without downscaling, so larger images are downscaled here to that size.
@@ -63,6 +72,7 @@ every surface that has no roughness mark of its own. Record it as general_ra; ke
 marks on that feature only.
 - confidence reflects how legible and unambiguous the feature is on the drawing.
 - Put anything unclear, contradictory or not representable into warnings.
+- Keep warnings short: one sentence each, and do not repeat what is already in the recorded fields.
 """
 
 USER_PROMPT = "Read this drawing and record the part with the record_part tool."
@@ -172,7 +182,16 @@ def parse_response(response) -> DrawingData:
     if response.stop_reason == "refusal":
         raise ExtractionError("The model declined to read this drawing.", raw)
     if response.stop_reason == "max_tokens":
-        raise ExtractionError("The model response was cut off (max_tokens).", raw)
+        usage = raw.get("usage") or {}
+        # Logged so the budget can be tuned: how much went to thinking, how much was missing.
+        log.warning("Drawing reading hit max_tokens (%s): usage=%s", MAX_OUTPUT_TOKENS, json.dumps(usage))
+        thinking = (usage.get("output_tokens_details") or {}).get("thinking_tokens")
+        detail = f" (thinking: {thinking})" if thinking is not None else ""
+        raise ExtractionError(
+            f"{TOO_COMPLEX_MESSAGE}. The model used all {usage.get('output_tokens', MAX_OUTPUT_TOKENS)} "
+            f"output tokens{detail} without finishing.",
+            raw,
+        )
 
     calls = [b for b in response.content if b.type == "tool_use" and b.name == TOOL_NAME]
     if not calls:
@@ -206,14 +225,17 @@ def extract_drawing(image: PreparedImage, client=None, model: str | None = None)
     }
     # tool_choice "auto" + an explicit instruction instead of forcing the tool: newer models
     # (e.g. Claude Opus 5.5, Fable 5.1) reject forced tool_choice, and ANTHROPIC_MODEL is configurable.
-    response = client.messages.create(
+    # Streaming only because of the large max_tokens; the tool input is small, so it is not streamed
+    # eagerly and keeps the strict schema validation.
+    with client.messages.stream(
         model=model,
-        max_tokens=16000,
+        max_tokens=MAX_OUTPUT_TOKENS,
         system=SYSTEM_PROMPT,
         tools=[RECORD_PART_TOOL],
         tool_choice={"type": "auto"},
         messages=[{"role": "user", "content": [image_block, {"type": "text", "text": USER_PROMPT}]}],
-    )
+    ) as stream:
+        response = stream.get_final_message()
     data = parse_response(response)
     data.warnings = image.notes + data.warnings
     return ExtractionResult(data=data, raw=_raw_dict(response), model=model)

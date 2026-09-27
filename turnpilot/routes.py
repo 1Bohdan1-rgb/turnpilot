@@ -12,7 +12,7 @@ from flask import (
     url_for,
 )
 
-from . import planner, services
+from . import drawing_reader, planner, services
 from .models import (
     FEATURE_TYPES,
     DrawingExtraction,
@@ -409,6 +409,13 @@ def _render_review(extraction, values, status=200):
     return page, status
 
 
+def _reading_error(extraction):
+    """Message for a failed reading; "too complex" is shown as is, it already tells what to do."""
+    if extraction.error and extraction.error.startswith(drawing_reader.TOO_COMPLEX_MESSAGE):
+        return extraction.error
+    return f"The drawing could not be read: {extraction.error}"
+
+
 @bp.route("/jobs/upload", methods=["GET", "POST"])
 def upload_drawing():
     if request.method == "POST":
@@ -428,7 +435,7 @@ def upload_drawing():
             flash(str(e), "error")
             return redirect(url_for("main.upload_drawing"))
         if extraction.status != "extracted":
-            flash(f"The drawing could not be read: {extraction.error}", "error")
+            flash(_reading_error(extraction), "error")
             return redirect(url_for("main.upload_drawing"))
         return redirect(url_for("main.review_extraction", extraction_id=extraction.id))
 
@@ -507,7 +514,7 @@ def read_again(extraction_id):
         flash(str(e), "error")
         return redirect(url_for("main.upload_drawing"))
     if fresh.status != "extracted":
-        flash(f"The drawing could not be read: {fresh.error}", "error")
+        flash(_reading_error(fresh), "error")
         return redirect(url_for("main.upload_drawing"))
     return redirect(url_for("main.review_extraction", extraction_id=fresh.id))
 

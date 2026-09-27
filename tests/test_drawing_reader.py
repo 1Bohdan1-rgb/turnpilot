@@ -88,9 +88,30 @@ def test_refusal_is_an_error():
         parse_response(make_response(None, stop_reason="refusal"))
 
 
-def test_truncated_response_is_an_error():
-    with pytest.raises(ExtractionError, match="max_tokens"):
-        parse_response(make_response(VALID, stop_reason="max_tokens"))
+def test_truncated_response_says_too_complex_and_logs_usage(caplog):
+    usage = {"input_tokens": 4273, "output_tokens": 64000, "output_tokens_details": {"thinking_tokens": 63100}}
+    response = make_response(None, stop_reason="max_tokens", usage=usage)
+    with caplog.at_level("WARNING", logger="turnpilot.drawing_reader"):
+        with pytest.raises(ExtractionError) as err:
+            parse_response(response)
+    message = str(err.value)
+    assert message.startswith("Drawing too complex, try again")
+    assert "64000 output tokens (thinking: 63100)" in message
+    assert err.value.raw["usage"]["output_tokens"] == 64000  # kept for the audit log
+    (record,) = caplog.records
+    assert "max_tokens" in record.getMessage() and '"thinking_tokens": 63100' in record.getMessage()
+
+
+def test_request_streams_with_a_large_output_budget():
+    client = FakeClient(make_response(VALID))
+    extract_drawing(_png_image(), client=client)
+    (call,) = client.messages.calls
+    assert call["max_tokens"] == drawing_reader.MAX_OUTPUT_TOKENS >= 2 * 16000
+    assert drawing_reader.MAX_OUTPUT_TOKENS <= 128000  # the model's output limit
+
+
+def test_prompt_asks_for_short_warnings():
+    assert "one sentence each" in drawing_reader.SYSTEM_PROMPT
 
 
 # --- the request sent to the API -------------------------------------------------

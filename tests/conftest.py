@@ -29,7 +29,7 @@ def client(app):
     return app.test_client()
 
 
-def make_response(tool_input=None, stop_reason="tool_use", text=None):
+def make_response(tool_input=None, stop_reason="tool_use", text=None, usage=None):
     """A Messages API response as the SDK returns it, optionally with a record_part tool call."""
     content = []
     if text:
@@ -46,8 +46,22 @@ def make_response(tool_input=None, stop_reason="tool_use", text=None):
         content=content,
         stop_reason=stop_reason,
         stop_sequence=None,
-        usage=Usage.model_construct(input_tokens=1500, output_tokens=400),
+        usage=Usage.model_construct(**(usage or {"input_tokens": 1500, "output_tokens": 400})),
     )
+
+
+class FakeStream:
+    def __init__(self, response):
+        self.response = response
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get_final_message(self):
+        return self.response
 
 
 class FakeMessages:
@@ -58,6 +72,10 @@ class FakeMessages:
     def create(self, **kwargs):
         self.calls.append(kwargs)
         return self.response
+
+    def stream(self, **kwargs):
+        self.calls.append(kwargs)
+        return FakeStream(self.response)
 
 
 class FakeClient:

@@ -131,7 +131,7 @@ def test_api_error_is_recorded(app, client):
     class Broken:
         class messages:
             @staticmethod
-            def create(**kwargs):
+            def stream(**kwargs):
                 raise ConnectionError("network down")
 
     app.config["ANTHROPIC_CLIENT"] = Broken()
@@ -653,3 +653,24 @@ def test_changed_schema_is_not_served_from_cache(app, client, monkeypatch):
 def test_prompt_version_is_stable():
     assert drawing_reader.prompt_version() == drawing_reader.prompt_version()
     assert len(drawing_reader.prompt_version()) == 16
+
+
+# --- response cut off at max_tokens -------------------------------------------------------------
+
+def test_too_complex_drawing_shows_clear_message(app, client):
+    usage = {"input_tokens": 4273, "output_tokens": 64000, "output_tokens_details": {"thinking_tokens": 64000}}
+    fake = _use_model(app, None, stop_reason="max_tokens", usage=usage)
+    resp = _upload(client)
+    assert resp.status_code == 302
+    page = client.get("/jobs/upload").data.decode()
+    assert "Drawing too complex, try again" in page
+    assert "The drawing could not be read: Drawing too complex" not in page  # shown as is
+
+    (extraction,) = _extractions()
+    assert extraction.status == "failed"
+    assert json.loads(extraction.raw_response)["usage"]["output_tokens_details"]["thinking_tokens"] == 64000
+
+    # a failed reading is not cached: trying again makes a new call
+    fake.messages.response = make_response(THREADED_SHAFT)
+    _upload(client)
+    assert len(fake.messages.calls) == 2 and _extractions()[-1].status == "extracted"
