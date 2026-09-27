@@ -233,3 +233,105 @@ def test_drawing_files_are_served(app, client):
     assert client.get("/extractions/1/drawing/original").data == PNG
     assert client.get("/extractions/1/drawing/sent").status_code == 200
     assert client.get("/extractions/1/drawing/other").status_code == 404
+
+
+# --- Ra that may belong to the bore ---------------------------------------------------
+
+BORE_RA_WARNING = "Ra may belong to the bore — check"
+
+BUSHING = part(
+    [
+        feature("od_turn", 50, length=45, tolerance="±0.05", ra=1.6),  # model put the bore's Ra here
+        feature("bore", 30, length=45, tolerance="H7"),
+        feature("chamfer", 50, length=1),
+    ],
+    material="AISI 304",
+    blank_diameter=55,
+    blank_length=50,
+    overall_length=45,
+    quantity=10,
+)
+
+
+def _review_page(app, client, tool_input):
+    _use_model(app, tool_input)
+    _upload(client)
+    return client.get("/extractions/1/review").data.decode()
+
+
+def test_bore_ra_warning_on_both_rows(app, client):
+    page = _review_page(app, client, BUSHING)
+    assert page.count(BORE_RA_WARNING) == 2  # the OD row with Ra and the bore row without
+
+
+def test_no_bore_ra_warning_when_bore_has_ra(app, client):
+    bushing = {**BUSHING, "features": [dict(f) for f in BUSHING["features"]]}
+    bushing["features"][1]["ra"] = 1.6
+    assert BORE_RA_WARNING not in _review_page(app, client, bushing)
+
+
+def test_no_bore_ra_warning_without_bore(app, client):
+    assert BORE_RA_WARNING not in _review_page(app, client, THREADED_SHAFT)  # OD with Ra, no bore
+
+
+def test_no_bore_ra_warning_when_od_has_no_ra(app, client):
+    bushing = {**BUSHING, "features": [dict(f) for f in BUSHING["features"]]}
+    bushing["features"][0]["ra"] = None
+    assert BORE_RA_WARNING not in _review_page(app, client, bushing)
+
+
+def test_bore_ra_warning_ignores_excluded_rows(app, client):
+    _use_model(app, BUSHING)
+    _upload(client)
+    form = {
+        "name": "Bushing", "material_id": "2", "quantity": "10", "blank_diameter": "55", "blank_length": "50",
+        "feature_count": "3", "f0-include": "1", "f2-include": "1",  # bore row unticked
+    }
+    for i, f in enumerate(BUSHING["features"]):
+        for key, value in f.items():
+            form[f"f{i}-{key}"] = "" if value is None else str(value)
+    form["name"] = ""  # validation error, so the review page is shown again from the form
+    page = client.post("/extractions/1/confirm", data=form).data.decode()
+    assert BORE_RA_WARNING not in page
+
+
+# --- facing / parting are not duplicated --------------------------------------------------
+
+def _face_rows():
+    return part(
+        [feature("face"), feature("od_turn", 30, length=60), feature("parting")],
+        overall_length=60,
+    )
+
+
+def test_face_from_drawing_unticks_the_checkbox(app, client):
+    page = _review_page(app, client, _face_rows())
+    assert 'name="add_face"' in page
+    assert 'name="add_face" value="1" checked' not in page
+    assert 'name="add_parting" value="1" checked' not in page
+
+
+def test_face_is_not_duplicated_on_confirm(app, client):
+    _use_model(app, _face_rows())
+    _upload(client)
+    form = {
+        "name": "Shaft", "material_id": "1", "quantity": "1", "blank_diameter": "32", "blank_length": "65",
+        "feature_count": "3", "add_face": "1", "add_parting": "1",  # ticked although the rows have them
+    }
+    for i, f in enumerate(_face_rows()["features"]):
+        form[f"f{i}-include"] = "1"
+        for key, value in f.items():
+            form[f"f{i}-{key}"] = "" if value is None else str(value)
+    client.post("/extractions/1/confirm", data=form)
+    job = db.session.execute(db.select(Job)).scalar_one()
+    types = [f.type for f in job.features]
+    assert types.count("face") == 1 and types.count("parting") == 1
+    assert types == ["face", "od_turn", "parting"]
+
+
+def test_checkbox_adds_face_when_drawing_has_none(app, client):
+    _use_model(app, THREADED_SHAFT)
+    _upload(client)
+    client.post("/extractions/1/confirm", data=_review_form())
+    job = db.session.execute(db.select(Job)).scalar_one()
+    assert [f.type for f in job.features].count("face") == 1

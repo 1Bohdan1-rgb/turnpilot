@@ -78,3 +78,11 @@ def test_null_is_correct_when_value_is_not_on_the_drawing():
     result = eval_extraction.run_one(FakeClient(make_response(answer)), "m", "05_bushing_ambiguous", "png")
     assert result.scores["length"].correct == result.scores["length"].total - 1
     assert any("bore Ø30: length 45" in m for m in result.mismatches)
+
+
+def test_report_has_known_limitations(tmp_path, monkeypatch):
+    monkeypatch.setattr(eval_extraction, "RESULTS_MD", tmp_path / "eval_results.md")
+    result = eval_extraction.run_one(FakeClient(make_response(_answer("01_stepped_shaft"))), "m", "01_stepped_shaft", "png")
+    eval_extraction.write_markdown([result], "m")
+    text = (tmp_path / "eval_results.md").read_text(encoding="utf-8")
+    assert "## Known limitations" in text and "Synthetic test set" in text

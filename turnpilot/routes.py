@@ -288,6 +288,7 @@ def edit_operation(op_id):
 # --- drawing upload and review --------------------------------------------------
 
 REVIEW_FIELDS = ("type", "diameter", "start_diameter", "length", "tolerance", "ra", "pitch", "confidence")
+BORE_RA_WARNING = "Ra may belong to the bore — check"
 
 
 def _to_float(value):
@@ -306,6 +307,20 @@ def _decorate_row(row, threshold):
     return row
 
 
+def _flag_bore_ra(rows):
+    """Mark OD rows with an Ra and bore rows without one when both exist.
+
+    In a sectioned bushing the model tends to put the bore's Ra on the outside diameter.
+    """
+    used = [r for r in rows if r["include"]]
+    od_with_ra = [r for r in used if r["type"] == "od_turn" and _to_float(r.get("ra")) is not None]
+    bore_without_ra = [r for r in used if r["type"] == "bore" and _to_float(r.get("ra")) is None]
+    flagged = {id(r) for r in od_with_ra + bore_without_ra} if od_with_ra and bore_without_ra else set()
+    for row in rows:
+        row["bore_ra_check"] = id(row) in flagged
+    return rows
+
+
 def _review_values_from_extraction(extraction):
     data = services.extraction_data(extraction)
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
@@ -316,6 +331,7 @@ def _review_values_from_extraction(extraction):
         _decorate_row({**{k: getattr(f, k) for k in REVIEW_FIELDS}, "include": True}, threshold)
         for f in data.features
     ]
+    _flag_bore_ra(rows)
     blank_missing = data.blank_diameter is None or data.blank_length is None
     return {
         "name": extraction.original_filename.rsplit(".", 1)[0],
@@ -327,8 +343,9 @@ def _review_values_from_extraction(extraction):
         "blank_diameter_suggested": data.blank_diameter is None and suggestion.diameter is not None,
         "blank_length_suggested": data.blank_length is None and suggestion.length is not None,
         "blank_notes": suggestion.notes if blank_missing else (),
-        "add_face": True,
-        "add_parting": True,
+        # Already read from the drawing: the checkbox would only add a duplicate.
+        "add_face": not any(r["type"] == "face" for r in rows),
+        "add_parting": not any(r["type"] == "parting" for r in rows),
         "rows": rows,
     }
 
@@ -342,6 +359,7 @@ def _review_values_from_form(form):
         row = {k: form.get(f"f{i}-{k}") or None for k in REVIEW_FIELDS}
         row["include"] = bool(form.get(f"f{i}-include"))
         rows.append(_decorate_row(row, threshold))
+    _flag_bore_ra(rows)
     material_id = _to_float(form.get("material_id"))
     return {
         "name": form.get("name", ""),
@@ -368,6 +386,7 @@ def _render_review(extraction, values, status=200):
         materials=materials,
         feature_types=FEATURE_TYPES,
         grinding_warning=planner.GRINDING_WARNING,
+        bore_ra_warning=BORE_RA_WARNING,
     )
     return page, status
 
@@ -422,7 +441,7 @@ def confirm_extraction(extraction_id):
     form = request.form
     try:
         job = _job_from_form(form)
-        features = [Feature(type="face")] if form.get("add_face") else []
+        features = []
         for i in range(_number(form, "feature_count", int, positive=False) or 0):
             if not form.get(f"f{i}-include"):
                 continue
@@ -432,7 +451,10 @@ def confirm_extraction(extraction_id):
             except FormError as e:
                 raise FormError(f"Feature {i + 1}: {e}") from None
             features.append(feature)
-        if form.get("add_parting"):
+        # The checkboxes add facing/parting only when the drawing rows do not already have them.
+        if form.get("add_face") and not any(f.type == "face" for f in features):
+            features.insert(0, Feature(type="face"))
+        if form.get("add_parting") and not any(f.type == "parting" for f in features):
             features.append(Feature(type="parting"))
         if not features:
             raise FormError("Include at least one feature")

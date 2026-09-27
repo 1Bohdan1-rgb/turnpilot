@@ -87,7 +87,12 @@ editable form:
   2 mm rounded up to the next bar size from `BAR_STOCK_DIAMETERS` in `turnpilot/config.py`,
   length = overall length + 2 mm facing + the parting tool width;
 - tolerances of IT5 or finer and Ra ≤ 0.4 get the grinding warning;
-- facing and parting are added unless unticked (drawings rarely show them).
+- when there is a bore without Ra and an OD with Ra, both rows get "Ra may belong to the bore —
+  check" (the model tends to put a bore's Ra on the OD in sectioned views);
+- facing and parting are added unless unticked (drawings rarely show them); if the model already
+  returned a face or parting row, the checkbox starts unticked and never adds a duplicate.
+
+Known limitations of the extraction are listed at the end of `docs/eval_results.md`.
 
 **Confirm** creates the job and its features; then the usual **Calculate**. For the audit trail
 every upload is kept in `DrawingExtraction`: the original file and the image sent to the model

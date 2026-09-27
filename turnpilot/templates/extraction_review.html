@@ -91,8 +91,11 @@
             {{ "%.2f"|format(row.confidence|float) if row.confidence is not none else "—" }}
           </td>
         </tr>
-        {% if row.grinding %}
-        <tr class="row-warning"><td></td><td colspan="8"><div class="warning">⚠ {{ grinding_warning }}</div></td></tr>
+        {% if row.grinding or row.bore_ra_check %}
+        <tr class="row-warning"><td></td><td colspan="8">
+          {% if row.grinding %}<div class="warning">⚠ {{ grinding_warning }}</div>{% endif %}
+          {% if row.bore_ra_check %}<div class="warning">⚠ {{ bore_ra_warning }}</div>{% endif %}
+        </td></tr>
         {% endif %}
       {% endfor %}
       </tbody>
@@ -102,7 +105,8 @@
     <div class="card">
       <label class="inline"><input type="checkbox" name="add_face" value="1" {% if values.add_face %}checked{% endif %}> Add facing</label>
       <label class="inline"><input type="checkbox" name="add_parting" value="1" {% if values.add_parting %}checked{% endif %}> Add parting</label>
-      <p class="muted small">Drawings rarely show facing and parting; they are added as features unless unticked.</p>
+      <p class="muted small">Drawings rarely show facing and parting; they are added as features unless unticked.
+        If a facing or parting row above is ticked, the checkbox does not add a second one.</p>
     </div>
 
     <div class="actions">
