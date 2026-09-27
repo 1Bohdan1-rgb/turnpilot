@@ -43,7 +43,8 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   Start Ø = diameter the groove is cut from (blank diameter if empty).
 - **Parting:** insert width and depth per side instead of ap. Depth = diameter / 2 (the parting
   feature's diameter, or the blank), or down to the smallest bore if the part has one.
-  Note: "reduce feed ~50% for last 2 mm before center".
+  Note: "reduce feed ~50% for last 2 mm before center" for a solid part, or
+  "reduce feed ~50% for last 2 mm before breakthrough into bore" when parting to a bore.
 - **Threads** (external metric): feed = pitch, profile depth per side `h = 0.613 * pitch`.
   Radial infeed that never increases from pass to pass: decreasing depth by the modified
   constant chip area method (first pass within the tool's `ap_max`). If that series would need a

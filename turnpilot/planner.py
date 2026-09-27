@@ -15,7 +15,7 @@ G96_NOTE = "G96 constant surface speed, capped at max RPM"
 G97_THREAD_NOTE = "G97 constant RPM — required for threading"
 CHAMFER_NOTE = "incl. chamfer"
 PARTING_CENTER_NOTE = "reduce feed ~50% for last 2 mm before center"
-PARTING_BORE_NOTE = "reduce feed ~50% for last 2 mm before breaking into the bore"
+PARTING_BORE_NOTE = "reduce feed ~50% for last 2 mm before breakthrough into bore"
 
 # Stage order of the process sheet: face -> rough -> finish -> groove -> thread -> parting.
 STAGE_ORDER = {"face": 0, "rough": 1, "finish": 2, "groove": 3, "thread": 4, "parting": 5}

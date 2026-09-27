@@ -341,6 +341,7 @@ def test_parting_to_center(turret):
     assert op.insert_width == 3.0
     assert op.depth == 30.0  # blank diameter / 2
     assert PARTING_CENTER_NOTE in op.notes
+    assert "reduce feed ~50% for last 2 mm before center" in op.notes
     assert G96_NOTE in op.notes
 
 
@@ -362,4 +363,5 @@ def test_parting_to_inner_diameter(turret):
     assert op.tool_type == "parting"
     assert op.depth == 20.0  # (60 - 20) / 2, to the smallest bore
     assert PARTING_BORE_NOTE in op.notes
+    assert "reduce feed ~50% for last 2 mm before breakthrough into bore" in op.notes
     assert PARTING_CENTER_NOTE not in op.notes
