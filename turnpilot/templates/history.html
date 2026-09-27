@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}History · {{ job.name }}{% endblock %}
+{% block content %}
+<h1>Calculation history: {{ job.name }}</h1>
+<p class="muted">
+  Archived calculations are read-only. Current version: {{ job.last_calculation_version }} ·
+  <a href="{{ url_for('main.operations', job_id=job.id) }}">current operations</a> ·
+  <a href="{{ url_for('main.job_detail', job_id=job.id) }}">features</a>
+</p>
+
+{% if not versions %}
+<p class="muted">No archived calculations yet.</p>
+{% endif %}
+
+{% for version, ops in versions.items() %}
+<h2>Version {{ version }}</h2>
+<div class="table-wrap">
+<table class="card ops">
+  <thead>
+    <tr>
+      <th>#</th><th>Feature</th><th>Operation</th><th>Pos.</th><th>Tool</th>
+      <th>Vc</th><th>n</th><th>f</th><th>ap</th><th>Passes</th><th>Status</th><th>Edit log</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for op in ops %}
+    <tr>
+      <td>{{ op.sequence }}</td>
+      <td>{{ op.feature.type }}{% if op.feature.diameter %} Ø{{ op.feature.diameter }}{% endif %}
+        {% if op.feature.is_deleted %}<span class="muted small">(deleted)</span>{% endif %}</td>
+      <td>{{ op.tool_type }} <span class="muted">({{ op.rough_finish }})</span></td>
+      <td>{{ "T%d"|format(op.turret_position) if op.turret_position else "—" }}</td>
+      <td>{{ op.tool.name if op.tool else "—" }}</td>
+      <td>{{ op.vc if op.vc is not none else "—" }}</td>
+      <td>{{ op.n if op.n is not none else "—" }}</td>
+      <td>{{ op.f if op.f is not none else "—" }}</td>
+      <td>{{ op.ap if op.ap is not none else "—" }}</td>
+      <td>{{ op.passes if op.passes is not none else "" }}</td>
+      <td><span class="badge badge-{{ op.status }}">{{ op.status }}</span></td>
+      <td class="notes">
+        {% for e in op.edits %}
+          <div>{{ e.created_at.strftime("%Y-%m-%d %H:%M") }} · {{ e.field }}: {{ e.old_value }} → {{ e.new_value }}</div>
+        {% endfor %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endfor %}
+{% endblock %}

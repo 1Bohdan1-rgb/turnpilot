@@ -28,8 +28,8 @@
       <td>{{ job.material.name }}</td>
       <td>{{ job.quantity }}</td>
       <td>{{ job.blank_diameter|round(2) }} × {{ job.blank_length|round(2) }}</td>
-      <td>{{ job.features|length }}</td>
-      <td>{% if job.operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">{{ job.operations|length }}</a>{% else %}—{% endif %}</td>
+      <td>{{ job.active_features|length }}</td>
+      <td>{% if job.current_operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">{{ job.current_operations|length }}</a>{% else %}—{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>

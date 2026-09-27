@@ -75,12 +75,29 @@ class Job(db.Model):
     created_at = db.Column(db.DateTime, default=_now)
 
     material = db.relationship("Material")
-    features = db.relationship(
-        "Feature", back_populates="job", order_by="Feature.id", cascade="all, delete-orphan"
-    )
+    # Features and operations are never deleted (only flagged), so the edit log keeps its context.
+    features = db.relationship("Feature", back_populates="job", order_by="Feature.id")
     operations = db.relationship(
-        "Operation", back_populates="job", order_by="Operation.sequence", cascade="all, delete-orphan"
+        "Operation",
+        back_populates="job",
+        order_by=lambda: (Operation.calculation_version.desc(), Operation.sequence),
     )
+
+    @property
+    def active_features(self):
+        return [f for f in self.features if not f.is_deleted]
+
+    @property
+    def current_operations(self):
+        return [op for op in self.operations if not op.is_archived]
+
+    @property
+    def archived_operations(self):
+        return [op for op in self.operations if op.is_archived]
+
+    @property
+    def last_calculation_version(self):
+        return max((op.calculation_version for op in self.operations), default=0)
 
 
 class Feature(db.Model):
@@ -92,9 +109,10 @@ class Feature(db.Model):
     tolerance = db.Column(db.String(30))  # free text, e.g. "h7" or "+0/-0.05"
     ra = db.Column(db.Float)  # um
     pitch = db.Column(db.Float)  # mm, threads only
+    is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 
     job = db.relationship("Job", back_populates="features")
-    operations = db.relationship("Operation", back_populates="feature", cascade="all, delete-orphan")
+    operations = db.relationship("Operation", back_populates="feature")
 
 
 class Operation(db.Model):
@@ -115,13 +133,14 @@ class Operation(db.Model):
     note = db.Column(db.Text)
     warning = db.Column(db.Text)
     status = db.Column(db.String(10), nullable=False, default="proposed")
+    # Each "Calculate" creates a new version; older operations are archived, never deleted.
+    calculation_version = db.Column(db.Integer, nullable=False, default=1)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False)
 
     job = db.relationship("Job", back_populates="operations")
     feature = db.relationship("Feature", back_populates="operations")
     tool = db.relationship("Tool")
-    edits = db.relationship(
-        "Edit", back_populates="operation", order_by="Edit.created_at", cascade="all, delete-orphan"
-    )
+    edits = db.relationship("Edit", back_populates="operation", order_by="Edit.created_at")
 
 
 class Edit(db.Model):

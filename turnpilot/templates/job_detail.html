@@ -8,11 +8,11 @@
 </p>
 
 <h2>Features</h2>
-{% if job.features %}
+{% if job.active_features %}
 <table class="card">
   <thead><tr><th>#</th><th>Type</th><th>Ø, mm</th><th>Length, mm</th><th>Tolerance</th><th>Ra, µm</th><th>Pitch, mm</th><th></th></tr></thead>
   <tbody>
-  {% for f in job.features %}
+  {% for f in job.active_features %}
     <tr>
       <td>{{ loop.index }}</td>
       <td>{{ f.type }}</td>
@@ -47,11 +47,12 @@
   <button type="submit">Add feature</button>
 </form>
 
-<form method="post" action="{{ url_for('main.calculate', job_id=job.id) }}" class="actions"
-      {% if job.operations|selectattr('status', 'ne', 'proposed')|list %}
-      onsubmit="return confirm('Recalculating replaces all operations, including approved and edited ones, and their edit log. Continue?')"
-      {% endif %}>
+<form method="post" action="{{ url_for('main.calculate', job_id=job.id) }}" class="actions">
   <button type="submit" class="primary">Calculate</button>
-  {% if job.operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">View current operations</a>{% endif %}
+  {% if job.current_operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">View current operations</a>{% endif %}
+  {% if job.archived_operations %}<a href="{{ url_for('main.history', job_id=job.id) }}">Calculation history</a>{% endif %}
 </form>
+{% if job.current_operations %}
+<p class="muted small">Recalculating archives the current operations. Their status and edit log stay in the history.</p>
+{% endif %}
 {% endblock %}

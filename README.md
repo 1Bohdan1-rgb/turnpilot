@@ -19,6 +19,11 @@ After that the user:
 3. presses **Calculate**, and the planner proposes operations, tools and cutting data;
 4. approves or edits each operation. Every change is written to an edit log (old value, new value, time).
 
+Nothing is ever deleted. Pressing **Calculate** again archives the current operations as a numbered
+calculation version and creates a new one; archived versions and their edit log are available on
+the job's *Calculation history* page (read-only). Deleted features are only flagged, so history
+still shows what they were.
+
 Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 
 - **Order:** face → roughing → finishing (incl. chamfers) → grooves → threads → parting.

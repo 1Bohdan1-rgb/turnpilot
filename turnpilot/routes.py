@@ -180,7 +180,8 @@ def delete_feature(job_id, feature_id):
     feature = db.get_or_404(Feature, feature_id)
     if feature.job_id != job_id:
         abort(404)
-    db.session.delete(feature)
+    # Soft delete: archived operations and their edit log still refer to this feature.
+    feature.is_deleted = True
     db.session.commit()
     return redirect(url_for("main.job_detail", job_id=job_id))
 
@@ -188,10 +189,13 @@ def delete_feature(job_id, feature_id):
 @bp.route("/jobs/<int:job_id>/calculate", methods=["POST"])
 def calculate(job_id):
     job = db.get_or_404(Job, job_id)
-    if not job.features:
+    if not job.active_features:
         flash("Add at least one feature before calculating.", "error")
         return redirect(url_for("main.job_detail", job_id=job.id))
+    had_operations = bool(job.current_operations)
     services.calculate_operations(job, _machine_or_404())
+    if had_operations:
+        flash("Previous operations were archived. See the calculation history.")
     return redirect(url_for("main.operations", job_id=job.id))
 
 
@@ -201,10 +205,21 @@ def operations(job_id):
     return render_template("operations.html", job=job, machine=_machine_or_404())
 
 
+@bp.route("/jobs/<int:job_id>/history")
+def history(job_id):
+    job = db.get_or_404(Job, job_id)
+    versions = {}
+    for op in job.archived_operations:
+        versions.setdefault(op.calculation_version, []).append(op)
+    return render_template("history.html", job=job, versions=versions)
+
+
 @bp.route("/operations/<int:op_id>/approve", methods=["POST"])
 def approve_operation(op_id):
     op = db.get_or_404(Operation, op_id)
-    if op.tool_id is None:
+    if op.is_archived:
+        flash("Archived operations are read-only.", "error")
+    elif op.tool_id is None:
         flash(f"Operation {op.sequence} has no tool and cannot be approved.", "error")
     else:
         op.status = "approved"
@@ -215,6 +230,9 @@ def approve_operation(op_id):
 @bp.route("/operations/<int:op_id>/edit", methods=["GET", "POST"])
 def edit_operation(op_id):
     op = db.get_or_404(Operation, op_id)
+    if op.is_archived:
+        flash("Archived operations are read-only.", "error")
+        return redirect(url_for("main.history", job_id=op.job_id))
     machine = _machine_or_404()
     if request.method == "POST":
         try:

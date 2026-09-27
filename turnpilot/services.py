@@ -33,7 +33,7 @@ def job_spec(job):
         planner.FeatureSpec(
             id=f.id, type=f.type, diameter=f.diameter, length=f.length, ra=f.ra, pitch=f.pitch
         )
-        for f in job.features
+        for f in job.active_features
     )
     return planner.JobSpec(
         iso_group=job.material.iso_group,
@@ -44,9 +44,13 @@ def job_spec(job):
 
 
 def calculate_operations(job, machine):
-    """Replace all operations of a job with a fresh proposal from the planner."""
-    job.operations.clear()
-    db.session.flush()
+    """Archive the current operations of a job and add a fresh proposal as a new version.
+
+    Nothing is deleted: archived operations keep their status and edit log.
+    """
+    version = job.last_calculation_version + 1
+    for op in job.current_operations:
+        op.is_archived = True
     for planned in planner.plan_job(job_spec(job), turret_entries(machine), machine.max_rpm):
         job.operations.append(
             Operation(
@@ -65,6 +69,7 @@ def calculate_operations(job, machine):
                 note="; ".join(planned.notes) or None,
                 warning="; ".join(planned.warnings) or None,
                 status="proposed",
+                calculation_version=version,
             )
         )
     db.session.commit()
@@ -83,6 +88,8 @@ def apply_operation_edit(op, machine, turret_position, vc, f, ap, passes):
 
     Returns the list of Edit rows created (empty if nothing changed).
     """
+    if op.is_archived:
+        raise ValueError("Archived operations are read-only")
     changes = {}
 
     if turret_position != op.turret_position:
