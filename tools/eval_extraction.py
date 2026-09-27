@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import os
 import sys
 import time
@@ -28,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 
 from turnpilot import drawing_reader  # noqa: E402
 from turnpilot.extraction_schema import DrawingData  # noqa: E402
+from turnpilot.planner import geometry_warnings  # noqa: E402
 from turnpilot.services import MATERIAL_ALIASES, match_material  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures" / "drawings"
@@ -95,6 +97,11 @@ class RunResult:
     tokens: tuple[int, int] = (0, 0)
     mismatches: list[str] = field(default_factory=list)
     run: int = 1  # repeat number with --repeat
+    mode: str = drawing_reader.DEFAULT_READ_MODE
+    null_lengths: int = 0  # matched features whose length is null although the drawing has it
+    conflicts: int | None = None  # conflicting dimensions found by the dimensions_first solver
+    geometry: int | None = None  # planner.geometry_warnings() on the extracted part
+    raw: dict | None = None  # the full API response, saved so the run can be re-scored later
 
 
 def _same_number(a, b):
@@ -140,6 +147,8 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
             result.mismatches.append(f"missing {label}")
         # Every metric is counted for every expected feature. null in the expected answer means the
         # value is not on the drawing: null from the model is then correct, and a number is a guess.
+        if got is not None and exp.length is not None and got.length is None:
+            result.null_lengths += 1
         for metric in FEATURE_NUMBER_METRICS:
             want = getattr(exp, metric)
             ok = got is not None and _same_number(getattr(got, metric), want)
@@ -189,28 +198,81 @@ def planned_runs(names, variants):
     return runs
 
 
-def run_one(client, model, name, variant, run=1) -> RunResult:
+def _group(variant):
+    return "real" if variant == "real" else VARIANTS[variant][2]
+
+
+def _expected(name):
+    return DrawingData.model_validate_json((FIXTURES / f"{name}.expected.json").read_text(encoding="utf-8"))
+
+
+def _fail(result, expected, exc):
+    result.error = f"{type(exc).__name__}: {exc}"[:300]
+    for m in METRICS:
+        result.scores[m].total += 1 if m in PART_METRICS else len(expected.features)
+
+
+def _score_extracted(result, expected, data):
+    score(expected, data, result)
+    result.conflicts = sum("conflicts with the others" in w for w in data.warnings)
+    result.geometry = len(geometry_warnings(data.features, data.overall_length))
+
+
+def run_one(client, model, name, variant, run=1, mode=drawing_reader.DEFAULT_READ_MODE) -> RunResult:
     if variant == "real":
         path, file_type = real_drawing_file(name)
-        group = "real"
     else:
-        suffix, file_type, group = VARIANTS[variant]
+        suffix, file_type, _ = VARIANTS[variant]
         path = FIXTURES / f"{name}{suffix}"
-    result = RunResult(name, variant, group, run=run)
-    expected = DrawingData.model_validate_json((FIXTURES / f"{name}.expected.json").read_text(encoding="utf-8"))
+    result = RunResult(name, variant, _group(variant), run=run, mode=mode)
+    expected = _expected(name)
     start = time.monotonic()
     try:
         image = drawing_reader.prepare_image(path.read_bytes(), file_type)
-        extraction = drawing_reader.extract_drawing(image, client=client, model=model)
+        extraction = drawing_reader.extract_drawing(image, client=client, model=model, mode=mode)
+        result.raw = extraction.raw
         usage = extraction.raw.get("usage", {})
         result.tokens = (usage.get("input_tokens", 0), usage.get("output_tokens", 0))
-        score(expected, extraction.data, result)
+        _score_extracted(result, expected, extraction.data)
+    except drawing_reader.ExtractionError as exc:
+        result.raw = exc.raw
+        _fail(result, expected, exc)
     except Exception as exc:  # count the whole drawing as wrong, keep going
-        result.error = f"{type(exc).__name__}: {exc}"[:300]
-        for m in METRICS:
-            result.scores[m].total += 1 if m in PART_METRICS else len(expected.features)
+        _fail(result, expected, exc)
     result.seconds = time.monotonic() - start
     return result
+
+
+# --- saved runs: re-scoring without new API calls ------------------------------------------
+
+def save_runs(results, model, path: Path):
+    """Keep every run's raw API response next to the report, so it can be re-scored later."""
+    runs = [
+        {"drawing": r.drawing, "variant": r.variant, "run": r.run, "mode": r.mode, "model": model,
+         "seconds": r.seconds, "tokens": list(r.tokens), "error": r.error, "raw": r.raw}
+        for r in results
+    ]
+    path.write_text(json.dumps(runs, ensure_ascii=False, indent=1), encoding="utf-8")
+    return path
+
+
+def rescore_saved(path: Path) -> list[RunResult]:
+    """Score saved runs again with the current scorer and the current expected answers."""
+    results = []
+    for saved in json.loads(path.read_text(encoding="utf-8")):
+        result = RunResult(saved["drawing"], saved["variant"], _group(saved["variant"]), run=saved["run"],
+                           mode=saved["mode"], seconds=saved["seconds"], tokens=tuple(saved["tokens"]),
+                           raw=saved["raw"])
+        expected = _expected(saved["drawing"])
+        try:
+            if saved["raw"] is None:
+                raise RuntimeError(saved["error"] or "no response saved")
+            data = drawing_reader.parse_saved_response(saved["raw"], saved["mode"])
+            _score_extracted(result, expected, data)
+        except Exception as exc:
+            _fail(result, expected, exc)
+        results.append(result)
+    return results
 
 
 def aggregate(results, group):
@@ -273,7 +335,92 @@ def detail_table(results):
     return "\n".join(lines)
 
 
-def write_markdown(results, model, path=None):
+# --- comparing reading modes -----------------------------------------------------------------
+
+COMPARISON_COLUMNS = ("Length", "Null lengths", "Missing", "Dimension conflicts", "Geometry warnings",
+                      "Diameter", "Tolerance", "Ra", "Time, s", "Output tokens")
+
+
+def comparison_rows(label, results) -> list[dict]:
+    """One row per run with the values of COMPARISON_COLUMNS (numbers, or None when not known)."""
+    return [{
+        "Mode": label, "Run": r.run,
+        "Length": r.scores["length"].pct, "Null lengths": r.null_lengths, "Missing": r.missing,
+        "Dimension conflicts": r.conflicts, "Geometry warnings": r.geometry,
+        "Diameter": r.scores["diameter"].pct, "Tolerance": r.scores["tolerance"].pct, "Ra": r.scores["ra"].pct,
+        "Time, s": r.seconds, "Output tokens": r.tokens[1] if not r.error else None,
+    } for r in results]
+
+
+def comparison_rows_from_report(path: Path, label: str) -> list[dict]:
+    """Rows for runs of an earlier report that has no saved raw responses: read back its percentages.
+
+    The null lengths and missing features come from the "Differences" list; dimension conflicts and
+    geometry warnings cannot be recovered without the responses and stay unknown.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("| Drawing | Variant | Run |"))
+    header = [c.strip() for c in lines[start].strip("|").split("|")]
+    table = []
+    for line in lines[start + 2:]:
+        if not line.startswith("|"):
+            break
+        table.append(dict(zip(header, (c.strip() for c in line.strip("|").split("|")))))
+    differences = {}
+    for line in lines:
+        match = re.match(r"- \*\*(.+?) / (.+?) / run (\d+)\*\*: (.*)", line)
+        if match:
+            differences[int(match.group(3))] = match.group(4).split("; ")
+
+    def pct(value):
+        return None if value in ("", "—") else float(value.rstrip("%"))
+
+    rows = []
+    for t in table:
+        diffs = differences.get(int(t["Run"]), [])
+        rows.append({
+            "Mode": label, "Run": int(t["Run"]),
+            "Length": pct(t["Length"]),
+            "Null lengths": sum(bool(re.search(r": length None \(expected [^N]", d)) for d in diffs),
+            "Missing": sum(d.startswith("missing ") for d in diffs),
+            "Dimension conflicts": None, "Geometry warnings": None,
+            "Diameter": pct(t["Diameter"]), "Tolerance": pct(t["Tolerance"]), "Ra": pct(t["Ra"]),
+            "Time, s": float(t["Time, s"]), "Output tokens": int(t["Tokens in/out"].split("/")[1]),
+        })
+    return rows
+
+
+def _cell(column, value):
+    if value is None:
+        return "n/a"
+    if column in ("Length", "Diameter", "Tolerance", "Ra"):
+        return f"{value:.0f}%"
+    if column == "Output tokens":
+        return f"{value:,.0f}"
+    if column == "Time, s":
+        return f"{value:.0f}"
+    if isinstance(value, float) and not value.is_integer():
+        return f"{value:.1f}"
+    return f"{value:g}" if isinstance(value, float) else str(value)
+
+
+def comparison_table(rows: list[dict]) -> str:
+    """Every run, then the mean per mode (a mean is only shown when all runs of the mode have the value)."""
+    lines = ["| Mode | Run | " + " | ".join(COMPARISON_COLUMNS) + " |", "|" + "---|" * (len(COMPARISON_COLUMNS) + 2)]
+    modes = list(dict.fromkeys(r["Mode"] for r in rows))
+    for mode in modes:
+        mode_rows = [r for r in rows if r["Mode"] == mode]
+        for r in mode_rows:
+            lines.append(f"| {mode} | {r['Run']} | " + " | ".join(_cell(c, r[c]) for c in COMPARISON_COLUMNS) + " |")
+        means = []
+        for c in COMPARISON_COLUMNS:
+            values = [r[c] for r in mode_rows]
+            means.append(_cell(c, None if any(v is None for v in values) else sum(values) / len(values)))
+        lines.append(f"| **{mode}** | **mean** | " + " | ".join(means) + " |")
+    return "\n".join(lines)
+
+
+def write_markdown(results, model, path=None, mode=drawing_reader.DEFAULT_READ_MODE, comparison=""):
     path = path or RESULTS_MD
     problems = [f"- **{r.drawing} / {r.variant} / run {r.run}**: " + (r.error or "; ".join(r.mismatches))
                 for r in results if r.error or r.mismatches]
@@ -282,7 +429,8 @@ def write_markdown(results, model, path=None):
         repeats = f"\n## Run to run\n\n{repeat_table(results)}\n"
     text = f"""# Drawing extraction accuracy
 
-Generated by `tools/eval_extraction.py` on {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC with model `{model}`.
+Generated by `tools/eval_extraction.py` on {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC with model `{model}`,
+reading mode `{mode}`.
 
 Test drawings: `tests/fixtures/drawings/`. *clean* = PNG and PDF renders and *photo* = rotated,
 downscaled, noisy JPEG, both made by `tools/generate_drawings.py`; *real* = real drawings (`real_*`)
@@ -298,7 +446,7 @@ metric. Numbers match within {NUMBER_TOLERANCE}.
 ## Summary
 
 {summary_table(results)}
-{repeats}
+{repeats}{comparison}
 ## Per drawing
 
 {detail_table(results)}
@@ -327,6 +475,14 @@ def main(argv=None):
                         help="run everything N times to see how much the answers vary")
     parser.add_argument("--output", type=Path, default=RESULTS_MD,
                         help="report path (use a git-ignored path such as instance/... for real drawings)")
+    parser.add_argument("--mode", choices=drawing_reader.READ_MODES, default=drawing_reader.DEFAULT_READ_MODE,
+                        help="reading mode to evaluate")
+    parser.add_argument("--compare", nargs=2, action="append", metavar=("LABEL", "SOURCE"), default=[],
+                        help="compare with earlier runs (no new API calls): a *.runs.json file is re-scored "
+                             "with the current scorer and expected answers; a report without saved responses "
+                             "is read back as it was scored")
+    parser.add_argument("--rescore", type=Path, default=None,
+                        help="re-score a saved *.runs.json instead of calling the API")
     args = parser.parse_args(argv)
 
     names = sorted(p.name.removesuffix(".expected.json") for p in FIXTURES.glob("*.expected.json"))
@@ -335,27 +491,49 @@ def main(argv=None):
     runs = [(n, v) for n, v in planned_runs(names, args.variants)
             if ("real" if v == "real" else VARIANTS[v][2]) in args.groups]
     runs = [(n, v, k) for k in range(1, args.repeat + 1) for n, v in runs]
-    client = drawing_reader.make_client()  # loads .env
     model = args.model or os.environ.get("ANTHROPIC_MODEL") or drawing_reader.DEFAULT_MODEL
 
-    print(f"{len(runs)} API calls with model {model} (roughly 5k input + up to 64k output tokens each).")
-    if not args.yes and input("Continue? [y/N] ").strip().lower() != "y":
-        print("Cancelled.")
-        return 1
-
-    results = []
-    for name, variant, run in runs:
-        result = run_one(client, model, name, variant, run=run)
-        status = result.error or ", ".join(f"{m} {_pct(result.scores[m])}" for m in METRICS)
-        print(f"  run {run}  {name:22} {variant:6} {result.seconds:5.1f}s  {status}")
-        results.append(result)
+    if args.rescore:
+        results = rescore_saved(args.rescore)
+        model = json.loads(args.rescore.read_text(encoding="utf-8"))[0]["model"]
+        args.mode = results[0].mode if results else args.mode
+        print(f"Re-scored {len(results)} saved runs from {args.rescore} (no API calls).")
+    else:
+        client = drawing_reader.make_client()  # loads .env
+        print(f"{len(runs)} API calls with model {model}, mode {args.mode} "
+              f"(roughly 5k input + up to 64k output tokens each).")
+        if not args.yes and input("Continue? [y/N] ").strip().lower() != "y":
+            print("Cancelled.")
+            return 1
+        results = []
+        for name, variant, run in runs:
+            result = run_one(client, model, name, variant, run=run, mode=args.mode)
+            status = result.error or ", ".join(f"{m} {_pct(result.scores[m])}" for m in METRICS)
+            print(f"  run {run}  {name:22} {variant:6} {result.seconds:5.1f}s  {status}")
+            results.append(result)
+        saved = save_runs(results, model, args.output.with_suffix(".runs.json"))
+        print(f"Raw responses saved to {saved}")
 
     print()
     print(summary_table(results))
     if args.repeat > 1:
         print()
         print(repeat_table(results))
-    path = write_markdown(results, model, args.output)
+    comparison = ""
+    if args.compare:
+        rows = []
+        for label, source in args.compare:
+            source = Path(source)
+            if source.name.endswith(".runs.json"):
+                rows += comparison_rows(label, rescore_saved(source))
+            else:
+                rows += comparison_rows_from_report(source, label)
+        rows += comparison_rows(args.mode, results)
+        table = comparison_table(rows)
+        print()
+        print(table)
+        comparison = f"\n## Comparison of reading modes\n\n{table}\n"
+    path = write_markdown(results, model, args.output, mode=args.mode, comparison=comparison)
     print(f"\nWritten to {path}")
     return 0
 

@@ -271,3 +271,20 @@ def extract_drawing(image: PreparedImage, client=None, model: str | None = None,
     data = parse_response(response, mode)
     data.warnings = image.notes + data.warnings
     return ExtractionResult(data=data, raw=_raw_dict(response), model=model)
+
+
+def parse_saved_response(raw: dict, mode: str = DEFAULT_READ_MODE) -> DrawingData:
+    """Parse a response saved as a dict (Message.to_dict()) again, e.g. to re-score an eval run."""
+    spec = _mode(mode)
+    if raw.get("stop_reason") in ("refusal", "max_tokens"):
+        raise ExtractionError(f"Saved response stopped with {raw.get('stop_reason')}.", raw)
+    block = next(
+        (b for b in raw.get("content", []) if b.get("type") == "tool_use" and b.get("name") == spec["tool_name"]),
+        None,
+    )
+    if block is None:
+        raise ExtractionError(f"Saved response has no {spec['tool_name']} call.", raw)
+    try:
+        return spec["parse"](block["input"])
+    except ValidationError as exc:
+        raise ExtractionError(f"The saved output failed validation: {exc}", raw) from exc

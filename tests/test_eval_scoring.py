@@ -133,3 +133,72 @@ def test_report_path_can_be_changed(tmp_path):
     path = eval_extraction.write_markdown([result, eval_extraction.RunResult("x", "png", "clean", run=2)], "m",
                                           tmp_path / "real.md")
     assert path == tmp_path / "real.md" and "## Run to run" in path.read_text(encoding="utf-8")
+
+
+def _real_like_runs():
+    """Two scored runs of 01_stepped_shaft: run 2 has a null length and a wrong diameter."""
+    good = _answer("01_stepped_shaft")
+    bad = _answer("01_stepped_shaft")
+    bad["features"][0]["length"] = None
+    bad["features"][1]["diameter"] = 31
+    runs = [
+        eval_extraction.run_one(FakeClient(make_response(good)), "m", "01_stepped_shaft", "png", run=1),
+        eval_extraction.run_one(FakeClient(make_response(bad)), "m", "01_stepped_shaft", "png", run=2),
+    ]
+    runs[0].tokens, runs[1].tokens = (100, 20000), (100, 30000)
+    runs[0].seconds, runs[1].seconds = 200, 300
+    return runs
+
+
+def test_null_lengths_are_counted_and_scored_as_errors():
+    runs = _real_like_runs()
+    assert runs[0].null_lengths == 0 and runs[1].null_lengths == 1
+    assert runs[1].scores["length"].correct == runs[1].scores["length"].total - 1
+    assert runs[0].geometry == 0 and runs[1].geometry == 1  # the null length breaks the length sum
+    assert runs[0].conflicts == 0
+
+
+def test_saved_runs_are_rescored_with_the_current_scorer(tmp_path, monkeypatch):
+    runs = _real_like_runs()
+    saved = eval_extraction.save_runs(runs, "m", tmp_path / "old.runs.json")
+    rescored = eval_extraction.rescore_saved(saved)
+    assert [r.scores["length"].pct for r in rescored] == [r.scores["length"].pct for r in runs]
+    assert [r.tokens for r in rescored] == [r.tokens for r in runs]
+
+    # a changed expected answer changes the score of the very same responses
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    changed = _answer("01_stepped_shaft")
+    changed["features"][1]["diameter"] = 31
+    (fixtures / "01_stepped_shaft.expected.json").write_text(__import__("json").dumps(changed), encoding="utf-8")
+    monkeypatch.setattr(eval_extraction, "FIXTURES", fixtures)
+    again = eval_extraction.rescore_saved(saved)
+    assert again[1].scores["diameter"].pct == 100 and again[0].scores["diameter"].pct < 100
+
+
+def test_comparison_from_saved_runs_and_from_an_old_report(tmp_path):
+    runs = _real_like_runs()
+    report = eval_extraction.write_markdown(runs, "m", tmp_path / "old.md")
+
+    old = eval_extraction.comparison_rows_from_report(report, "features")
+    assert [(r["Run"], r["Null lengths"], r["Output tokens"], r["Geometry warnings"]) for r in old] == [
+        (1, 0, 20000, None), (2, 1, 30000, None),
+    ]
+    new = eval_extraction.comparison_rows("dimensions_first", runs)
+    table = eval_extraction.comparison_table(old + new)
+    assert "| features | 2 | 67% | 1 | 0 | n/a | n/a | 67% |" in table
+    # read back from the report's rounded percentages (100%, 67%): mean 83.5 -> 84%
+    assert "| **features** | **mean** | 84% | 0.5 | 0 | n/a | n/a | 84% |" in table
+    assert "| **dimensions_first** | **mean** | 83% | 0.5 | 0 | 0 | 0.5 | 83% |" in table
+    assert "25,000" in table and "| 250 |" in table
+
+
+def test_dimensions_first_conflicts_are_counted():
+    import copy
+    from test_dimensions_first import REAL_SHAFT
+
+    raw = copy.deepcopy(REAL_SHAFT)
+    raw["dimensions"].append({"value": 35, "tolerance": None, "kind": "chain", "from": 3, "to": 4, "section": None})
+    fake = FakeClient(make_response(raw, tool_name="record_dimensions"))
+    result = eval_extraction.run_one(fake, "m", "01_stepped_shaft", "png", mode="dimensions_first")
+    assert result.conflicts == 1 and result.mode == "dimensions_first"
