@@ -17,7 +17,14 @@ import pymupdf
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
+from . import dimensions_first
 from .extraction_schema import RECORD_PART_TOOL, TOOL_NAME, DrawingData
+
+# "features": the model records features with their lengths (default).
+# "dimensions_first": experiment, the model transcribes sections and dimensions and the code
+# computes the lengths (see dimensions_first.py).
+READ_MODES = ("features", "dimensions_first")
+DEFAULT_READ_MODE = "features"
 
 DEFAULT_MODEL = "claude-sonnet-5"
 
@@ -81,14 +88,33 @@ marks on that feature only.
 USER_PROMPT = "Read this drawing and record the part with the record_part tool."
 
 
-def prompt_version() -> str:
+def _mode(mode: str) -> dict:
+    """Prompts, tool and parser of a reading mode (looked up at call time)."""
+    if mode == "features":
+        return {"system": SYSTEM_PROMPT, "user": USER_PROMPT, "tool": RECORD_PART_TOOL, "tool_name": TOOL_NAME,
+                "parse": DrawingData.model_validate}
+    if mode == "dimensions_first":
+        return {
+            "system": dimensions_first.SYSTEM_PROMPT,
+            "user": dimensions_first.USER_PROMPT,
+            "tool": dimensions_first.RECORD_DIMENSIONS_TOOL,
+            "tool_name": dimensions_first.TOOL_NAME,
+            "parse": lambda tool_input: dimensions_first.to_drawing_data(
+                dimensions_first.DimensionsData.model_validate(tool_input)
+            ),
+        }
+    raise ValueError(f"Unknown reading mode {mode!r}; expected one of {READ_MODES}")
+
+
+def prompt_version(mode: str = DEFAULT_READ_MODE) -> str:
     """Short hash of everything that shapes the model's answer: prompts and the tool's JSON schema.
 
-    Stored with every extraction and part of the cache key, so a changed prompt or schema
-    never reuses a result read under the old one.
+    Stored with every extraction and part of the cache key, so a changed prompt or schema (or
+    another reading mode) never reuses a result read under the old one.
     """
+    spec = _mode(mode)
     payload = json.dumps(
-        {"system": SYSTEM_PROMPT, "user": USER_PROMPT, "tool": RECORD_PART_TOOL},
+        {"system": spec["system"], "user": spec["user"], "tool": spec["tool"]},
         sort_keys=True, ensure_ascii=False,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
@@ -179,8 +205,9 @@ def _raw_dict(response) -> dict:
     return json.loads(json.dumps(response, default=lambda o: getattr(o, "__dict__", str(o))))
 
 
-def parse_response(response) -> DrawingData:
-    """Validate the record_part tool call in a Messages API response."""
+def parse_response(response, mode: str = DEFAULT_READ_MODE) -> DrawingData:
+    """Validate the tool call of the reading mode in a Messages API response."""
+    spec = _mode(mode)
     raw = _raw_dict(response)
     if response.stop_reason == "refusal":
         raise ExtractionError("The model declined to read this drawing.", raw)
@@ -196,12 +223,12 @@ def parse_response(response) -> DrawingData:
             raw,
         )
 
-    calls = [b for b in response.content if b.type == "tool_use" and b.name == TOOL_NAME]
+    calls = [b for b in response.content if b.type == "tool_use" and b.name == spec["tool_name"]]
     if not calls:
-        raise ExtractionError("The model did not return structured data (no record_part call).", raw)
+        raise ExtractionError(f"The model did not return structured data (no {spec['tool_name']} call).", raw)
 
     try:
-        return DrawingData.model_validate(calls[0].input)
+        return spec["parse"](calls[0].input)
     except ValidationError as exc:
         raise ExtractionError(f"The model output failed validation: {exc}", raw) from exc
 
@@ -211,11 +238,13 @@ def make_client() -> anthropic.Anthropic:
     return anthropic.Anthropic()
 
 
-def extract_drawing(image: PreparedImage, client=None, model: str | None = None) -> ExtractionResult:
+def extract_drawing(image: PreparedImage, client=None, model: str | None = None,
+                    mode: str = DEFAULT_READ_MODE) -> ExtractionResult:
     """Send one prepared image to Claude and return the validated part data.
 
     `client` is injectable so tests can pass a fake; by default a real client is built from .env.
     """
+    spec = _mode(mode)
     client = client or make_client()
     model = model or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL
     image_block = {
@@ -233,12 +262,12 @@ def extract_drawing(image: PreparedImage, client=None, model: str | None = None)
     with client.messages.stream(
         model=model,
         max_tokens=MAX_OUTPUT_TOKENS,
-        system=SYSTEM_PROMPT,
-        tools=[RECORD_PART_TOOL],
+        system=spec["system"],
+        tools=[spec["tool"]],
         tool_choice={"type": "auto"},
-        messages=[{"role": "user", "content": [image_block, {"type": "text", "text": USER_PROMPT}]}],
+        messages=[{"role": "user", "content": [image_block, {"type": "text", "text": spec["user"]}]}],
     ) as stream:
         response = stream.get_final_message()
-    data = parse_response(response)
+    data = parse_response(response, mode)
     data.warnings = image.notes + data.warnings
     return ExtractionResult(data=data, raw=_raw_dict(response), model=model)

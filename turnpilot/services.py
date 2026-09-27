@@ -256,6 +256,7 @@ def _cached_copy(previous, safe_name):
         sha256=origin.sha256,
         model=origin.model,
         prompt_version=origin.prompt_version,
+        read_mode=origin.read_mode,
         status="extracted",
         raw_response=origin.raw_response,
         parsed=origin.parsed,
@@ -279,7 +280,8 @@ def read_drawing(filename, data, instance_path, config, client=None, force=False
     safe_name, file_type = check_upload(filename, data, config["ALLOWED_DRAWING_EXTENSIONS"])
     sha256 = hashlib.sha256(data).hexdigest()
     model = config["ANTHROPIC_MODEL"]
-    version = drawing_reader.prompt_version()
+    mode = config.get("DRAWING_READ_MODE", drawing_reader.DEFAULT_READ_MODE)
+    version = drawing_reader.prompt_version(mode)  # differs per mode, so modes never share a cache
     if not force:
         previous = _previous_result(sha256, model, version)
         if previous:
@@ -301,6 +303,7 @@ def read_drawing(filename, data, instance_path, config, client=None, force=False
         sha256=sha256,
         model=model,
         prompt_version=version,
+        read_mode=mode,
         status="pending",
     )
     db.session.add(extraction)
@@ -312,7 +315,7 @@ def read_drawing(filename, data, instance_path, config, client=None, force=False
         with open(os.path.join(folder, sent), "wb") as f:
             f.write(image.data)
         extraction.sent_filename = sent
-        result = drawing_reader.extract_drawing(image, client=client, model=config["ANTHROPIC_MODEL"])
+        result = drawing_reader.extract_drawing(image, client=client, model=config["ANTHROPIC_MODEL"], mode=mode)
     except drawing_reader.ExtractionError as exc:
         extraction.status = "failed"
         extraction.error = str(exc)

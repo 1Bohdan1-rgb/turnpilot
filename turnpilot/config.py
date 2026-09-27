@@ -16,6 +16,8 @@ class DefaultConfig:
 
     # --- Claude vision ----------------------------------------------------
     ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+    # "features" (default) or the "dimensions_first" experiment, see turnpilot/dimensions_first.py
+    DRAWING_READ_MODE = os.environ.get("TURNPILOT_READ_MODE", "features")
     # Features below this confidence are highlighted on the review screen.
     LOW_CONFIDENCE_THRESHOLD = 0.7
 

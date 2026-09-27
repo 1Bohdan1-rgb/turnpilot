@@ -29,14 +29,14 @@ def client(app):
     return app.test_client()
 
 
-def make_response(tool_input=None, stop_reason="tool_use", text=None, usage=None):
+def make_response(tool_input=None, stop_reason="tool_use", text=None, usage=None, tool_name="record_part"):
     """A Messages API response as the SDK returns it, optionally with a record_part tool call."""
     content = []
     if text:
         content.append(TextBlock.model_construct(type="text", text=text))
     if tool_input is not None:
         content.append(
-            ToolUseBlock.model_construct(type="tool_use", id="toolu_test", name="record_part", input=tool_input)
+            ToolUseBlock.model_construct(type="tool_use", id="toolu_test", name=tool_name, input=tool_input)
         )
     return Message.model_construct(
         id="msg_test",

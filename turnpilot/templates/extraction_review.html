@@ -4,7 +4,8 @@
 <h1>Check the drawing data</h1>
 <p class="muted">
   {{ extraction.original_filename }} · read by {{ extraction.model }}
-  {% if extraction.prompt_version %}(prompt {{ extraction.prompt_version[:8] }}){% endif %} ·
+  {% if extraction.prompt_version %}(prompt {{ extraction.prompt_version[:8] }}){% endif %}
+  {% if extraction.read_mode and extraction.read_mode != "features" %}· mode {{ extraction.read_mode }}{% endif %} ·
   nothing is saved as a job until you press <strong>Confirm</strong>.
 </p>
 
