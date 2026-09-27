@@ -69,7 +69,8 @@ PARTS = [
         "material": "AISI 304",
         "quantity": 10,
         "sections": [{"d": 50, "l": 45, "tol": "±0.05"}],
-        "bore": {"d": 30, "l": 45, "tol": "H7", "ra": 1.6},
+        # Through bore marked THRU; its Ra sits on a leader to the bore surface.
+        "bore": {"d": 30, "l": 45, "tol": "H7", "ra": 1.6, "thru": True, "ra_leader": True},
         "chamfers": [{"section": 0, "side": "right", "size": 1}],
         "blank": {"d": 55, "l": 50},
     },
@@ -85,6 +86,19 @@ PARTS = [
             {"d": 25, "l": 35, "tol": "f7", "ra": 1.6},
         ],
         "chamfers": [{"section": 2, "side": "right", "size": 1}],
+    },
+    {
+        # The first bushing layout, kept on purpose: the bore length is not dimensioned and there
+        # is no THRU note, so the expected bore length is null. Checks that the model does not guess.
+        "name": "05_bushing_ambiguous",
+        "title": "Bushing",
+        "number": "TP-005",
+        "material": "AISI 304",
+        "quantity": 10,
+        "sections": [{"d": 50, "l": 45, "tol": "±0.05"}],
+        "bore": {"d": 30, "l": 45, "tol": "H7", "ra": 1.6, "thru": False, "ra_leader": False},
+        "chamfers": [{"section": 0, "side": "right", "size": 1}],
+        "blank": {"d": 55, "l": 50},
     },
 ]
 
@@ -114,7 +128,9 @@ def expected_answer(part: dict) -> dict:
         )
     if "bore" in part:
         b = part["bore"]
-        features.append(_feature("bore", b["d"], length=b["l"], tolerance=b.get("tol"), ra=b.get("ra")))
+        # The bore length is only readable from the drawing when the bore is marked THRU.
+        length = b["l"] if b.get("thru") else None
+        features.append(_feature("bore", b["d"], length=length, tolerance=b.get("tol"), ra=b.get("ra")))
     blank = part.get("blank", {})
     return {
         "material": part["material"],
@@ -170,6 +186,15 @@ def _roughness_below(ax, x, y, value):
     """Roughness symbol hanging below an edge (used for the bore wall seen in section)."""
     ax.plot([x - 1.6, x, x + 3.2, x + 9.0], [y - 2.2, y, y - 5.2, y - 5.2], color="k", lw=THIN)
     ax.text(x + 3.6, y - 5.8, f"Ra {value:g}", ha="left", va="top", fontsize=FONT)
+
+
+def _roughness_on_leader(ax, tip, start, value):
+    """Leader from outside the part to a surface, with the roughness symbol on the leader's shelf."""
+    ax.annotate("", xy=tip, xytext=start,
+                arrowprops=dict(arrowstyle="-|>", lw=THIN, color="k", mutation_scale=7, shrinkA=0, shrinkB=0))
+    x, y = start
+    ax.plot([x, x + 12], [y, y], color="k", lw=THIN)  # shelf
+    _roughness(ax, x + 2, y, value)
 
 
 def _leader(ax, xy, text_xy, text):
@@ -318,8 +343,12 @@ def draw(part: dict):
 
     if bore:
         _vdim(ax, px(bore["l"] * 0.35), py(-bore["d"] / 2), py(bore["d"] / 2),
-              f"Ø{bore['d']:g}" + (f" {bore['tol']}" if bore.get("tol") else ""))
-        if bore.get("ra"):
+              f"Ø{bore['d']:g}" + (f" {bore['tol']}" if bore.get("tol") else "") + (" THRU" if bore.get("thru") else ""))
+        if bore.get("ra") and bore.get("ra_leader"):
+            # Leader enters through the open bore end and touches the bore wall.
+            rb = bore["d"] / 2
+            _roughness_on_leader(ax, (px(bore["l"] * 0.6), py(rb)), (px(length) + 14, py(rb * 0.45)), bore["ra"])
+        elif bore.get("ra"):
             _roughness_below(ax, px(bore["l"] * 0.5), py(bore["d"] / 2), bore["ra"])
 
     # Length dimensions below the part: chain of sections, then overall length.

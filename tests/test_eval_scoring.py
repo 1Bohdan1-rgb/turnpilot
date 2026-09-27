@@ -63,3 +63,18 @@ def test_summary_separates_clean_and_photo():
     results = [eval_extraction.run_one(client, "m", "01_stepped_shaft", v) for v in ("png", "pdf", "photo")]
     table = eval_extraction.summary_table(results)
     assert "clean (2 runs)" in table and "photo (1 runs)" in table
+
+
+def test_null_is_correct_when_value_is_not_on_the_drawing():
+    """05_bushing_ambiguous has no bore length: null is right, a guessed 45 is wrong."""
+    answer = _answer("05_bushing_ambiguous")
+    bore = next(f for f in answer["features"] if f["type"] == "bore")
+    assert bore["length"] is None
+
+    result = eval_extraction.run_one(FakeClient(make_response(answer)), "m", "05_bushing_ambiguous", "png")
+    assert result.scores["length"].pct == 100
+
+    bore["length"] = 45  # the model guesses the through length
+    result = eval_extraction.run_one(FakeClient(make_response(answer)), "m", "05_bushing_ambiguous", "png")
+    assert result.scores["length"].correct == result.scores["length"].total - 1
+    assert any("bore Ø30: length 45" in m for m in result.mismatches)

@@ -2,7 +2,8 @@
 
 Runs every drawing in tests/fixtures/drawings/ in three variants: clean PNG, clean PDF and the
 "photo" JPG, compares the result with <name>.expected.json and reports accuracy separately for
-clean and photo drawings. Output: a table in the console and docs/eval_results.md.
+clean and photo drawings. null in an expected answer means "not on the drawing": null from the
+model is then correct, a number is a guess. Output: a table in the console and docs/eval_results.md.
 
 Not part of pytest. Usage:
     python tools/eval_extraction.py            # asks for confirmation first
@@ -111,15 +112,14 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
         if got is None:
             result.missing += 1
             result.mismatches.append(f"missing {label}")
-        # Diameters and lengths: counted where the drawing has a value.
+        # Every metric is counted for every expected feature. null in the expected answer means the
+        # value is not on the drawing: null from the model is then correct, and a number is a guess.
         for metric in ("diameter", "length"):
             want = getattr(exp, metric)
-            if want is not None:
-                ok = got is not None and _same_number(getattr(got, metric), want)
-                result.scores[metric].add(ok)
-                if got is not None and not ok:
-                    result.mismatches.append(f"{label}: {metric} {getattr(got, metric)} (expected {want:g})")
-        # Tolerance and Ra: counted for every feature, so an invented value counts as wrong.
+            ok = got is not None and _same_number(getattr(got, metric), want)
+            result.scores[metric].add(ok)
+            if got is not None and not ok:
+                result.mismatches.append(f"{label}: {metric} {getattr(got, metric)} (expected {want})")
         tol_ok = got is not None and _norm_tolerance(got.tolerance) == _norm_tolerance(exp.tolerance)
         result.scores["tolerance"].add(tol_ok)
         if got is not None and not tol_ok:
@@ -150,9 +150,7 @@ def run_one(client, model, name, variant) -> RunResult:
     except Exception as exc:  # count the whole drawing as wrong, keep going
         result.error = f"{type(exc).__name__}: {exc}"[:300]
         for m in METRICS:
-            n = len(expected.features) if m in ("tolerance", "ra") else (
-                1 if m == "material" else sum(getattr(f, m) is not None for f in expected.features))
-            result.scores[m].total += n
+            result.scores[m].total += 1 if m == "material" else len(expected.features)
     result.seconds = time.monotonic() - start
     return result
 
@@ -205,9 +203,10 @@ Test drawings: `tests/fixtures/drawings/` (made by `tools/generate_drawings.py`)
 *clean* = PNG and PDF renders, *photo* = rotated, downscaled, noisy JPEG.
 
 Scoring: expected features are paired with extracted ones of the same type (closest diameter).
-Diameter and length count only where the drawing has a value; tolerance and Ra count for every
-feature, so an invented tolerance or Ra is an error; a missing feature is wrong on every metric.
-Numbers match within {NUMBER_TOLERANCE}.
+Every metric counts for every expected feature. `null` in the expected answer means the value is
+not on the drawing: `null` from the model is then correct and any number is counted as a guess
+(`05_bushing_ambiguous` has no bore length on purpose). A missing feature is wrong on every
+metric. Numbers match within {NUMBER_TOLERANCE}.
 
 ## Summary
 
