@@ -285,6 +285,8 @@ def test_schema_has_new_fields():
         "minor diameter",
         "taper",
         "fillet",
+        "A taper never replaces the cylinder next to it",
+        "separate od_turn with its own length and tolerance",
     ],
 )
 def test_prompt_contains_drawing_rules(phrase):
