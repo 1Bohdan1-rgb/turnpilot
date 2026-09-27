@@ -107,10 +107,11 @@ PARTS = [
 
 # --- expected answer -------------------------------------------------------------
 
-def _feature(type_, diameter=None, start_diameter=None, length=None, tolerance=None, ra=None, pitch=None):
+def _feature(type_, diameter=None, start_diameter=None, length=None, tolerance=None, ra=None, pitch=None,
+             radius=None):
     return {
         "type": type_, "diameter": diameter, "start_diameter": start_diameter, "length": length,
-        "tolerance": tolerance, "ra": ra, "pitch": pitch,
+        "tolerance": tolerance, "ra": ra, "pitch": pitch, "radius": radius,
     }
 
 
@@ -141,6 +142,7 @@ def expected_answer(part: dict) -> dict:
         "blank_length": blank.get("l"),
         "overall_length": sum(s["l"] for s in sections),
         "quantity": part["quantity"],
+        "general_ra": None,
         "features": features,
         "warnings": [],
     }

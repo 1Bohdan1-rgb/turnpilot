@@ -4,7 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
-FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting")
+FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet")
 TOOL_TYPES = ("facing", "turning_rough", "turning_finish", "grooving", "threading", "boring", "parting")
 ISO_GROUPS = ("P", "M", "N")
 OPERATION_STATUSES = ("proposed", "approved", "edited")
@@ -111,7 +111,8 @@ class Feature(db.Model):
     tolerance = db.Column(db.String(30))  # free text, e.g. "h7" or "+0/-0.05"
     ra = db.Column(db.Float)  # um
     pitch = db.Column(db.Float)  # mm, threads only
-    start_diameter = db.Column(db.Float)  # mm, grooves: outer diameter the groove starts from
+    start_diameter = db.Column(db.Float)  # mm, groove: diameter it is cut from; taper: diameter at its start
+    radius = db.Column(db.Float)  # mm, fillets only
     confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 

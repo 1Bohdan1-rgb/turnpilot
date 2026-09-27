@@ -18,6 +18,9 @@ PARTING_CENTER_NOTE = "reduce feed ~50% for last 2 mm before center"
 PARTING_BORE_NOTE = "reduce feed ~50% for last 2 mm before breakthrough into bore"
 GRINDING_WARNING = "may require grinding — not guaranteed by turning"
 THREAD_MAJOR_NOTE = "major diameter for thread"
+# Tapers and fillets are recognised on drawings but not planned automatically yet.
+MANUAL_OPERATION_WARNING = "manual operation"
+MANUAL_FEATURE_TYPES = ("taper", "fillet")
 # The OD under an external thread is turned slightly below nominal: d - 0.1 * pitch.
 THREAD_MAJOR_REDUCTION = 0.1
 
@@ -80,8 +83,9 @@ class FeatureSpec:
     length: float | None = None
     ra: float | None = None
     pitch: float | None = None
-    start_diameter: float | None = None  # groove: outer diameter the groove starts from
+    start_diameter: float | None = None  # groove: diameter it is cut from; taper: diameter at its start
     tolerance: str | None = None
+    radius: float | None = None  # fillet
 
 
 @dataclass(frozen=True)
@@ -289,8 +293,10 @@ def suggest_blank(
     Length: overall length + facing allowance + parting tool width.
     """
     notes = []
-    external = [f.diameter for f in features if f.type in ("od_turn", "thread", "chamfer", "parting") and f.diameter]
-    external += [f.start_diameter for f in features if f.type == "groove" and f.start_diameter]
+    external = [
+        f.diameter for f in features if f.type in ("od_turn", "thread", "chamfer", "parting", "taper") and f.diameter
+    ]
+    external += [f.start_diameter for f in features if f.type in ("groove", "taper") and f.start_diameter]
 
     diameter = None
     if external:
@@ -363,6 +369,8 @@ def feature_to_steps(feature: FeatureSpec) -> list[Step]:
         return [Step(feature, "threading", "finish", "thread")]
     if t == "parting":
         return [Step(feature, "parting", "finish", "parting")]
+    if t in MANUAL_FEATURE_TYPES:
+        return [Step(feature, "manual", "finish", "finish")]
     raise ValueError(f"Unknown feature type: {t}")
 
 
@@ -519,6 +527,9 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     )
     if step.mode == "finish" and needs_grinding(feature.tolerance, feature.diameter, feature.ra):
         op.warnings.append(GRINDING_WARNING)
+    if step.tool_type == "manual":
+        op.warnings.append(MANUAL_OPERATION_WARNING)
+        return op
 
     entry, warning = select_tool(step.tool_type, job.iso_group, turret)
     if entry is None:

@@ -174,10 +174,14 @@ def test_notes_become_warnings():
 @pytest.mark.parametrize("path", sorted(FIXTURES.glob("*.expected.json")), ids=lambda p: p.name)
 def test_expected_files_match_the_schema(path):
     data = DrawingData.model_validate_json(path.read_text(encoding="utf-8"))
-    assert data.features and data.material
+    assert data.features
     name = path.name.removesuffix(".expected.json")
-    for suffix in (".png", ".pdf", ".photo.jpg"):
-        assert (FIXTURES / f"{name}{suffix}").exists()
+    if name.startswith("real_"):
+        assert any((FIXTURES / f"{name}{s}").exists() for s in (".png", ".jpg", ".jpeg", ".pdf"))
+    else:
+        assert data.material
+        for suffix in (".png", ".pdf", ".photo.jpg"):
+            assert (FIXTURES / f"{name}{suffix}").exists()
 
 
 # --- part type ----------------------------------------------------------------------------
@@ -203,3 +207,64 @@ def test_missing_part_type_is_rejected():
     del raw["part_type"]
     with pytest.raises(ExtractionError, match="part_type"):
         parse_response(make_response(raw))
+
+
+# --- rules for real drawings: taper, fillet, general Ra, chain dimensions, thread relief ------
+
+from turnpilot.drawing_reader import SYSTEM_PROMPT  # noqa: E402
+
+
+def test_taper_and_fillet_are_parsed():
+    raw = part([
+        feature("taper", 55, start_diameter=60, length=30),
+        feature("fillet", radius=10, confidence=0.7),
+    ])
+    taper, fillet = parse_response(make_response(raw)).features
+    assert (taper.start_diameter, taper.diameter, taper.length) == (60, 55, 30)
+    assert fillet.radius == 10 and fillet.diameter is None
+
+
+def test_taper_start_may_be_smaller_than_end():
+    raw = part([feature("taper", 60, start_diameter=55, length=30)])
+    assert parse_response(make_response(raw)).features[0].start_diameter == 55
+
+
+def test_radius_only_on_fillets():
+    with pytest.raises(ExtractionError, match="radius is only valid for fillets"):
+        parse_response(make_response(part([feature("od_turn", 30, radius=2)])))
+
+
+def test_start_diameter_not_allowed_on_od_turn():
+    with pytest.raises(ExtractionError, match="grooves and tapers"):
+        parse_response(make_response(part([feature("od_turn", 30, start_diameter=40)])))
+
+
+def test_general_ra_is_parsed():
+    data = parse_response(make_response(part([feature("od_turn", 30, length=10)], general_ra=3.2)))
+    assert data.general_ra == 3.2
+    assert data.features[0].ra is None  # own marks only
+
+
+def test_schema_has_new_fields():
+    schema = RECORD_PART_TOOL["input_schema"]
+    item = schema["properties"]["features"]["items"]
+    assert {"taper", "fillet"} <= set(item["properties"]["type"]["enum"])
+    assert "radius" in item["required"]
+    assert "general_ra" in schema["required"]
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "top-right corner",  # general roughness
+        "general_ra",
+        "length derived from chain dimensions",
+        "confidence 0.8",
+        "thread relief",
+        "minor diameter",
+        "taper",
+        "fillet",
+    ],
+)
+def test_prompt_contains_drawing_rules(phrase):
+    assert phrase in SYSTEM_PROMPT

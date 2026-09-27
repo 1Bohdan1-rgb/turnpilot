@@ -5,6 +5,7 @@
   "blank_length": null,
   "overall_length": 90,
   "quantity": 50,
+  "general_ra": null,
   "features": [
     {
       "type": "od_turn",
@@ -13,7 +14,8 @@
       "length": 60,
       "tolerance": null,
       "ra": 1.6,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "od_turn",
@@ -22,7 +24,8 @@
       "length": 30,
       "tolerance": null,
       "ra": null,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "groove",
@@ -31,7 +34,8 @@
       "length": 3,
       "tolerance": null,
       "ra": null,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "chamfer",
@@ -40,7 +44,8 @@
       "length": 1,
       "tolerance": null,
       "ra": null,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "thread",
@@ -49,7 +54,8 @@
       "length": 25,
       "tolerance": "6g",
       "ra": null,
-      "pitch": 1.5
+      "pitch": 1.5,
+      "radius": null
     }
   ],
   "warnings": []

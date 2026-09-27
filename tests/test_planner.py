@@ -524,3 +524,29 @@ def test_chamfer_still_merged_on_thread_diameter(turret):
     finish = next(op for op in plan_job(job, turret, max_rpm=4000) if op.mode == "finish")
     assert CHAMFER_NOTE in finish.notes
     assert any(THREAD_MAJOR_NOTE in n for n in finish.notes)
+
+
+# --- taper and fillet: recognised, not planned ----------------------------------------------
+
+from turnpilot.planner import MANUAL_OPERATION_WARNING  # noqa: E402
+
+
+def test_taper_and_fillet_become_manual_operations(turret):
+    job = JobSpec("P", 85, 150, (
+        FeatureSpec(1, "od_turn", diameter=60, length=60),
+        FeatureSpec(2, "taper", diameter=55, start_diameter=60, length=30),
+        FeatureSpec(3, "fillet", radius=10),
+    ))
+    ops = plan_job(job, turret, max_rpm=4000)
+    manual = [op for op in ops if op.tool_type == "manual"]
+    assert [op.feature_id for op in manual] == [2, 3]
+    for op in manual:
+        assert op.warnings == [MANUAL_OPERATION_WARNING]
+        assert op.tool_id is None and op.n is None
+    assert all(op.tool_id for op in ops if op.feature_id == 1)  # the rest is planned as usual
+
+
+def test_blank_suggestion_counts_taper_diameters():
+    s = _suggest([FeatureSpec(1, "od_turn", diameter=30, length=40),
+                  FeatureSpec(2, "taper", diameter=34, start_diameter=38, length=20)], overall_length=60)
+    assert s.diameter == 40  # taper start Ø38 + 2 = 40

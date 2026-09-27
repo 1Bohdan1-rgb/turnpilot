@@ -55,7 +55,7 @@ def job_spec(job):
     features = tuple(
         planner.FeatureSpec(
             id=f.id, type=f.type, diameter=f.diameter, length=f.length, ra=f.ra, pitch=f.pitch,
-            start_diameter=f.start_diameter, tolerance=f.tolerance,
+            start_diameter=f.start_diameter, tolerance=f.tolerance, radius=f.radius,
         )
         for f in job.active_features
     )

@@ -68,16 +68,16 @@ class FakeClient:
 
 
 def feature(type_, diameter=None, start_diameter=None, length=None, tolerance=None, ra=None, pitch=None,
-            confidence=0.95):
+            radius=None, confidence=0.95):
     return {
         "type": type_, "diameter": diameter, "start_diameter": start_diameter, "length": length,
-        "tolerance": tolerance, "ra": ra, "pitch": pitch, "confidence": confidence,
+        "tolerance": tolerance, "ra": ra, "pitch": pitch, "radius": radius, "confidence": confidence,
     }
 
 
 def part(features, material="Steel 45 (C45)", blank_diameter=None, blank_length=None, overall_length=None,
-         quantity=20, warnings=(), part_type="turned"):
+         quantity=20, warnings=(), part_type="turned", general_ra=None):
     return {
-        "part_type": part_type, "material": material, "blank_diameter": blank_diameter, "blank_length": blank_length,
+        "part_type": part_type, "general_ra": general_ra, "material": material, "blank_diameter": blank_diameter, "blank_length": blank_length,
         "overall_length": overall_length, "quantity": quantity, "features": features, "warnings": list(warnings),
     }

@@ -85,6 +85,13 @@ editable form:
   `turned` a banner says "This does not look like a lathe part" and Confirm stays disabled until
   "I understand, create anyway" is ticked (checked on the server as well);
 - features with confidence below 0.7 are highlighted; model warnings are listed on top;
+- drawing conventions the model follows: a roughness symbol without a leader in the top-right
+  corner is the general Ra (`general_ra`), shown on every row without its own mark as *general*;
+  section lengths may be derived from chain/baseline dimensions (confidence ≤ 0.8 and the warning
+  "length derived from chain dimensions"); a narrow step next to a thread below its minor diameter
+  is a thread relief groove;
+- tapers (start Ø, end Ø, length) and fillets (radius) are recognised and shown; the planner
+  lists them as "manual operation" without a tool;
 - the material is matched to the materials list by name and common aliases;
 - if the drawing has no blank size, one is **suggested** (marked as such): largest external Ø +
   2 mm rounded up to the next bar size from `BAR_STOCK_DIAMETERS` in `turnpilot/config.py`,

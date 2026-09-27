@@ -155,11 +155,11 @@ def _feature_from_form(form, blank_diameter, prefix=""):
     pitch = _number(form, prefix + "pitch", required=feature_type == "thread")
     if diameter and diameter > blank_diameter and feature_type != "bore":
         raise FormError("Feature diameter is larger than the blank diameter")
-    start_diameter = _number(form, prefix + "start_diameter") if feature_type == "groove" else None
+    start_diameter = _number(form, prefix + "start_diameter") if feature_type in ("groove", "taper") else None
     if start_diameter is not None:
         if start_diameter > blank_diameter:
-            raise FormError("Groove start diameter is larger than the blank diameter")
-        if diameter is not None and start_diameter <= diameter:
+            raise FormError("Start diameter is larger than the blank diameter")
+        if feature_type == "groove" and diameter is not None and start_diameter <= diameter:
             raise FormError("Groove start diameter must be larger than the groove bottom diameter")
     return Feature(
         type=feature_type,
@@ -169,6 +169,7 @@ def _feature_from_form(form, blank_diameter, prefix=""):
         ra=_number(form, prefix + "ra"),
         pitch=pitch if feature_type == "thread" else None,
         start_diameter=start_diameter,
+        radius=_number(form, prefix + "radius") if feature_type == "fillet" else None,
     )
 
 
@@ -287,7 +288,7 @@ def edit_operation(op_id):
 
 # --- drawing upload and review --------------------------------------------------
 
-REVIEW_FIELDS = ("type", "diameter", "start_diameter", "length", "tolerance", "ra", "pitch", "confidence")
+REVIEW_FIELDS = ("type", "diameter", "start_diameter", "length", "tolerance", "ra", "pitch", "radius", "confidence")
 BORE_RA_WARNING = "Ra may belong to the bore — check"
 NOT_TURNED_BANNER = "This does not look like a lathe part"
 
@@ -322,6 +323,18 @@ def _flag_bore_ra(rows):
     return rows
 
 
+def _apply_general_ra(rows, general_ra):
+    """The general roughness (corner symbol) applies to every feature without its own Ra."""
+    for row in rows:
+        row["ra_general"] = general_ra is not None and row.get("ra") is None
+        if row["ra_general"]:
+            row["ra"] = general_ra
+            row["grinding"] = planner.needs_grinding(
+                row.get("tolerance") or None, _to_float(row.get("diameter")), general_ra
+            )
+    return rows
+
+
 def _review_values_from_extraction(extraction):
     data = services.extraction_data(extraction)
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
@@ -332,7 +345,8 @@ def _review_values_from_extraction(extraction):
         _decorate_row({**{k: getattr(f, k) for k in REVIEW_FIELDS}, "include": True}, threshold)
         for f in data.features
     ]
-    _flag_bore_ra(rows)
+    _flag_bore_ra(rows)  # on the marks read from the drawing, before the general Ra fills the gaps
+    _apply_general_ra(rows, data.general_ra)
     blank_missing = data.blank_diameter is None or data.blank_length is None
     return {
         "name": extraction.original_filename.rsplit(".", 1)[0],

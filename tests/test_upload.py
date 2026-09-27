@@ -410,3 +410,69 @@ def test_override_checkbox_kept_after_validation_error(app, client):
     page = resp.data.decode()
     assert resp.status_code == 400
     assert 'id="override-part-type" checked> I understand' in _squash(page)
+
+
+# --- real drawing rules on the review screen -------------------------------------------------
+
+GOST_SHAFT = part(
+    [
+        feature("od_turn", 80, length=40.1, tolerance="+0.5/-1.3"),
+        feature("fillet", radius=10, tolerance="±0.05"),
+        feature("od_turn", 60, length=60, tolerance="±0.05", confidence=0.8),
+        feature("taper", 55, start_diameter=60, length=30),
+        feature("groove", 44, start_diameter=48, length=4),
+        feature("od_turn", 48, length=20),
+        feature("thread", 48, length=20, tolerance="6g", pitch=1.5),
+        feature("chamfer", 48, length=1.5),
+    ],
+    overall_length=140.1,
+    quantity=1,
+    general_ra=3.2,
+    warnings=["Ø60: length derived from chain dimensions"],
+)
+
+
+def test_review_shows_taper_and_fillet(app, client):
+    page = _review_page(app, client, GOST_SHAFT)
+    assert 'selected>taper' in page and 'selected>fillet' in page
+    assert 'name="f1-radius" type="number" step="any" min="0" value="10.0"' in page
+    assert 'name="f3-start_diameter" type="number" step="any" min="0" value="60.0"' in page
+
+
+def test_general_ra_fills_features_without_own_mark(app, client):
+    shaft = {**GOST_SHAFT, "features": [dict(f) for f in GOST_SHAFT["features"]]}
+    shaft["features"][2]["ra"] = 1.6  # own mark on Ø60
+    page = _review_page(app, client, shaft)
+    assert "General roughness on the drawing: Ra 3.2" in page
+    assert 'name="f2-ra" type="number" step="any" min="0" value="1.6"' in page  # own mark kept
+    assert 'name="f0-ra" type="number" step="any" min="0" value="3.2"' in page  # general applied
+    # one badge per row without its own Ra (all but Ø60) + one in the legend above the table
+    assert page.count('<span class="badge badge-general">general</span>') == (len(shaft["features"]) - 1) + 1
+
+
+def test_bore_ra_check_uses_own_marks_not_general_ra(app, client):
+    bushing = {**BUSHING, "general_ra": 6.3}
+    page = _review_page(app, client, bushing)
+    assert page.count(BORE_RA_WARNING) == 2  # the bore gets general Ra, but the check runs on own marks
+
+
+def test_confirm_keeps_taper_and_fillet_and_plans_them_as_manual(app, client):
+    _use_model(app, GOST_SHAFT)
+    _upload(client)
+    form = {
+        "name": "GOST shaft", "material_id": "1", "quantity": "1", "blank_diameter": "85", "blank_length": "146",
+        "feature_count": str(len(GOST_SHAFT["features"])), "add_face": "1", "add_parting": "1",
+    }
+    for i, f in enumerate(GOST_SHAFT["features"]):
+        form[f"f{i}-include"] = "1"
+        for key, value in f.items():
+            form[f"f{i}-{key}"] = "" if value is None else str(value)
+    client.post("/extractions/1/confirm", data=form)
+    job = db.session.execute(db.select(Job)).scalar_one()
+    taper = next(f for f in job.features if f.type == "taper")
+    fillet = next(f for f in job.features if f.type == "fillet")
+    assert (taper.start_diameter, taper.diameter, taper.length) == (60, 55, 30)
+    assert fillet.radius == 10
+
+    page = client.post(f"/jobs/{job.id}/calculate", follow_redirects=True).data.decode()
+    assert page.count("⚠ manual operation") == 2

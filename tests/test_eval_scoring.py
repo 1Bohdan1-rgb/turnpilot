@@ -86,3 +86,17 @@ def test_report_has_known_limitations(tmp_path, monkeypatch):
     eval_extraction.write_markdown([result], "m")
     text = (tmp_path / "eval_results.md").read_text(encoding="utf-8")
     assert "## Known limitations" in text and "Synthetic test set" in text
+
+
+def test_real_drawings_run_once_in_their_own_group(tmp_path, monkeypatch):
+    monkeypatch.setattr(eval_extraction, "FIXTURES", tmp_path)
+    (tmp_path / "real_01.jpg").write_bytes((FIXTURES / "01_stepped_shaft.photo.jpg").read_bytes())
+    (tmp_path / "real_01.expected.json").write_text(
+        (FIXTURES / "01_stepped_shaft.expected.json").read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "real_02.expected.json").write_text("{}", encoding="utf-8")  # no drawing file: skipped
+    runs = eval_extraction.planned_runs(["real_01", "real_02"], ["png", "pdf", "photo"])
+    assert runs == [("real_01", "real")]
+
+    result = eval_extraction.run_one(FakeClient(make_response(_answer("01_stepped_shaft"))), "m", "real_01", "real")
+    assert result.group == "real" and result.error is None
+    assert "real (1 runs)" in eval_extraction.summary_table([result])

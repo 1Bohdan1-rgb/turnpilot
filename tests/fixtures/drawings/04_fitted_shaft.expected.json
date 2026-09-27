@@ -5,6 +5,7 @@
   "blank_length": null,
   "overall_length": 100,
   "quantity": 30,
+  "general_ra": null,
   "features": [
     {
       "type": "od_turn",
@@ -13,7 +14,8 @@
       "length": 25,
       "tolerance": null,
       "ra": null,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "od_turn",
@@ -22,7 +24,8 @@
       "length": 40,
       "tolerance": "h6",
       "ra": 0.8,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "od_turn",
@@ -31,7 +34,8 @@
       "length": 35,
       "tolerance": "f7",
       "ra": 1.6,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "chamfer",
@@ -40,7 +44,8 @@
       "length": 1,
       "tolerance": null,
       "ra": null,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     }
   ],
   "warnings": []

@@ -75,12 +75,17 @@
     <p class="muted small">
       Rows with low confidence (&lt; {{ config.LOW_CONFIDENCE_THRESHOLD }}) are highlighted. Untick a row to leave it out.
       Groove: Ø = bottom, Start Ø = diameter it is cut from, Length = width.
+      Taper: Start Ø → Ø over Length. Fillet: Radius. Tapers and fillets are not planned automatically.
+      {% if data and data.general_ra %}
+      <br><strong>General roughness on the drawing: Ra {{ data.general_ra }}</strong>, applied to features without their own mark
+      (<span class="badge badge-general">general</span>).
+      {% endif %}
     </p>
     <input type="hidden" name="feature_count" value="{{ values.rows|length }}">
     <div class="table-wrap">
     <table class="card review-table">
       <thead>
-        <tr><th>Use</th><th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Ra</th><th>Pitch</th><th>Conf.</th></tr>
+        <tr><th>Use</th><th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Ra</th><th>Pitch</th><th>Radius</th><th>Conf.</th></tr>
       </thead>
       <tbody>
       {% for row in values.rows %}
@@ -96,15 +101,19 @@
           <td><input name="f{{ i }}-{{ key }}" type="number" step="any" min="0" value="{{ row[key] if row[key] is not none else '' }}"></td>
           {% endfor %}
           <td><input name="f{{ i }}-tolerance" value="{{ row.tolerance or '' }}" size="8"></td>
-          <td><input name="f{{ i }}-ra" type="number" step="any" min="0" value="{{ row.ra if row.ra is not none else '' }}"></td>
+          <td>
+            <input name="f{{ i }}-ra" type="number" step="any" min="0" value="{{ row.ra if row.ra is not none else '' }}">
+            {% if row.ra_general %}<span class="badge badge-general">general</span>{% endif %}
+          </td>
           <td><input name="f{{ i }}-pitch" type="number" step="any" min="0" value="{{ row.pitch if row.pitch is not none else '' }}"></td>
+          <td><input name="f{{ i }}-radius" type="number" step="any" min="0" value="{{ row.radius if row.radius is not none else '' }}"></td>
           <td>
             <input type="hidden" name="f{{ i }}-confidence" value="{{ row.confidence if row.confidence is not none else '' }}">
             {{ "%.2f"|format(row.confidence|float) if row.confidence is not none else "—" }}
           </td>
         </tr>
         {% if row.grinding or row.bore_ra_check %}
-        <tr class="row-warning"><td></td><td colspan="8">
+        <tr class="row-warning"><td></td><td colspan="9">
           {% if row.grinding %}<div class="warning">⚠ {{ grinding_warning }}</div>{% endif %}
           {% if row.bore_ra_check %}<div class="warning">⚠ {{ bore_ra_warning }}</div>{% endif %}
         </td></tr>

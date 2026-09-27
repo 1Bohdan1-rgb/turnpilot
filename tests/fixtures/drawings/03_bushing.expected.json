@@ -5,6 +5,7 @@
   "blank_length": 50,
   "overall_length": 45,
   "quantity": 10,
+  "general_ra": null,
   "features": [
     {
       "type": "od_turn",
@@ -13,7 +14,8 @@
       "length": 45,
       "tolerance": "±0.05",
       "ra": null,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "chamfer",
@@ -22,7 +24,8 @@
       "length": 1,
       "tolerance": null,
       "ra": null,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "bore",
@@ -31,7 +34,8 @@
       "length": 45,
       "tolerance": "H7",
       "ra": 1.6,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     }
   ],
   "warnings": []

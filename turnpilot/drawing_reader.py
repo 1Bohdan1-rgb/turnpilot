@@ -33,7 +33,11 @@ Rules:
 - Always answer by calling record_part exactly once.
 - All dimensions are in millimetres.
 - Record only what is written on the drawing. If a value is not visible or not legible, use null. \
-Never estimate, compute or guess a missing value.
+Never estimate or guess a missing value; the only calculation allowed is the chain/baseline rule below.
+- Chain and baseline dimensions: a section length that is not dimensioned directly may be computed from \
+chain dimensions or from baseline dimensions measured from a common datum (e.g. 100 - 90 = 10). That is \
+reading the drawing, not a guess. Give such a feature confidence 0.8 at most and add the warning \
+"length derived from chain dimensions" (name the feature, e.g. "Ø60: length derived from chain dimensions").
 - blank_diameter / blank_length: only when the drawing states the blank or stock size \
 (e.g. a note "Blank: bar Ø55 x 50"). Otherwise null.
 - Each external cylindrical section with its own diameter is one od_turn feature (diameter + length). \
@@ -41,6 +45,11 @@ A threaded section is recorded twice: as an od_turn at the major diameter over t
 a thread (major diameter, pitch, threaded length, thread class as tolerance).
 - A groove is recorded with its bottom diameter, the diameter it is cut from (start_diameter) and its width \
 (length). A chamfer "1x45°" on a diameter is recorded with that diameter and length 1.
+- Thread relief: a narrow step (width up to about 5 mm) right next to a thread, with a diameter smaller \
+than the thread's minor diameter, is a groove (thread relief groove), not an od_turn. Record it as a \
+groove with start_diameter = the thread's major diameter.
+- A conical section is a taper: start_diameter and diameter are the diameters at its two ends, length \
+its axial length. A radius between two sections (R10) is a fillet with radius = 10.
 - Internal diameters are bore features. A bore marked THRU (through) runs the full part, so its \
 length is the overall length of the part: that is reading the drawing, not a guess. A bore with \
 neither THRU nor a length dimension gets length null.
@@ -48,6 +57,9 @@ neither THRU nor a length dimension gets length null.
 - Tolerances and Ra belong to the feature they are written on. Do not copy a value to other features.
 - A roughness (Ra) symbol on a leader line belongs to the surface the leader's arrow touches, \
 not to the nearest dimension or the side of the part where the symbol is placed.
+- A roughness symbol without a leader in the top-right corner of the sheet is the general roughness for \
+every surface that has no roughness mark of its own. Record it as general_ra; keep each feature's ra for \
+marks on that feature only.
 - confidence reflects how legible and unambiguous the feature is on the drawing.
 - Put anything unclear, contradictory or not representable into warnings.
 """

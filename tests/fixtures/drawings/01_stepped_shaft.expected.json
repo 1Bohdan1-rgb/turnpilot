@@ -5,6 +5,7 @@
   "blank_length": null,
   "overall_length": 120,
   "quantity": 20,
+  "general_ra": null,
   "features": [
     {
       "type": "od_turn",
@@ -13,7 +14,8 @@
       "length": 30,
       "tolerance": null,
       "ra": null,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "od_turn",
@@ -22,7 +24,8 @@
       "length": 50,
       "tolerance": null,
       "ra": 3.2,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     },
     {
       "type": "od_turn",
@@ -31,7 +34,8 @@
       "length": 40,
       "tolerance": null,
       "ra": null,
-      "pitch": null
+      "pitch": null,
+      "radius": null
     }
   ],
   "warnings": []
