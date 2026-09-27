@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, field_validator, model_validator
@@ -12,6 +13,10 @@ PART_TYPES = ("turned", "not_turned", "unclear")
 PartType = Literal["turned", "not_turned", "unclear"]
 
 TOOL_NAME = "record_part"
+
+# ISO 965 thread tolerance class: grade 3-9 + position, once or twice (pitch and crest diameter).
+# External threads use e/f/g/h (6g, 4h6h), internal threads G/H (6H, 5H6H).
+THREAD_CLASS = re.compile(r"(?:[3-9][efgh]){1,2}|(?:[3-9][GH]){1,2}")
 
 
 class ExtractedFeature(BaseModel):
@@ -71,6 +76,19 @@ class DrawingData(BaseModel):
             return None
         value = value.strip()
         return value or None
+
+    @model_validator(mode="after")
+    def _check_thread_classes(self):
+        """A thread tolerance must be an ISO thread class (6g, 6H, 4h6h, ...); anything else is cleared.
+
+        A misread class ("69" for "6g") or a whole designation ("M48x1.5-6g") would otherwise be
+        taken as a tolerance, so it is removed and reported for the reviewer.
+        """
+        for feature in self.features:
+            if feature.type == "thread" and feature.tolerance and not THREAD_CLASS.fullmatch(feature.tolerance):
+                self.warnings.append(f"thread class unclear: '{feature.tolerance}'")
+                feature.tolerance = None
+        return self
 
 
 def _nullable(json_type: str, description: str) -> dict:

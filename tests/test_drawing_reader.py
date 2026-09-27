@@ -291,3 +291,24 @@ def test_schema_has_new_fields():
 )
 def test_prompt_contains_drawing_rules(phrase):
     assert phrase in SYSTEM_PROMPT
+
+
+# --- thread class check (in code, not in the prompt) -------------------------------------------
+
+@pytest.mark.parametrize("value", ["6g", "6h", "4h6h", "6e", "8g", "6H", "7H", "5H6H", "6G"])
+def test_valid_thread_class_is_kept(value):
+    data = parse_response(make_response(part([feature("thread", 48, length=16, pitch=1.5, tolerance=value)])))
+    assert data.features[0].tolerance == value
+    assert not any("thread class unclear" in w for w in data.warnings)
+
+
+@pytest.mark.parametrize("value", ["69", "M48x1.5-6g", "h6", "6", "g6", "6g6H", "10g", "±0.1", "6 g"])
+def test_unclear_thread_class_is_cleared_with_warning(value):
+    data = parse_response(make_response(part([feature("thread", 48, length=16, pitch=1.5, tolerance=value)])))
+    assert data.features[0].tolerance is None
+    assert f"thread class unclear: '{value}'" in data.warnings
+
+
+def test_thread_class_check_only_touches_threads():
+    data = parse_response(make_response(part([feature("od_turn", 48, length=16, tolerance="h6")])))
+    assert data.features[0].tolerance == "h6" and data.warnings == []

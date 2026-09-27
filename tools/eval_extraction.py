@@ -43,7 +43,11 @@ VARIANTS = {
 REAL_PREFIX = "real_"
 REAL_SUFFIXES = {".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".pdf": "pdf"}
 GROUPS = ("clean", "photo", "real")
-METRICS = ("diameter", "length", "tolerance", "ra", "material")
+# Feature metrics are counted once per expected feature, part metrics once per drawing.
+FEATURE_NUMBER_METRICS = ("diameter", "start_diameter", "length", "pitch", "radius")
+FEATURE_METRICS = FEATURE_NUMBER_METRICS + ("tolerance", "ra")
+PART_METRICS = ("material", "overall_length", "general_ra")
+METRICS = FEATURE_METRICS + PART_METRICS
 NUMBER_TOLERANCE = 0.01  # mm / µm
 
 # Written into every report; keep it up to date when the prompt or the drawings change.
@@ -90,6 +94,7 @@ class RunResult:
     seconds: float = 0.0
     tokens: tuple[int, int] = (0, 0)
     mismatches: list[str] = field(default_factory=list)
+    run: int = 1  # repeat number with --repeat
 
 
 def _same_number(a, b):
@@ -135,7 +140,7 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
             result.mismatches.append(f"missing {label}")
         # Every metric is counted for every expected feature. null in the expected answer means the
         # value is not on the drawing: null from the model is then correct, and a number is a guess.
-        for metric in ("diameter", "length"):
+        for metric in FEATURE_NUMBER_METRICS:
             want = getattr(exp, metric)
             ok = got is not None and _same_number(getattr(got, metric), want)
             result.scores[metric].add(ok)
@@ -155,6 +160,12 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
     result.scores["material"].add(material_ok)
     if not material_ok:
         result.mismatches.append(f"material {predicted.material!r} (expected {expected.material!r})")
+    for metric in ("overall_length", "general_ra"):
+        want, got = getattr(expected, metric), getattr(predicted, metric)
+        ok = _same_number(got, want)
+        result.scores[metric].add(ok)
+        if not ok:
+            result.mismatches.append(f"{metric} {got} (expected {want})")
 
 
 def real_drawing_file(name):
@@ -178,14 +189,14 @@ def planned_runs(names, variants):
     return runs
 
 
-def run_one(client, model, name, variant) -> RunResult:
+def run_one(client, model, name, variant, run=1) -> RunResult:
     if variant == "real":
         path, file_type = real_drawing_file(name)
         group = "real"
     else:
         suffix, file_type, group = VARIANTS[variant]
         path = FIXTURES / f"{name}{suffix}"
-    result = RunResult(name, variant, group)
+    result = RunResult(name, variant, group, run=run)
     expected = DrawingData.model_validate_json((FIXTURES / f"{name}.expected.json").read_text(encoding="utf-8"))
     start = time.monotonic()
     try:
@@ -197,15 +208,16 @@ def run_one(client, model, name, variant) -> RunResult:
     except Exception as exc:  # count the whole drawing as wrong, keep going
         result.error = f"{type(exc).__name__}: {exc}"[:300]
         for m in METRICS:
-            result.scores[m].total += 1 if m == "material" else len(expected.features)
+            result.scores[m].total += 1 if m in PART_METRICS else len(expected.features)
     result.seconds = time.monotonic() - start
     return result
 
 
 def aggregate(results, group):
+    """Summed scores for one group (None = all groups)."""
     totals = {m: Score() for m in METRICS}
     for r in results:
-        if r.group == group:
+        if group is None or r.group == group:
             for m in METRICS:
                 totals[m].correct += r.scores[m].correct
                 totals[m].total += r.scores[m].total
@@ -216,8 +228,29 @@ def _pct(score: Score):
     return "—" if score.pct is None else f"{score.pct:.0f}% ({score.correct}/{score.total})"
 
 
+def _label(metric):
+    return {"ra": "Ra", "general_ra": "General Ra"}.get(metric, metric.replace("_", " ").capitalize())
+
+
+def repeat_table(results):
+    """Accuracy per metric for each repeat, then the mean and the min–max spread across repeats."""
+    runs = sorted({r.run for r in results})
+    per_run = {n: aggregate([r for r in results if r.run == n], None) for n in runs}
+    lines = ["| Run | " + " | ".join(_label(m) for m in METRICS) + " |", "|" + "---|" * (len(METRICS) + 1)]
+    for n in runs:
+        lines.append(f"| {n} | " + " | ".join(_pct(per_run[n][m]) for m in METRICS) + " |")
+    means, spreads = [], []
+    for m in METRICS:
+        values = [per_run[n][m].pct for n in runs if per_run[n][m].pct is not None]
+        means.append(f"{sum(values) / len(values):.0f}%" if values else "—")
+        spreads.append(f"{min(values):.0f}–{max(values):.0f}%" if values else "—")
+    lines.append("| **mean** | " + " | ".join(means) + " |")
+    lines.append("| min–max | " + " | ".join(spreads) + " |")
+    return "\n".join(lines)
+
+
 def summary_table(results):
-    header = "| Group | " + " | ".join(m.capitalize() if m != "ra" else "Ra" for m in METRICS) + " | Missing | Extra | Errors |"
+    header = "| Group | " + " | ".join(_label(m) for m in METRICS) + " | Missing | Extra | Errors |"
     lines = [header, "|" + "---|" * (len(METRICS) + 4)]
     for group in GROUPS:
         runs = [r for r in results if r.group == group]
@@ -232,16 +265,21 @@ def summary_table(results):
 
 
 def detail_table(results):
-    lines = ["| Drawing | Variant | " + " | ".join(METRICS) + " | Time, s | Tokens in/out |", "|" + "---|" * (len(METRICS) + 4)]
+    lines = ["| Drawing | Variant | Run | " + " | ".join(_label(m) for m in METRICS) + " | Time, s | Tokens in/out |",
+             "|" + "---|" * (len(METRICS) + 5)]
     for r in results:
         cells = " | ".join("—" if r.scores[m].pct is None else f"{r.scores[m].pct:.0f}%" for m in METRICS)
-        lines.append(f"| {r.drawing} | {r.variant} | {cells} | {r.seconds:.1f} | {r.tokens[0]}/{r.tokens[1]} |")
+        lines.append(f"| {r.drawing} | {r.variant} | {r.run} | {cells} | {r.seconds:.1f} | {r.tokens[0]}/{r.tokens[1]} |")
     return "\n".join(lines)
 
 
-def write_markdown(results, model):
-    problems = [f"- **{r.drawing} / {r.variant}**: " + (r.error or "; ".join(r.mismatches))
+def write_markdown(results, model, path=None):
+    path = path or RESULTS_MD
+    problems = [f"- **{r.drawing} / {r.variant} / run {r.run}**: " + (r.error or "; ".join(r.mismatches))
                 for r in results if r.error or r.mismatches]
+    repeats = ""
+    if len({r.run for r in results}) > 1:
+        repeats = f"\n## Run to run\n\n{repeat_table(results)}\n"
     text = f"""# Drawing extraction accuracy
 
 Generated by `tools/eval_extraction.py` on {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC with model `{model}`.
@@ -251,7 +289,8 @@ downscaled, noisy JPEG, both made by `tools/generate_drawings.py`; *real* = real
 with hand-written expected answers. Real drawings without an expected answer are skipped.
 
 Scoring: expected features are paired with extracted ones of the same type (closest diameter).
-Every metric counts for every expected feature. `null` in the expected answer means the value is
+Feature metrics count for every expected feature, part metrics (material, overall length, general
+Ra) once per drawing. `null` in the expected answer means the value is
 not on the drawing: `null` from the model is then correct and any number is counted as a guess
 (`05_bushing_ambiguous` has no bore length on purpose). A missing feature is wrong on every
 metric. Numbers match within {NUMBER_TOLERANCE}.
@@ -259,7 +298,7 @@ metric. Numbers match within {NUMBER_TOLERANCE}.
 ## Summary
 
 {summary_table(results)}
-
+{repeats}
 ## Per drawing
 
 {detail_table(results)}
@@ -271,8 +310,9 @@ metric. Numbers match within {NUMBER_TOLERANCE}.
 ## Known limitations
 
 {KNOWN_LIMITATIONS}"""
-    RESULTS_MD.parent.mkdir(parents=True, exist_ok=True)
-    RESULTS_MD.write_text(text, encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
 
 
 def main(argv=None):
@@ -281,31 +321,42 @@ def main(argv=None):
     parser.add_argument("--only", nargs="*", help="drawing names (default: all)")
     parser.add_argument("--variants", nargs="*", choices=list(VARIANTS), default=list(VARIANTS))
     parser.add_argument("--model", default=None, help="overrides ANTHROPIC_MODEL")
+    parser.add_argument("--groups", nargs="*", choices=GROUPS, default=list(GROUPS),
+                        help="only these groups, e.g. --groups real")
+    parser.add_argument("--repeat", type=int, default=1,
+                        help="run everything N times to see how much the answers vary")
+    parser.add_argument("--output", type=Path, default=RESULTS_MD,
+                        help="report path (use a git-ignored path such as instance/... for real drawings)")
     args = parser.parse_args(argv)
 
     names = sorted(p.name.removesuffix(".expected.json") for p in FIXTURES.glob("*.expected.json"))
     if args.only:
         names = [n for n in names if n in args.only]
-    runs = planned_runs(names, args.variants)
+    runs = [(n, v) for n, v in planned_runs(names, args.variants)
+            if ("real" if v == "real" else VARIANTS[v][2]) in args.groups]
+    runs = [(n, v, k) for k in range(1, args.repeat + 1) for n, v in runs]
     client = drawing_reader.make_client()  # loads .env
     model = args.model or os.environ.get("ANTHROPIC_MODEL") or drawing_reader.DEFAULT_MODEL
 
-    print(f"{len(runs)} API calls with model {model} (roughly 5k input + 1k output tokens each).")
+    print(f"{len(runs)} API calls with model {model} (roughly 5k input + up to 64k output tokens each).")
     if not args.yes and input("Continue? [y/N] ").strip().lower() != "y":
         print("Cancelled.")
         return 1
 
     results = []
-    for name, variant in runs:
-        result = run_one(client, model, name, variant)
+    for name, variant, run in runs:
+        result = run_one(client, model, name, variant, run=run)
         status = result.error or ", ".join(f"{m} {_pct(result.scores[m])}" for m in METRICS)
-        print(f"  {name:22} {variant:6} {result.seconds:5.1f}s  {status}")
+        print(f"  run {run}  {name:22} {variant:6} {result.seconds:5.1f}s  {status}")
         results.append(result)
 
     print()
     print(summary_table(results))
-    write_markdown(results, model)
-    print(f"\nWritten to {RESULTS_MD.relative_to(ROOT)}")
+    if args.repeat > 1:
+        print()
+        print(repeat_table(results))
+    path = write_markdown(results, model, args.output)
+    print(f"\nWritten to {path}")
     return 0
 
 

@@ -100,3 +100,36 @@ def test_real_drawings_run_once_in_their_own_group(tmp_path, monkeypatch):
     result = eval_extraction.run_one(FakeClient(make_response(_answer("01_stepped_shaft"))), "m", "real_01", "real")
     assert result.group == "real" and result.error is None
     assert "real (1 runs)" in eval_extraction.summary_table([result])
+
+
+def test_new_field_metrics_are_scored():
+    answer = _answer("02_threaded_shaft", general_ra=3.2, overall_length=88)  # both wrong
+    thread = next(f for f in answer["features"] if f["type"] == "thread")
+    thread["pitch"] = 2.0  # wrong pitch
+    result = eval_extraction.run_one(FakeClient(make_response(answer)), "m", "02_threaded_shaft", "png")
+    assert result.scores["pitch"].correct == result.scores["pitch"].total - 1
+    assert result.scores["general_ra"].pct == 0 and result.scores["overall_length"].pct == 0
+    assert result.scores["start_diameter"].pct == 100 and result.scores["radius"].pct == 100
+    assert any("general_ra 3.2 (expected None)" in m for m in result.mismatches)
+
+
+def test_repeat_table_shows_each_run_mean_and_spread():
+    good = _answer("01_stepped_shaft")
+    bad = _answer("01_stepped_shaft")
+    bad["features"][0]["diameter"] = 41  # one of three diameters wrong
+    results = [
+        eval_extraction.run_one(FakeClient(make_response(good)), "m", "01_stepped_shaft", "png", run=1),
+        eval_extraction.run_one(FakeClient(make_response(bad)), "m", "01_stepped_shaft", "png", run=2),
+    ]
+    table = eval_extraction.repeat_table(results)
+    lines = table.splitlines()
+    assert lines[2].startswith("| 1 | 100% (3/3)") and lines[3].startswith("| 2 | 67% (2/3)")
+    assert lines[4].startswith("| **mean** | 83%")
+    assert lines[5].startswith("| min–max | 67–100%")
+
+
+def test_report_path_can_be_changed(tmp_path):
+    result = eval_extraction.run_one(FakeClient(make_response(_answer("01_stepped_shaft"))), "m", "01_stepped_shaft", "png")
+    path = eval_extraction.write_markdown([result, eval_extraction.RunResult("x", "png", "clean", run=2)], "m",
+                                          tmp_path / "real.md")
+    assert path == tmp_path / "real.md" and "## Run to run" in path.read_text(encoding="utf-8")
