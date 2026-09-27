@@ -289,6 +289,7 @@ def edit_operation(op_id):
 
 REVIEW_FIELDS = ("type", "diameter", "start_diameter", "length", "tolerance", "ra", "pitch", "confidence")
 BORE_RA_WARNING = "Ra may belong to the bore — check"
+NOT_TURNED_BANNER = "This does not look like a lathe part"
 
 
 def _to_float(value):
@@ -346,6 +347,7 @@ def _review_values_from_extraction(extraction):
         # Already read from the drawing: the checkbox would only add a duplicate.
         "add_face": not any(r["type"] == "face" for r in rows),
         "add_parting": not any(r["type"] == "parting" for r in rows),
+        "override_part_type": False,
         "rows": rows,
     }
 
@@ -372,6 +374,7 @@ def _review_values_from_form(form):
         "blank_notes": (),
         "add_face": bool(form.get("add_face")),
         "add_parting": bool(form.get("add_parting")),
+        "override_part_type": bool(form.get("override_part_type")),
         "rows": rows,
     }
 
@@ -387,6 +390,7 @@ def _render_review(extraction, values, status=200):
         feature_types=FEATURE_TYPES,
         grinding_warning=planner.GRINDING_WARNING,
         bore_ra_warning=BORE_RA_WARNING,
+        not_turned_banner=NOT_TURNED_BANNER,
     )
     return page, status
 
@@ -440,6 +444,9 @@ def confirm_extraction(extraction_id):
 
     form = request.form
     try:
+        data = services.extraction_data(extraction)
+        if data.part_type != "turned" and not form.get("override_part_type"):
+            raise FormError(f"{NOT_TURNED_BANNER}. Tick “I understand, create anyway” to create the job.")
         job = _job_from_form(form)
         features = []
         for i in range(_number(form, "feature_count", int, positive=False) or 0):

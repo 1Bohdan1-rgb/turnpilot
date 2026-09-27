@@ -81,6 +81,9 @@ validated with pydantic (`turnpilot/extraction_schema.py`); invalid output is re
 Nothing becomes a job until a person checks it. The review screen shows the drawing next to an
 editable form:
 
+- the model also classifies the part (`part_type`: turned / not_turned / unclear). For anything but
+  `turned` a banner says "This does not look like a lathe part" and Confirm stays disabled until
+  "I understand, create anyway" is ticked (checked on the server as well);
 - features with confidence below 0.7 are highlighted; model warnings are listed on top;
 - the material is matched to the materials list by name and common aliases;
 - if the drawing has no blank size, one is **suggested** (marked as such): largest external Ø +

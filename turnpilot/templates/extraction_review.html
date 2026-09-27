@@ -7,6 +7,18 @@
   nothing is saved as a job until you press <strong>Confirm</strong>.
 </p>
 
+{% set needs_override = data and data.part_type != "turned" %}
+{% if needs_override %}
+<div class="banner-not-turned" role="alert">
+  <strong>⚠ {{ not_turned_banner }}</strong>
+  <p>
+    The model classified this drawing as
+    <em>{{ "not a turned part" if data.part_type == "not_turned" else "unclear" }}</em>.
+    TurnPilot plans lathe operations only. Check the drawing before creating a job.
+  </p>
+</div>
+{% endif %}
+
 {% if data and data.warnings %}
 <div class="flash flash-error">
   <strong>Model warnings:</strong>
@@ -109,10 +121,29 @@
         If a facing or parting row above is ticked, the checkbox does not add a second one.</p>
     </div>
 
+    {% if needs_override %}
+    <div class="card override">
+      <label class="inline">
+        <input type="checkbox" name="override_part_type" value="1" id="override-part-type"
+               {% if values.override_part_type %}checked{% endif %}>
+        I understand, create anyway
+      </label>
+    </div>
+    {% endif %}
+
     <div class="actions">
-      <button type="submit" class="primary">Confirm</button>
+      <button type="submit" class="primary" id="confirm-button"
+              {% if needs_override and not values.override_part_type %}disabled{% endif %}>Confirm</button>
       <a href="{{ url_for('main.upload_drawing') }}">Cancel</a>
     </div>
   </form>
 </div>
+{% if needs_override %}
+<script>
+  // Confirm stays disabled until the user acknowledges the part type (the server checks it too).
+  document.getElementById("override-part-type").addEventListener("change", function () {
+    document.getElementById("confirm-button").disabled = !this.checked;
+  });
+</script>
+{% endif %}
 {% endblock %}

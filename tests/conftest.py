@@ -76,8 +76,8 @@ def feature(type_, diameter=None, start_diameter=None, length=None, tolerance=No
 
 
 def part(features, material="Steel 45 (C45)", blank_diameter=None, blank_length=None, overall_length=None,
-         quantity=20, warnings=()):
+         quantity=20, warnings=(), part_type="turned"):
     return {
-        "material": material, "blank_diameter": blank_diameter, "blank_length": blank_length,
+        "part_type": part_type, "material": material, "blank_diameter": blank_diameter, "blank_length": blank_length,
         "overall_length": overall_length, "quantity": quantity, "features": features, "warnings": list(warnings),
     }

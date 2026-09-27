@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import re
 
 import pytest
 from conftest import FIXTURES, FakeClient, feature, make_response, part
@@ -335,3 +336,77 @@ def test_checkbox_adds_face_when_drawing_has_none(app, client):
     client.post("/extractions/1/confirm", data=_review_form())
     job = db.session.execute(db.select(Job)).scalar_one()
     assert [f.type for f in job.features].count("face") == 1
+
+
+# --- not a lathe part --------------------------------------------------------------------
+
+NOT_TURNED_BANNER = "This does not look like a lathe part"
+
+
+def _squash(html):
+    """Collapse whitespace so assertions do not depend on template line breaks."""
+    return re.sub(r"\s+", " ", html)
+
+FORK = part(
+    [feature("bore", 12, length=10, confidence=0.4)],
+    material="Steel 45 (C45)",
+    part_type="not_turned",
+    warnings=["The part is a flat fork with holes, not a body of revolution."],
+)
+
+
+def _fork_form(**overrides):
+    form = {
+        "name": "Fork", "material_id": "1", "quantity": "1", "blank_diameter": "40", "blank_length": "60",
+        "feature_count": "1", "f0-include": "1", "add_face": "1", "add_parting": "1",
+    }
+    for key, value in FORK["features"][0].items():
+        form[f"f0-{key}"] = "" if value is None else str(value)
+    form.update(overrides)
+    return form
+
+
+@pytest.mark.parametrize("part_type", ["not_turned", "unclear"])
+def test_banner_and_disabled_confirm_for_non_lathe_part(app, client, part_type):
+    page = _review_page(app, client, {**FORK, "part_type": part_type})
+    assert NOT_TURNED_BANNER in page
+    assert 'name="override_part_type"' in page
+    assert "I understand, create anyway" in page
+    assert 'id="confirm-button" disabled>Confirm' in _squash(page)
+
+
+def test_no_banner_for_turned_part(app, client):
+    page = _review_page(app, client, THREADED_SHAFT)
+    assert NOT_TURNED_BANNER not in page
+    assert 'name="override_part_type"' not in page
+    assert 'id="confirm-button" >Confirm' in _squash(page)  # not disabled
+
+
+def test_confirm_blocked_without_override(app, client):
+    _use_model(app, FORK)
+    _upload(client)
+    resp = client.post("/extractions/1/confirm", data=_fork_form())
+    assert resp.status_code == 400
+    assert NOT_TURNED_BANNER in resp.data.decode()
+    assert db.session.execute(db.select(Job)).first() is None
+    assert db.session.get(DrawingExtraction, 1).status == "extracted"
+
+
+def test_confirm_allowed_with_override(app, client):
+    _use_model(app, FORK)
+    _upload(client)
+    resp = client.post("/extractions/1/confirm", data=_fork_form(override_part_type="1"))
+    job = db.session.execute(db.select(Job)).scalar_one()
+    assert resp.headers["Location"].endswith(f"/jobs/{job.id}")
+    extraction = db.session.get(DrawingExtraction, 1)
+    assert extraction.status == "confirmed"
+    assert json.loads(extraction.parsed)["part_type"] == "not_turned"  # the override stays auditable
+
+
+def test_override_checkbox_kept_after_validation_error(app, client):
+    _use_model(app, FORK)
+    _upload(client)
+    resp = client.post("/extractions/1/confirm", data=_fork_form(override_part_type="1", name=""))
+    page = resp.data.decode()
+    assert resp.status_code == 400
+    assert 'id="override-part-type" checked> I understand' in _squash(page)

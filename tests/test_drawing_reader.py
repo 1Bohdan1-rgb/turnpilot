@@ -178,3 +178,28 @@ def test_expected_files_match_the_schema(path):
     name = path.name.removesuffix(".expected.json")
     for suffix in (".png", ".pdf", ".photo.jpg"):
         assert (FIXTURES / f"{name}{suffix}").exists()
+
+
+# --- part type ----------------------------------------------------------------------------
+
+def test_part_type_is_required_in_the_schema():
+    schema = RECORD_PART_TOOL["input_schema"]
+    assert "part_type" in schema["required"]
+    assert schema["properties"]["part_type"]["enum"] == ["turned", "not_turned", "unclear"]
+
+
+@pytest.mark.parametrize("value", ["turned", "not_turned", "unclear"])
+def test_part_type_values(value):
+    assert parse_response(make_response(part([], part_type=value))).part_type == value
+
+
+def test_unknown_part_type_is_rejected():
+    with pytest.raises(ExtractionError, match="part_type"):
+        parse_response(make_response(part([], part_type="milled")))
+
+
+def test_missing_part_type_is_rejected():
+    raw = part([])
+    del raw["part_type"]
+    with pytest.raises(ExtractionError, match="part_type"):
+        parse_response(make_response(raw))

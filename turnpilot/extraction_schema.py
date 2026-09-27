@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, f
 
 FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting")
 FeatureType = Literal["face", "od_turn", "groove", "thread", "bore", "chamfer", "parting"]
+PART_TYPES = ("turned", "not_turned", "unclear")
+PartType = Literal["turned", "not_turned", "unclear"]
 
 TOOL_NAME = "record_part"
 
@@ -48,6 +50,7 @@ class ExtractedFeature(BaseModel):
 class DrawingData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    part_type: PartType
     material: str | None = None
     blank_diameter: PositiveFloat | None = None
     blank_length: PositiveFloat | None = None
@@ -120,6 +123,15 @@ RECORD_PART_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
+            "part_type": {
+                "type": "string",
+                "enum": list(PART_TYPES),
+                "description": (
+                    "turned: a body of revolution made on a lathe (shafts, bushings, pins). "
+                    "not_turned: clearly not a lathe part, e.g. a milled or flat part (plates, forks, "
+                    "brackets, housings). unclear: cannot tell from the drawing."
+                ),
+            },
             "material": _nullable("string", "Material exactly as written in the title block."),
             "blank_diameter": _nullable(
                 "number", "mm. Only if the drawing states the blank/stock size. Never derive it from the part."
@@ -137,7 +149,7 @@ RECORD_PART_TOOL = {
             },
         },
         "required": [
-            "material", "blank_diameter", "blank_length", "overall_length", "quantity", "features", "warnings",
+            "part_type", "material", "blank_diameter", "blank_length", "overall_length", "quantity", "features", "warnings",
         ],
         "additionalProperties": False,
     },

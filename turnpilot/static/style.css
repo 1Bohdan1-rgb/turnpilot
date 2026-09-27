@@ -133,3 +133,16 @@ input.suggested { border-color: var(--accent); background: #f3f7ff; }
   .review-layout { grid-template-columns: 1fr; }
   .drawing-preview { position: static; }
 }
+
+.banner-not-turned {
+  margin: 12px 0 16px;
+  padding: 16px 20px;
+  border-radius: 8px;
+  border: 2px solid #c0392b;
+  background: var(--error-bg);
+  color: #7b1d13;
+  font-size: 17px;
+}
+.banner-not-turned p { margin: 6px 0 0; font-size: 14px; }
+.override { margin-top: 12px; border-color: #c0392b; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }

@@ -135,6 +135,7 @@ def expected_answer(part: dict) -> dict:
         features.append(_feature("bore", b["d"], length=length, tolerance=b.get("tol"), ra=b.get("ra")))
     blank = part.get("blank", {})
     return {
+        "part_type": "turned",
         "material": part["material"],
         "blank_diameter": blank.get("d"),
         "blank_length": blank.get("l"),
