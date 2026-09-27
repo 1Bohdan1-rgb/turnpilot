@@ -147,3 +147,6 @@ input.suggested { border-color: var(--accent); background: #f3f7ff; }
 .override { margin-top: 12px; border-color: #c0392b; }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 .badge-general { background: #eef0f4; color: var(--muted); font-weight: 500; }
+.badge-cached { background: #efe7fb; color: #5b3aa8; }
+.cached-note { background: #f6f2fd; }
+.inline-form { display: inline-flex; gap: 8px; align-items: center; margin-left: 8px; }

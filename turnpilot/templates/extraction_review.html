@@ -7,6 +7,19 @@
   nothing is saved as a job until you press <strong>Confirm</strong>.
 </p>
 
+{% if extraction.is_cached %}
+<div class="flash cached-note">
+  <span class="badge badge-cached">cached</span>
+  This file was already read by {{ extraction.model }}
+  (upload #{{ extraction.cached_from_id }}, {{ extraction.cached_from.created_at.strftime("%Y-%m-%d %H:%M") }} UTC).
+  The saved result is shown; no new API call was made.
+  <form method="post" action="{{ url_for('main.read_again', extraction_id=extraction.id) }}" class="inline-form">
+    <button type="submit" class="js-reading">Read again</button>
+    <span class="muted small">makes a new, paid API call</span>
+  </form>
+</div>
+{% endif %}
+
 {% set needs_override = data and data.part_type != "turned" %}
 {% if needs_override %}
 <div class="banner-not-turned" role="alert">
@@ -147,6 +160,15 @@
     </div>
   </form>
 </div>
+<script>
+  // Block repeated clicks while the drawing is being read (each read is a paid API call).
+  document.querySelectorAll(".js-reading").forEach(function (button) {
+    button.form.addEventListener("submit", function () {
+      button.disabled = true;
+      button.textContent = "Reading…";
+    });
+  });
+</script>
 {% if needs_override %}
 <script>
   // Confirm stays disabled until the user acknowledges the part type (the server checks it too).

@@ -219,3 +219,6 @@ __marimo__/
 
 # Claude Code local config
 .claude/
+
+# Real drawings and their expected answers stay local (copyright); eval still uses them
+tests/fixtures/drawings/real_*

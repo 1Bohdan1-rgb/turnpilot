@@ -476,3 +476,127 @@ def test_confirm_keeps_taper_and_fillet_and_plans_them_as_manual(app, client):
 
     page = client.post(f"/jobs/{job.id}/calculate", follow_redirects=True).data.decode()
     assert page.count("⚠ manual operation") == 2
+
+
+# --- no repeated API calls ------------------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from turnpilot import services  # noqa: E402
+
+
+def test_same_file_is_not_sent_twice(app, client):
+    fake = _use_model(app, THREADED_SHAFT)
+    _upload(client, PNG, "shaft.png")
+    resp = _upload(client, PNG, "shaft_copy.png")
+    assert len(fake.messages.calls) == 1
+
+    first, second = _extractions()
+    assert second.cached_from_id == first.id and second.is_cached
+    assert second.status == "extracted" and second.parsed == first.parsed
+    assert second.original_filename == "shaft_copy.png"
+    assert second.stored_filename == first.stored_filename  # the file is not stored twice
+    assert resp.headers["Location"].endswith(f"/extractions/{second.id}/review")
+
+    page = client.get(f"/extractions/{second.id}/review").data.decode()
+    assert "badge-cached" in page and "no new API call was made" in page
+    assert "Read again" in page
+    assert "badge-cached" in client.get("/jobs/upload").data.decode()
+
+
+def test_cache_after_confirm_allows_a_second_job(app, client):
+    fake = _use_model(app, THREADED_SHAFT)
+    _upload(client)
+    client.post("/extractions/1/confirm", data=_review_form())
+    _upload(client)  # same drawing, new order
+    assert len(fake.messages.calls) == 1
+    client.post("/extractions/2/confirm", data=_review_form(name="Second batch"))
+    assert len(db.session.execute(db.select(Job)).scalars().all()) == 2
+
+
+def test_cached_copy_points_to_the_original(app, client):
+    _use_model(app, THREADED_SHAFT)
+    for _ in range(3):
+        _upload(client)
+    first, second, third = _extractions()
+    assert second.cached_from_id == first.id and third.cached_from_id == first.id
+
+
+def test_other_model_is_not_cached(app, client):
+    fake = _use_model(app, THREADED_SHAFT)
+    _upload(client)
+    app.config["ANTHROPIC_MODEL"] = "other-model"
+    _upload(client)
+    assert len(fake.messages.calls) == 2
+    assert _extractions()[1].cached_from_id is None
+
+
+def test_other_file_is_not_cached(app, client):
+    fake = _use_model(app, THREADED_SHAFT)
+    _upload(client, PNG)
+    _upload(client, (FIXTURES / "01_stepped_shaft.png").read_bytes(), "other.png")
+    assert len(fake.messages.calls) == 2
+
+
+def test_failed_reading_is_not_cached(app, client):
+    fake = _use_model(app, None, stop_reason="end_turn", text="Unreadable.")
+    _upload(client)
+    fake.messages.response = make_response(THREADED_SHAFT)
+    _upload(client)
+    assert len(fake.messages.calls) == 2
+    assert [e.status for e in _extractions()] == ["failed", "extracted"]
+
+
+def test_read_again_makes_a_new_call(app, client):
+    fake = _use_model(app, THREADED_SHAFT)
+    _upload(client)
+    _upload(client)  # cached
+    resp = client.post("/extractions/2/read-again")
+    assert len(fake.messages.calls) == 2
+    fresh = _extractions()[-1]
+    assert fresh.id == 3 and fresh.cached_from_id is None and fresh.status == "extracted"
+    assert resp.headers["Location"].endswith("/extractions/3/review")
+    # the fresh result becomes the one reused next time
+    _upload(client)
+    assert _extractions()[-1].cached_from_id == 3
+
+
+def test_upload_while_same_file_is_being_read_is_rejected(app, client):
+    fake = _use_model(app, THREADED_SHAFT)
+    in_flight = services.DrawingExtraction(
+        original_filename="shaft.png", stored_filename="x.png", file_type="png", size_bytes=len(PNG),
+        sha256=services.hashlib.sha256(PNG).hexdigest(), model="test-model", status="pending",
+    )
+    db.session.add(in_flight)
+    db.session.commit()
+
+    _upload(client)
+    assert fake.messages.calls == []
+    assert b"already being read" in client.get("/jobs/upload").data
+    assert len(_extractions()) == 1
+
+
+def test_stale_pending_reading_does_not_block(app, client):
+    fake = _use_model(app, THREADED_SHAFT)
+    stale = services.DrawingExtraction(
+        original_filename="shaft.png", stored_filename="x.png", file_type="png", size_bytes=len(PNG),
+        sha256=services.hashlib.sha256(PNG).hexdigest(), model="test-model", status="pending",
+        created_at=datetime.now(timezone.utc) - timedelta(seconds=services.IN_FLIGHT_SECONDS + 60),
+    )
+    db.session.add(stale)
+    db.session.commit()
+    _upload(client)
+    assert len(fake.messages.calls) == 1
+
+
+def test_read_buttons_are_blocked_after_click(app, client):
+    page = _squash(client.get("/jobs/upload").data.decode())
+    assert 'id="read-button"' in page
+    assert "button.disabled = true;" in page and 'button.textContent = "Reading…";' in page
+
+    _use_model(app, THREADED_SHAFT)
+    _upload(client)
+    _upload(client)
+    review = _squash(client.get("/extractions/2/review").data.decode())
+    assert 'class="js-reading">Read again' in review
+    assert "button.disabled = true;" in review

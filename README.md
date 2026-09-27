@@ -109,6 +109,12 @@ every upload is kept in `DrawingExtraction`: the original file and the image sen
 (`instance/drawings/`), the model name, the full raw API response, the validated result, errors,
 and the job it became.
 
+**No repeated API calls.** The "Read drawing" button is disabled after the first click and shows
+"Reading…". On the server, a file (same SHA-256) already read by the same model is not sent again:
+a new upload record reuses the saved result and is marked *cached*, so a second job can still be
+made from it. **Read again** on the review screen makes a new API call on purpose. A second upload of
+a file that is still being read (within 2 minutes) is rejected.
+
 ### Setup
 
 ```bash
@@ -117,16 +123,23 @@ copy .env.example .env           # Windows (cp on Linux / macOS), then set ANTHR
 
 ### Test drawings and accuracy
 
-`tools/generate_drawings.py` (needs `pip install -r requirements-dev.txt`) draws four parts with
+`tools/generate_drawings.py` (needs `pip install -r requirements-dev.txt`) draws five parts with
 matplotlib: a stepped shaft, a shaft with groove, chamfer and M20x1.5 thread, a bushing with a
-bore, and a shaft with h6/f7 fits and Ra 0.8/1.6. Each comes as PNG, PDF and a "photo" JPG (rotated
-1–3°, lower resolution, JPEG artefacts, noise), plus `<name>.expected.json` with the correct
-answer, all in `tests/fixtures/drawings/`.
+THRU bore, a shaft with h6/f7 fits and Ra 0.8/1.6, and an ambiguous bushing whose bore length is
+not on the drawing (checks that the model does not guess). Each comes as PNG, PDF and a "photo" JPG
+(rotated 1–3°, lower resolution, JPEG artefacts, noise), plus `<name>.expected.json` with the
+correct answer, all in `tests/fixtures/drawings/`.
+
+The eval also includes **real drawings** (`tests/fixtures/drawings/real_*`, each with a hand-written
+`real_*.expected.json`), reported as a separate *real* group. They are **not published** in this
+repository because of copyright: `real_*` is in `.gitignore` and the files stay on the local machine.
+A clone of the repository runs the eval on the generated drawings only.
 
 `tools/eval_extraction.py` runs all of them through the **real API** and reports the share of
-correct diameters, lengths, tolerances, Ra values and materials, separately for clean and photo
-drawings, in the console and in `docs/eval_results.md`. It costs money (12 API calls), asks for
-confirmation (`--yes` to skip) and is not part of pytest.
+correct diameters, lengths, tolerances, Ra values and materials, separately for clean, photo and
+real drawings, in the console and in `docs/eval_results.md`. It costs money (one API call per
+drawing variant, 15 for the generated set), asks for confirmation (`--yes` to skip) and is not part
+of pytest.
 
 ```bash
 python tools/eval_extraction.py

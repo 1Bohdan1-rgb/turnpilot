@@ -8,11 +8,19 @@
   For a PDF only the first page is read.
 </p>
 
-<form method="post" enctype="multipart/form-data" class="card upload-form">
+<form method="post" enctype="multipart/form-data" class="card upload-form" id="upload-form">
   <input type="file" name="drawing" accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf" required>
-  <button type="submit" class="primary">Read drawing</button>
-  <span class="muted small">Reading takes up to a minute.</span>
+  <button type="submit" class="primary" id="read-button">Read drawing</button>
+  <span class="muted small">Reading takes up to a minute. A file already read by the same model is not sent again.</span>
 </form>
+<script>
+  // One click = one API call: block the button until the page is replaced by the result.
+  document.getElementById("upload-form").addEventListener("submit", function () {
+    var button = document.getElementById("read-button");
+    button.disabled = true;
+    button.textContent = "Reading…";
+  });
+</script>
 
 {% if recent %}
 <h2>Recent uploads</h2>
@@ -26,6 +34,7 @@
       <td>{{ ex.model or "" }}</td>
       <td>
         <span class="badge badge-{{ ex.status }}">{{ ex.status }}</span>
+        {% if ex.is_cached %}<span class="badge badge-cached">cached</span>{% endif %}
         {% if ex.error %}<div class="muted small">{{ ex.error[:160] }}</div>{% endif %}
       </td>
       <td>

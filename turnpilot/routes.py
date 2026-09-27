@@ -494,6 +494,24 @@ def confirm_extraction(extraction_id):
     return redirect(url_for("main.job_detail", job_id=job.id))
 
 
+@bp.route("/extractions/<int:extraction_id>/read-again", methods=["POST"])
+def read_again(extraction_id):
+    """Deliberate new API call for a drawing whose result came from the cache (or was wrong)."""
+    extraction = db.get_or_404(DrawingExtraction, extraction_id)
+    try:
+        fresh = services.read_again(
+            extraction, current_app.instance_path, current_app.config,
+            client=current_app.config.get("ANTHROPIC_CLIENT"),
+        )
+    except services.UploadError as e:
+        flash(str(e), "error")
+        return redirect(url_for("main.upload_drawing"))
+    if fresh.status != "extracted":
+        flash(f"The drawing could not be read: {fresh.error}", "error")
+        return redirect(url_for("main.upload_drawing"))
+    return redirect(url_for("main.review_extraction", extraction_id=fresh.id))
+
+
 @bp.route("/extractions/<int:extraction_id>/drawing/<which>")
 def extraction_file(extraction_id, which):
     """Serve the original upload or the image that was sent to the model."""

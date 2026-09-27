@@ -181,5 +181,12 @@ class DrawingExtraction(db.Model):
     created_at = db.Column(db.DateTime, default=_now, nullable=False)
     confirmed_at = db.Column(db.DateTime)
     job_id = db.Column(db.Integer, db.ForeignKey("job.id"))
+    # Set when the result was reused from an earlier upload of the same file and model (no API call).
+    cached_from_id = db.Column(db.Integer, db.ForeignKey("drawing_extraction.id"))
 
     job = db.relationship("Job", back_populates="extraction")
+    cached_from = db.relationship("DrawingExtraction", remote_side=[id])
+
+    @property
+    def is_cached(self):
+        return self.cached_from_id is not None

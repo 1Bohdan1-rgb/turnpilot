@@ -5,6 +5,7 @@ import json
 import os
 import re
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from werkzeug.utils import secure_filename
 
@@ -20,6 +21,9 @@ MATERIAL_ALIASES = {
 }
 
 FILE_TYPE_BY_EXTENSION = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "pdf": "pdf"}
+
+# A second upload of a file that is still being read within this time is rejected (double submit).
+IN_FLIGHT_SECONDS = 120
 
 
 class UploadError(ValueError):
@@ -219,13 +223,65 @@ def check_upload(filename, data, allowed_extensions):
     return safe_name, file_type
 
 
-def read_drawing(filename, data, instance_path, config, client=None):
+def _previous_result(sha256, model):
+    """The latest successful reading of the same file by the same model, if any."""
+    return db.session.execute(
+        db.select(DrawingExtraction)
+        .filter(DrawingExtraction.sha256 == sha256, DrawingExtraction.model == model,
+                DrawingExtraction.status.in_(("extracted", "confirmed")), DrawingExtraction.parsed.is_not(None))
+        .order_by(DrawingExtraction.id.desc())
+    ).scalars().first()
+
+
+def _reading_in_progress(sha256, model):
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=IN_FLIGHT_SECONDS)
+    return db.session.execute(
+        db.select(DrawingExtraction)
+        .filter(DrawingExtraction.sha256 == sha256, DrawingExtraction.model == model,
+                DrawingExtraction.status == "pending", DrawingExtraction.created_at >= since)
+    ).scalars().first()
+
+
+def _cached_copy(previous, safe_name):
+    """A new extraction row that reuses an earlier result: same files, same response, no API call."""
+    origin = previous.cached_from or previous
+    extraction = DrawingExtraction(
+        original_filename=safe_name,
+        stored_filename=origin.stored_filename,
+        sent_filename=origin.sent_filename,
+        file_type=origin.file_type,
+        size_bytes=origin.size_bytes,
+        sha256=origin.sha256,
+        model=origin.model,
+        status="extracted",
+        raw_response=origin.raw_response,
+        parsed=origin.parsed,
+        cached_from_id=origin.id,
+    )
+    db.session.add(extraction)
+    db.session.commit()
+    return extraction
+
+
+def read_drawing(filename, data, instance_path, config, client=None, force=False):
     """Store an uploaded drawing, send it to the model and record everything in DrawingExtraction.
+
+    The same file already read by the same model is not sent again: a new row reuses that result
+    (cached). force=True ("Read again") always calls the API.
 
     Always returns the DrawingExtraction row; on failure its status is "failed" and `error` says why.
     Raises UploadError for files that are rejected before anything is stored.
     """
     safe_name, file_type = check_upload(filename, data, config["ALLOWED_DRAWING_EXTENSIONS"])
+    sha256 = hashlib.sha256(data).hexdigest()
+    model = config["ANTHROPIC_MODEL"]
+    if not force:
+        previous = _previous_result(sha256, model)
+        if previous:
+            return _cached_copy(previous, safe_name)
+    if _reading_in_progress(sha256, model):
+        raise UploadError("This drawing is already being read. Wait for the result instead of uploading it again.")
+
     folder = drawings_dir(instance_path)
     token = uuid.uuid4().hex
     stored = f"{token}.{safe_name.rsplit('.', 1)[-1].lower()}"
@@ -237,8 +293,8 @@ def read_drawing(filename, data, instance_path, config, client=None):
         stored_filename=stored,
         file_type=file_type,
         size_bytes=len(data),
-        sha256=hashlib.sha256(data).hexdigest(),
-        model=config["ANTHROPIC_MODEL"],
+        sha256=sha256,
+        model=model,
         status="pending",
     )
     db.session.add(extraction)
@@ -264,6 +320,13 @@ def read_drawing(filename, data, instance_path, config, client=None):
         extraction.parsed = result.data.model_dump_json()
     db.session.commit()
     return extraction
+
+
+def read_again(extraction, instance_path, config, client=None):
+    """New API call for a drawing that was already uploaded (the user asked for it explicitly)."""
+    with open(os.path.join(drawings_dir(instance_path), extraction.stored_filename), "rb") as f:
+        data = f.read()
+    return read_drawing(extraction.original_filename, data, instance_path, config, client=client, force=True)
 
 
 def extraction_data(extraction):
