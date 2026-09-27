@@ -223,21 +223,23 @@ def check_upload(filename, data, allowed_extensions):
     return safe_name, file_type
 
 
-def _previous_result(sha256, model):
-    """The latest successful reading of the same file by the same model, if any."""
+def _previous_result(sha256, model, prompt_version):
+    """The latest successful reading of the same file by the same model and prompt version, if any."""
     return db.session.execute(
         db.select(DrawingExtraction)
         .filter(DrawingExtraction.sha256 == sha256, DrawingExtraction.model == model,
+                DrawingExtraction.prompt_version == prompt_version,
                 DrawingExtraction.status.in_(("extracted", "confirmed")), DrawingExtraction.parsed.is_not(None))
         .order_by(DrawingExtraction.id.desc())
     ).scalars().first()
 
 
-def _reading_in_progress(sha256, model):
+def _reading_in_progress(sha256, model, prompt_version):
     since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=IN_FLIGHT_SECONDS)
     return db.session.execute(
         db.select(DrawingExtraction)
         .filter(DrawingExtraction.sha256 == sha256, DrawingExtraction.model == model,
+                DrawingExtraction.prompt_version == prompt_version,
                 DrawingExtraction.status == "pending", DrawingExtraction.created_at >= since)
     ).scalars().first()
 
@@ -253,6 +255,7 @@ def _cached_copy(previous, safe_name):
         size_bytes=origin.size_bytes,
         sha256=origin.sha256,
         model=origin.model,
+        prompt_version=origin.prompt_version,
         status="extracted",
         raw_response=origin.raw_response,
         parsed=origin.parsed,
@@ -266,8 +269,9 @@ def _cached_copy(previous, safe_name):
 def read_drawing(filename, data, instance_path, config, client=None, force=False):
     """Store an uploaded drawing, send it to the model and record everything in DrawingExtraction.
 
-    The same file already read by the same model is not sent again: a new row reuses that result
-    (cached). force=True ("Read again") always calls the API.
+    The same file already read by the same model with the same prompt version (prompts + tool
+    schema) is not sent again: a new row reuses that result (cached). force=True ("Read again")
+    always calls the API.
 
     Always returns the DrawingExtraction row; on failure its status is "failed" and `error` says why.
     Raises UploadError for files that are rejected before anything is stored.
@@ -275,11 +279,12 @@ def read_drawing(filename, data, instance_path, config, client=None, force=False
     safe_name, file_type = check_upload(filename, data, config["ALLOWED_DRAWING_EXTENSIONS"])
     sha256 = hashlib.sha256(data).hexdigest()
     model = config["ANTHROPIC_MODEL"]
+    version = drawing_reader.prompt_version()
     if not force:
-        previous = _previous_result(sha256, model)
+        previous = _previous_result(sha256, model, version)
         if previous:
             return _cached_copy(previous, safe_name)
-    if _reading_in_progress(sha256, model):
+    if _reading_in_progress(sha256, model, version):
         raise UploadError("This drawing is already being read. Wait for the result instead of uploading it again.")
 
     folder = drawings_dir(instance_path)
@@ -295,6 +300,7 @@ def read_drawing(filename, data, instance_path, config, client=None, force=False
         size_bytes=len(data),
         sha256=sha256,
         model=model,
+        prompt_version=version,
         status="pending",
     )
     db.session.add(extraction)

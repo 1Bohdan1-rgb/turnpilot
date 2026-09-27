@@ -174,6 +174,7 @@ class DrawingExtraction(db.Model):
     size_bytes = db.Column(db.Integer, nullable=False)
     sha256 = db.Column(db.String(64), nullable=False)
     model = db.Column(db.String(100))
+    prompt_version = db.Column(db.String(16))  # drawing_reader.prompt_version() used for this reading
     status = db.Column(db.String(10), nullable=False, default="pending")  # pending/extracted/failed/confirmed
     raw_response = db.Column(db.Text)  # full API response as JSON
     parsed = db.Column(db.Text)  # validated DrawingData as JSON

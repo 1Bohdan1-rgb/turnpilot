@@ -110,7 +110,10 @@ every upload is kept in `DrawingExtraction`: the original file and the image sen
 and the job it became.
 
 **No repeated API calls.** The "Read drawing" button is disabled after the first click and shows
-"Reading…". On the server, a file (same SHA-256) already read by the same model is not sent again:
+"Reading…". On the server, a file (same SHA-256) already read by the same model with the same
+prompt version is not sent again. The prompt version (`drawing_reader.prompt_version()`) is a hash
+of the prompts and the tool's JSON schema, stored with every upload, so any change to the prompt or
+the schema makes the next upload call the API again instead of reusing an old result:
 a new upload record reuses the saved result and is marked *cached*, so a second job can still be
 made from it. **Read again** on the review screen makes a new API call on purpose. A second upload of
 a file that is still being read (within 2 minutes) is rejected.

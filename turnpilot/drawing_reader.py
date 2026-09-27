@@ -6,6 +6,7 @@ No Flask here: the web app and tools/eval_extraction.py both call extract_drawin
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 from dataclasses import dataclass, field
@@ -65,6 +66,19 @@ marks on that feature only.
 """
 
 USER_PROMPT = "Read this drawing and record the part with the record_part tool."
+
+
+def prompt_version() -> str:
+    """Short hash of everything that shapes the model's answer: prompts and the tool's JSON schema.
+
+    Stored with every extraction and part of the cache key, so a changed prompt or schema
+    never reuses a result read under the old one.
+    """
+    payload = json.dumps(
+        {"system": SYSTEM_PROMPT, "user": USER_PROMPT, "tool": RECORD_PART_TOOL},
+        sort_keys=True, ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 class ExtractionError(Exception):

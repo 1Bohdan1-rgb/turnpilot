@@ -3,7 +3,8 @@
 {% block content %}
 <h1>Check the drawing data</h1>
 <p class="muted">
-  {{ extraction.original_filename }} · read by {{ extraction.model }} ·
+  {{ extraction.original_filename }} · read by {{ extraction.model }}
+  {% if extraction.prompt_version %}(prompt {{ extraction.prompt_version[:8] }}){% endif %} ·
   nothing is saved as a job until you press <strong>Confirm</strong>.
 </p>
 

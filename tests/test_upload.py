@@ -566,6 +566,7 @@ def test_upload_while_same_file_is_being_read_is_rejected(app, client):
     in_flight = services.DrawingExtraction(
         original_filename="shaft.png", stored_filename="x.png", file_type="png", size_bytes=len(PNG),
         sha256=services.hashlib.sha256(PNG).hexdigest(), model="test-model", status="pending",
+        prompt_version=services.drawing_reader.prompt_version(),
     )
     db.session.add(in_flight)
     db.session.commit()
@@ -581,6 +582,7 @@ def test_stale_pending_reading_does_not_block(app, client):
     stale = services.DrawingExtraction(
         original_filename="shaft.png", stored_filename="x.png", file_type="png", size_bytes=len(PNG),
         sha256=services.hashlib.sha256(PNG).hexdigest(), model="test-model", status="pending",
+        prompt_version=services.drawing_reader.prompt_version(),
         created_at=datetime.now(timezone.utc) - timedelta(seconds=services.IN_FLIGHT_SECONDS + 60),
     )
     db.session.add(stale)
@@ -600,3 +602,54 @@ def test_read_buttons_are_blocked_after_click(app, client):
     review = _squash(client.get("/extractions/2/review").data.decode())
     assert 'class="js-reading">Read again' in review
     assert "button.disabled = true;" in review
+
+
+# --- prompt version in the cache key ----------------------------------------------------------
+
+import copy  # noqa: E402
+
+from turnpilot import drawing_reader  # noqa: E402
+
+
+def test_extraction_records_prompt_version(app, client):
+    _use_model(app, THREADED_SHAFT)
+    _upload(client)
+    _upload(client)
+    first, cached = _extractions()
+    assert first.prompt_version == drawing_reader.prompt_version()
+    assert cached.prompt_version == first.prompt_version
+
+
+def test_changed_prompt_is_not_served_from_cache(app, client, monkeypatch):
+    fake = _use_model(app, THREADED_SHAFT)
+    _upload(client)
+    old_version = drawing_reader.prompt_version()
+
+    monkeypatch.setattr(drawing_reader, "SYSTEM_PROMPT", drawing_reader.SYSTEM_PROMPT + "\n- A new rule.")
+    assert drawing_reader.prompt_version() != old_version
+    _upload(client)
+
+    assert len(fake.messages.calls) == 2
+    first, second = _extractions()
+    assert second.cached_from_id is None and second.prompt_version != first.prompt_version
+    assert fake.messages.calls[1]["system"].endswith("- A new rule.")
+
+    _upload(client)  # same new prompt again: served from the new result
+    assert len(fake.messages.calls) == 2
+    assert _extractions()[-1].cached_from_id == second.id
+
+
+def test_changed_schema_is_not_served_from_cache(app, client, monkeypatch):
+    fake = _use_model(app, THREADED_SHAFT)
+    _upload(client)
+    tool = copy.deepcopy(drawing_reader.RECORD_PART_TOOL)
+    tool["input_schema"]["properties"]["material"]["description"] += " Also check the notes."
+    monkeypatch.setattr(drawing_reader, "RECORD_PART_TOOL", tool)
+    _upload(client)
+    assert len(fake.messages.calls) == 2
+    assert _extractions()[1].cached_from_id is None
+
+
+def test_prompt_version_is_stable():
+    assert drawing_reader.prompt_version() == drawing_reader.prompt_version()
+    assert len(drawing_reader.prompt_version()) == 16
