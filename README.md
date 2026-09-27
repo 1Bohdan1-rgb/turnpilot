@@ -44,7 +44,7 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 
 ## Stack
 
-Python, Flask, SQLAlchemy (Flask-SQLAlchemy), SQLite, Jinja2 with plain CSS, pytest.
+Python, Flask, SQLAlchemy (Flask-SQLAlchemy), Flask-Migrate (Alembic), SQLite, Jinja2 with plain CSS, pytest.
 
 ## Run
 
@@ -54,11 +54,29 @@ python -m venv .venv
 # source .venv/bin/activate     # Linux / macOS
 pip install -r requirements.txt
 
-flask --app turnpilot seed       # create tables and seed data (optional: run.py seeds an empty DB)
+flask --app turnpilot db upgrade # create / update the database schema
+flask --app turnpilot seed       # insert seed data into an empty database
 python run.py                    # http://127.0.0.1:5000
 ```
 
+`python run.py` also applies pending migrations and seeds an empty database on start,
+so the two `flask` commands are optional for local use.
+
 The SQLite database is stored at `instance/turnpilot.db`.
+
+## Database migrations
+
+The schema is managed by Flask-Migrate; the app never calls `db.create_all()` on a real database.
+After changing a model:
+
+```bash
+flask --app turnpilot db migrate -m "describe the change"   # generate a migration in migrations/versions/
+flask --app turnpilot db upgrade                           # apply it; existing data is kept
+```
+
+Review the generated file before committing it. SQLite changes are rendered in batch mode, so
+columns can be altered or dropped. `tests/test_migrations.py` fails if the models and the
+migrations drift apart. Useful extras: `flask --app turnpilot db current`, `db history`, `db downgrade`.
 
 ## Tests
 
@@ -77,6 +95,7 @@ turnpilot/
   routes.py        pages
   seed.py          seed data and `seed` CLI command
   templates/, static/
+migrations/        Alembic migrations (Flask-Migrate)
 tests/             pytest suite
 ```
 

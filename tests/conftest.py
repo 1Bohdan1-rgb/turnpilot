@@ -9,6 +9,7 @@ from turnpilot.seed import seed_database
 def app():
     app = create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:"})
     with app.app_context():
+        db.create_all()  # in-memory test DB; migrations are checked in test_migrations.py
         seed_database()
         yield app
         db.session.remove()

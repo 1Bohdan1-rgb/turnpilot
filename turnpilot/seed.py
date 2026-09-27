@@ -59,8 +59,7 @@ def seed_database():
 
 @click.command("seed")
 def seed_command():
-    """Create tables and insert seed data."""
-    db.create_all()
+    """Insert seed data. Run `flask --app turnpilot db upgrade` first."""
     if seed_database():
         click.echo("Seed data inserted.")
     else:
