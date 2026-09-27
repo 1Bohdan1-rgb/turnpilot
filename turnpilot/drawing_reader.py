@@ -41,9 +41,13 @@ A threaded section is recorded twice: as an od_turn at the major diameter over t
 a thread (major diameter, pitch, threaded length, thread class as tolerance).
 - A groove is recorded with its bottom diameter, the diameter it is cut from (start_diameter) and its width \
 (length). A chamfer "1x45°" on a diameter is recorded with that diameter and length 1.
-- Internal diameters are bore features.
+- Internal diameters are bore features. A bore marked THRU (through) runs the full part, so its \
+length is the overall length of the part: that is reading the drawing, not a guess. A bore with \
+neither THRU nor a length dimension gets length null.
 - Do not add face or parting features unless the drawing explicitly annotates them.
 - Tolerances and Ra belong to the feature they are written on. Do not copy a value to other features.
+- A roughness (Ra) symbol on a leader line belongs to the surface the leader's arrow touches, \
+not to the nearest dimension or the side of the part where the symbol is placed.
 - confidence reflects how legible and unambiguous the feature is on the drawing.
 - Put anything unclear, contradictory or not representable into warnings.
 """

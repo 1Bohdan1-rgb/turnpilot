@@ -30,6 +30,8 @@ OUT_DIR = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "drawi
 
 PAPER_W, PAPER_H = 297.0, 210.0  # A4 landscape, mm
 DPI = 220  # long edge ~2570 px: within the 2576 px the model reads without downscaling
+# Fixed PDF metadata (no creation date), so regenerating unchanged drawings gives identical files.
+PDF_METADATA = {"Creator": "turnpilot tools/generate_drawings.py", "Producer": "matplotlib", "CreationDate": None}
 FONT = 8
 LINE = 0.9
 THIN = 0.5
@@ -409,7 +411,7 @@ def main():
         fig = draw(part)
         png = OUT_DIR / f"{part['name']}.png"
         fig.savefig(png, dpi=DPI, facecolor="white")
-        fig.savefig(OUT_DIR / f"{part['name']}.pdf", facecolor="white")
+        fig.savefig(OUT_DIR / f"{part['name']}.pdf", facecolor="white", metadata=PDF_METADATA)
         plt.close(fig)
         angle = photo_version(png, OUT_DIR / f"{part['name']}.photo.jpg", seed=1000 + i)
         expected = OUT_DIR / f"{part['name']}.expected.json"
