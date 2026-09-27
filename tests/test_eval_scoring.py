@@ -202,3 +202,36 @@ def test_dimensions_first_conflicts_are_counted():
     fake = FakeClient(make_response(raw, tool_name="record_dimensions"))
     result = eval_extraction.run_one(fake, "m", "01_stepped_shaft", "png", mode="dimensions_first")
     assert result.conflicts == 1 and result.mode == "dimensions_first"
+
+
+def test_eval_stops_after_the_first_client_error():
+    import anthropic
+    import httpx2
+
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    message = "Schemas contains too many parameters with union types (22 ...) (limit: 16 parameters with unions)."
+    error = anthropic.BadRequestError(
+        message, response=httpx2.Response(400, request=request), body={"error": {"message": message}}
+    )
+
+    class Rejecting:
+        class messages:
+            calls = 0
+
+            @classmethod
+            def stream(cls, **kwargs):
+                cls.calls += 1
+                raise error
+
+    runs = [("01_stepped_shaft", "png", k) for k in (1, 2, 3)]
+    results = eval_extraction.run_all(Rejecting(), "m", runs, "features")
+    assert len(results) == 1 and Rejecting.messages.calls == 1
+    assert results[0].status_code == 400
+    assert "limit: 16 parameters with unions" in results[0].error  # full text, not cut off
+
+
+def test_eval_keeps_going_after_a_parse_error():
+    fake = FakeClient(make_response(None, stop_reason="end_turn", text="no tool call"))
+    runs = [("01_stepped_shaft", "png", k) for k in (1, 2)]
+    results = eval_extraction.run_all(fake, "m", runs, "features")
+    assert len(results) == 2 and all(r.error for r in results)

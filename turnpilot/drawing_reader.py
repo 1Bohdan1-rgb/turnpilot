@@ -99,9 +99,7 @@ def _mode(mode: str) -> dict:
             "user": dimensions_first.USER_PROMPT,
             "tool": dimensions_first.RECORD_DIMENSIONS_TOOL,
             "tool_name": dimensions_first.TOOL_NAME,
-            "parse": lambda tool_input: dimensions_first.to_drawing_data(
-                dimensions_first.DimensionsData.model_validate(tool_input)
-            ),
+            "parse": dimensions_first.parse_tool_input,  # decodes the 0 / "" / -1 markers first
         }
     raise ValueError(f"Unknown reading mode {mode!r}; expected one of {READ_MODES}")
 

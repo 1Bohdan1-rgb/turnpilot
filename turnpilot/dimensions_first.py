@@ -218,9 +218,56 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
 
 
 # --- tool schema and prompt -------------------------------------------------------------------
+#
+# Strict tool schemas allow only a limited number of nullable (union-typed) parameters, and this
+# schema has many optional values. So nothing here is nullable; "not on the drawing" is encoded as
+#   0   for numbers that cannot physically be 0 (diameter, length, Ra, pitch, radius, chamfer size,
+#       quantity) and for 1-based section numbers,
+#   ""  for text (a tolerance stays one string as written, so "0/-0.021" is never lost),
+#   -1  for boundary numbers (0 is a real boundary, the left end face).
+# from_wire() turns these back into None before validation.
 
-def _nullable(json_type: str, description: str) -> dict:
-    return {"anyOf": [{"type": json_type}, {"type": "null"}], "description": description}
+ZERO_MEANS_NONE = {
+    "blank_diameter", "blank_length", "quantity", "general_ra",
+    "diameter", "start_diameter", "ra", "radius", "pitch", "size", "section",
+}
+MINUS_ONE_MEANS_NONE = {"from", "to", "start", "end"}
+EMPTY_MEANS_NONE = {"material", "tolerance"}
+
+
+def _decode(key, value):
+    if key in ZERO_MEANS_NONE and value == 0:
+        return None
+    if key in MINUS_ONE_MEANS_NONE and value == -1:
+        return None
+    if key in EMPTY_MEANS_NONE and isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
+def from_wire(tool_input: dict) -> dict:
+    """Replace the "not on the drawing" markers (0 / "" / -1) of the tool input with None."""
+    data = {k: _decode(k, v) for k, v in tool_input.items() if k not in ("sections", "overlays", "dimensions")}
+    for key in ("sections", "overlays", "dimensions"):
+        data[key] = [{k: _decode(k, v) for k, v in item.items()} for item in tool_input.get(key, [])]
+    return data
+
+
+def parse_tool_input(tool_input: dict) -> DrawingData:
+    """record_dimensions tool input -> the usual DrawingData, lengths computed by the code."""
+    return to_drawing_data(DimensionsData.model_validate(from_wire(tool_input)))
+
+
+def _number(description: str) -> dict:
+    return {"type": "number", "description": description}
+
+
+def _integer(description: str) -> dict:
+    return {"type": "integer", "description": description}
+
+
+def _text(description: str) -> dict:
+    return {"type": "string", "description": description}
 
 
 def _object(properties: dict, description: str | None = None) -> dict:
@@ -238,8 +285,9 @@ def _object(properties: dict, description: str | None = None) -> dict:
 RECORD_DIMENSIONS_TOOL = {
     "name": TOOL_NAME,
     "description": (
-        "Record the profile of the turned part and every dimension as written on the drawing. "
-        "Do not compute lengths; use null for anything that is not on the drawing."
+        "Record the profile of the turned part and every dimension as written on the drawing. Do not "
+        "compute lengths. A value that is not on the drawing is 0 for numbers, \"\" for text and -1 for "
+        "boundary numbers."
     ),
     "strict": True,
     "input_schema": _object({
@@ -249,26 +297,25 @@ RECORD_DIMENSIONS_TOOL = {
             "description": "turned: a body of revolution made on a lathe. not_turned: clearly not a lathe part. "
                            "unclear: cannot tell.",
         },
-        "material": _nullable("string", "Material exactly as written in the title block."),
-        "blank_diameter": _nullable("number", "mm. Only if the drawing states the blank/stock size."),
-        "blank_length": _nullable("number", "mm. Only if the drawing states the blank/stock size."),
-        "quantity": _nullable("integer", "Quantity from the title block."),
-        "general_ra": _nullable(
-            "number", "µm. Ra of the roughness symbol without a leader in the top-right corner, else null."
-        ),
+        "material": _text('Material exactly as written in the title block; "" if none.'),
+        "blank_diameter": _number("mm. Only if the drawing states the blank/stock size; else 0."),
+        "blank_length": _number("mm. Only if the drawing states the blank/stock size; else 0."),
+        "quantity": _integer("Quantity from the title block; 0 if none."),
+        "general_ra": _number("µm. Ra of the roughness symbol without a leader in the top-right corner; else 0."),
         "sections": {
             "type": "array",
             "description": "External profile from the left end face to the right end face. Section k lies "
                            "between boundary k-1 and boundary k; boundary 0 is the left end face.",
             "items": _object({
                 "type": {"type": "string", "enum": list(SECTION_TYPES)},
-                "diameter": _nullable("number", "mm. Cylinder/groove bottom/taper end diameter; null for a fillet."),
-                "start_diameter": _nullable("number", "mm. Taper: diameter at its start. Groove: the diameter "
-                                                      "it is cut from. Else null."),
-                "tolerance": _nullable("string", "Tolerance of this diameter (or radius) exactly as written."),
-                "ra": _nullable("number", "Ra marked on this section itself, else null."),
-                "radius": _nullable("number", "mm. Fillet radius (10 for R10), else null."),
-                "confidence": {"type": "number", "description": "0..1"},
+                "diameter": _number("mm. Cylinder / groove bottom / taper end diameter; 0 for a fillet."),
+                "start_diameter": _number("mm. Taper: diameter at its start. Groove: the diameter it is cut "
+                                          "from. Else 0."),
+                "tolerance": _text('Tolerance of this diameter (or radius) exactly as written, e.g. "±0.05", '
+                                   '"0/-0.021", "h7"; "" if none.'),
+                "ra": _number("µm. Ra marked on this section itself; else 0."),
+                "radius": _number("mm. Fillet radius (10 for R10); else 0."),
+                "confidence": _number("0..1"),
             }),
         },
         "overlays": {
@@ -276,34 +323,33 @@ RECORD_DIMENSIONS_TOOL = {
             "description": "Features on top of or inside a section: threads, chamfers, bores.",
             "items": _object({
                 "type": {"type": "string", "enum": list(OVERLAY_TYPES)},
-                "section": _nullable("integer", "1-based number of the section it lies on (bore: null)."),
-                "diameter": _nullable("number", "mm. Thread major diameter, bore diameter; chamfer: null."),
-                "tolerance": _nullable("string", "Thread class (6g) or bore tolerance exactly as written."),
-                "ra": _nullable("number", "Ra marked on it, else null."),
-                "pitch": _nullable("number", "mm. Threads only."),
-                "size": _nullable("number", "mm. Chamfer leg (1.5 for 1.5x45°), else null."),
-                "start": _nullable("integer", "Boundary where it starts, if its length is dimensioned; "
-                                              "for a THRU bore 0."),
-                "end": _nullable("integer", "Boundary where it ends, if its length is dimensioned; "
-                                            "for a THRU bore the last boundary."),
-                "confidence": {"type": "number", "description": "0..1"},
+                "section": _integer("1-based number of the section it lies on; 0 for a bore."),
+                "diameter": _number("mm. Thread major diameter or bore diameter; 0 for a chamfer."),
+                "tolerance": _text('Thread class ("6g") or bore tolerance exactly as written; "" if none.'),
+                "ra": _number("µm. Ra marked on it; else 0."),
+                "pitch": _number("mm. Threads only; else 0."),
+                "size": _number("mm. Chamfer leg (1.5 for 1.5x45°); else 0."),
+                "start": _integer("Boundary where it starts if its length is dimensioned (a THRU bore: 0); else -1."),
+                "end": _integer("Boundary where it ends if its length is dimensioned (a THRU bore: the last "
+                                "boundary); else -1."),
+                "confidence": _number("0..1"),
             }),
         },
         "dimensions": {
             "type": "array",
             "description": "Every dimension on the drawing, exactly as written.",
             "items": _object({
-                "value": {"type": "number", "description": "mm, as written (140.1 for 140,1)."},
-                "tolerance": _nullable("string", "As written, e.g. 'js12', '±0.105'."),
+                "value": _number("mm, as written (140.1 for 140,1)."),
+                "tolerance": _text('As written, e.g. "js12", "±0.105", "0/-0.021"; "" if none.'),
                 "kind": {
                     "type": "string",
                     "enum": list(DIMENSION_KINDS),
                     "description": "diameter: a Ø dimension. overall: the full part length. baseline: measured "
                                    "from a common datum face. chain: between two neighbouring boundaries.",
                 },
-                "from": _nullable("integer", "Boundary where one extension line starts (linear dimensions)."),
-                "to": _nullable("integer", "Boundary where the other extension line starts (linear dimensions)."),
-                "section": _nullable("integer", "Diameter dimensions: 1-based section number, else null."),
+                "from": _integer("Linear dimensions: boundary where one extension line starts; else -1."),
+                "to": _integer("Linear dimensions: boundary where the other extension line starts; else -1."),
+                "section": _integer("Diameter dimensions: 1-based section number; else 0."),
             }),
         },
         "warnings": {
@@ -321,18 +367,18 @@ dimensions you record.
 
 Rules:
 - Always answer by calling record_dimensions exactly once. All dimensions are in millimetres.
-- Record only what is written on the drawing; use null for anything not visible. Never estimate, \
-compute or guess a value.
+- Record only what is written on the drawing. Never estimate, compute or guess a value. A value that \
+is not on the drawing is recorded as 0 for numbers, "" for text and -1 for boundary numbers.
 - Sections: list the external profile from the left end face to the right end face. Every change of \
 diameter or shape starts a new section: a cylinder is od_turn, a cone is taper, a recess is groove \
 (a narrow step next to a thread, below its minor diameter, is a thread relief groove), a radius \
 between two sections is fillet. Boundaries are numbered 0 (left end face) to N (right end face); \
 section k lies between boundaries k-1 and k.
-- Dimensions: record every dimension exactly as written, with its tolerance. For a length dimension, \
-give the two boundaries its extension lines start from (from, to) and its kind: overall (the whole \
-part), baseline (measured from a common datum face) or chain (between neighbouring boundaries). Do \
-not add up or subtract dimensions yourself. For a diameter dimension use kind diameter and the \
-section number.
+- Dimensions: record every dimension exactly as written, with its tolerance as one string. For a \
+length dimension, give the two boundaries its extension lines start from (from, to) and its kind: \
+overall (the whole part), baseline (measured from a common datum face) or chain (between neighbouring \
+boundaries). Do not add up or subtract dimensions yourself. For a diameter dimension use kind \
+diameter and the section number.
 - Overlays: threads (major diameter, pitch, thread class as tolerance), chamfers (size) and bores lie \
 on a section; give start/end boundaries only if their length is dimensioned.
 - material and quantity from the title block; blank size only if the drawing states it. A roughness \

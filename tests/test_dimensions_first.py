@@ -158,7 +158,7 @@ def _image():
 
 
 def test_dimensions_mode_request_and_parsing():
-    client = FakeClient(make_response(REAL_SHAFT, tool_name=TOOL_NAME))
+    client = FakeClient(make_response(to_wire(REAL_SHAFT), tool_name=TOOL_NAME))
     result = extract_drawing(_image(), client=client, mode="dimensions_first")
     (call,) = client.messages.calls
     assert call["tools"] == [RECORD_DIMENSIONS_TOOL] and RECORD_DIMENSIONS_TOOL["strict"] is True
@@ -226,3 +226,77 @@ def test_config_selects_the_mode(app, client):
     })
     client.post("/jobs/upload", data={"drawing": (io.BytesIO(png), "shaft.png")}, content_type="multipart/form-data")
     assert len(fake.messages.calls) == 2
+
+
+# --- wire format: no nullable fields, 0 / "" / -1 mean "not on the drawing" ----------------------
+
+from turnpilot.dimensions_first import from_wire, parse_tool_input  # noqa: E402
+from turnpilot.extraction_schema import RECORD_PART_TOOL  # noqa: E402
+
+
+def to_wire(data):
+    """Encode None the way the model sends it."""
+    def enc(key, value):
+        if value is not None:
+            return value
+        if key in ("from", "to", "start", "end"):
+            return -1
+        if key in ("material", "tolerance"):
+            return ""
+        return 0
+
+    out = {k: enc(k, v) for k, v in data.items() if k not in ("sections", "overlays", "dimensions")}
+    for key in ("sections", "overlays", "dimensions"):
+        out[key] = [{k: enc(k, v) for k, v in item.items()} for item in data[key]]
+    return out
+
+
+def test_wire_markers_become_null():
+    wire = to_wire(REAL_SHAFT)
+    assert wire["material"] == "" and wire["quantity"] == 0
+    assert wire["dimensions"][-1]["from"] == -1 and wire["sections"][0]["radius"] == 0
+    decoded = from_wire(wire)
+    assert decoded["material"] is None and decoded["quantity"] is None
+    assert decoded["sections"][0]["radius"] is None and decoded["overlays"][1]["diameter"] is None
+    assert decoded["dimensions"][-1]["from"] is None and decoded["dimensions"][-1]["to"] is None
+
+
+def test_boundary_zero_is_kept():
+    decoded = from_wire(to_wire(REAL_SHAFT))
+    assert decoded["dimensions"][0]["from"] == 0  # the left end face is a real boundary
+
+
+def test_zero_deviation_tolerance_is_not_lost():
+    wire = to_wire(REAL_SHAFT)
+    wire["sections"][2]["tolerance"] = "0/-0.021"
+    wire["dimensions"][3]["tolerance"] = "0/-0.1"
+    data = parse_tool_input(wire)
+    assert data.features[2].tolerance == "0/-0.021"
+    assert from_wire(wire)["dimensions"][3]["tolerance"] == "0/-0.1"
+
+
+def test_wire_input_gives_the_same_part():
+    assert parse_tool_input(to_wire(REAL_SHAFT)) == to_drawing_data(DimensionsData.model_validate(REAL_SHAFT))
+
+
+def _union_params(node):
+    count = 0
+    if isinstance(node, dict):
+        if "anyOf" in node or isinstance(node.get("type"), list):
+            count += 1
+        count += sum(_union_params(v) for v in node.values())
+    elif isinstance(node, list):
+        count += sum(_union_params(v) for v in node)
+    return count
+
+
+@pytest.mark.parametrize("tool", [RECORD_PART_TOOL, RECORD_DIMENSIONS_TOOL], ids=lambda t: t["name"])
+def test_strict_schemas_stay_within_the_union_limit(tool):
+    # The API rejects strict schemas with more than 16 nullable/union parameters ("limit: 16
+    # parameters with unions"; 22 was rejected). Keep a margin: 13 is what record_part has.
+    assert tool["strict"] is True
+    assert _union_params(tool["input_schema"]) <= 13
+
+
+def test_dimensions_schema_has_no_nullable_fields():
+    assert _union_params(RECORD_DIMENSIONS_TOOL["input_schema"]) == 0

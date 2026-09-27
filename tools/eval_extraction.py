@@ -27,6 +27,8 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import anthropic  # noqa: E402
+
 from turnpilot import drawing_reader  # noqa: E402
 from turnpilot.extraction_schema import DrawingData  # noqa: E402
 from turnpilot.planner import geometry_warnings  # noqa: E402
@@ -102,6 +104,7 @@ class RunResult:
     conflicts: int | None = None  # conflicting dimensions found by the dimensions_first solver
     geometry: int | None = None  # planner.geometry_warnings() on the extracted part
     raw: dict | None = None  # the full API response, saved so the run can be re-scored later
+    status_code: int | None = None  # HTTP status of an API error
 
 
 def _same_number(a, b):
@@ -207,7 +210,7 @@ def _expected(name):
 
 
 def _fail(result, expected, exc):
-    result.error = f"{type(exc).__name__}: {exc}"[:300]
+    result.error = f"{type(exc).__name__}: {exc}"  # full text: the API explains 4xx errors in detail
     for m in METRICS:
         result.scores[m].total += 1 if m in PART_METRICS else len(expected.features)
 
@@ -237,10 +240,27 @@ def run_one(client, model, name, variant, run=1, mode=drawing_reader.DEFAULT_REA
     except drawing_reader.ExtractionError as exc:
         result.raw = exc.raw
         _fail(result, expected, exc)
+    except anthropic.APIStatusError as exc:
+        _fail(result, expected, exc)
+        result.status_code = exc.status_code
     except Exception as exc:  # count the whole drawing as wrong, keep going
         _fail(result, expected, exc)
     result.seconds = time.monotonic() - start
     return result
+
+
+def run_all(client, model, runs, mode) -> list[RunResult]:
+    """Run the planned calls; stop at the first 4xx, because the same request would fail again."""
+    results = []
+    for index, (name, variant, run) in enumerate(runs):
+        result = run_one(client, model, name, variant, run=run, mode=mode)
+        status = result.error or ", ".join(f"{m} {_pct(result.scores[m])}" for m in METRICS)
+        print(f"  run {run}  {name:22} {variant:6} {result.seconds:5.1f}s  {status}")
+        results.append(result)
+        if result.status_code is not None and 400 <= result.status_code < 500:
+            print(f"Stopped after a {result.status_code} error; {len(runs) - index - 1} call(s) not made.")
+            break
+    return results
 
 
 # --- saved runs: re-scoring without new API calls ------------------------------------------
@@ -505,12 +525,7 @@ def main(argv=None):
         if not args.yes and input("Continue? [y/N] ").strip().lower() != "y":
             print("Cancelled.")
             return 1
-        results = []
-        for name, variant, run in runs:
-            result = run_one(client, model, name, variant, run=run, mode=args.mode)
-            status = result.error or ", ".join(f"{m} {_pct(result.scores[m])}" for m in METRICS)
-            print(f"  run {run}  {name:22} {variant:6} {result.seconds:5.1f}s  {status}")
-            results.append(result)
+        results = run_all(client, model, runs, args.mode)
         saved = save_runs(results, model, args.output.with_suffix(".runs.json"))
         print(f"Raw responses saved to {saved}")
 
