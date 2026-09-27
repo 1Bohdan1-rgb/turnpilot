@@ -40,6 +40,7 @@ class Tool(db.Model):
     f_max = db.Column(db.Float, nullable=False)
     ap_min = db.Column(db.Float, nullable=False)
     ap_max = db.Column(db.Float, nullable=False)
+    insert_width = db.Column(db.Float)  # mm, grooving / parting inserts
 
 
 class TurretSlot(db.Model):
@@ -109,6 +110,7 @@ class Feature(db.Model):
     tolerance = db.Column(db.String(30))  # free text, e.g. "h7" or "+0/-0.05"
     ra = db.Column(db.Float)  # um
     pitch = db.Column(db.Float)  # mm, threads only
+    start_diameter = db.Column(db.Float)  # mm, grooves: outer diameter the groove starts from
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 
     job = db.relationship("Job", back_populates="features")
@@ -129,6 +131,8 @@ class Operation(db.Model):
     f = db.Column(db.Float)
     ap = db.Column(db.Float)
     passes = db.Column(db.Integer)
+    insert_width = db.Column(db.Float)  # grooving: insert width
+    depth = db.Column(db.Float)  # per side: groove depth or thread profile depth h
     ref_diameter = db.Column(db.Float)  # diameter used to compute n
     note = db.Column(db.Text)
     warning = db.Column(db.Text)

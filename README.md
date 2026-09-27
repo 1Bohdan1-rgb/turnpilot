@@ -29,12 +29,23 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 - **Order:** face → roughing → finishing (incl. chamfers) → grooves → threads → parting.
 - **Tool selection:** only tools loaded in the turret, matched by operation type and material ISO
   group (P/M/N). If none fits, the operation is kept with a clear warning and cannot be approved.
-- **Roughing:** Vc near `vc_min`, f and ap near the top of their ranges.
-  Passes = `ceil((blank_diameter - diameter) / 2 / ap)`.
+- **Roughing:** Vc near `vc_min`, f near `f_max`. Roughing leaves the finishing allowance
+  (the finishing tool's ap): radial stock = `(blank_diameter - diameter) / 2 - ap_finish`,
+  split into equal passes: `passes = ceil(stock / ap_max)`, `ap = stock / passes`.
 - **Finishing:** Vc near `vc_max`, ap = `ap_min`, feed from the target roughness
   `f = sqrt(Ra * 32 * r_eps / 1000)` (Ra in µm, nose radius r_eps from the insert code),
   clamped to the tool's `f_min..f_max`.
-- **Threading:** feed = thread pitch.
+- **Chamfers** are not separate operations: they are machined in the finishing pass of the OD
+  (or bore) with the same diameter, noted "incl. chamfer". A chamfer without such a feature
+  gets its own finishing pass.
+- **Grooves:** n is calculated on the start (larger) diameter, not the groove bottom. The table
+  shows insert width and groove depth per side instead of ap. Feature fields: Diameter = bottom,
+  Start Ø = diameter the groove is cut from (blank diameter if empty).
+- **Threads** (external metric): feed = pitch, profile depth per side `h = 0.613 * pitch`.
+  Radial infeed with decreasing depth per pass (modified constant chip area method, first pass
+  within the tool's `ap_max`, every pass at least `ap_min`) plus a final spring pass. The table
+  shows h and the number of passes; the infeed schedule is in the notes, together with
+  "G97 constant RPM — required for threading".
 - **Spindle speed:** `n = 1000 * Vc / (pi * D)`, capped at the machine max RPM. Roughing uses the
   diameter before the pass (the blank diameter). Facing and parting are marked
   "G96 constant surface speed, capped at max RPM".

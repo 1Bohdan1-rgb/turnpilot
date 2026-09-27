@@ -3,7 +3,10 @@ import math
 import pytest
 
 from turnpilot.planner import (
+    CHAMFER_NOTE,
+    DEFAULT_FINISH_ALLOWANCE_MM,
     G96_NOTE,
+    G97_THREAD_NOTE,
     FeatureSpec,
     JobSpec,
     ToolSpec,
@@ -17,6 +20,8 @@ from turnpilot.planner import (
     rough_passes,
     select_tool,
     spindle_speed,
+    thread_depth,
+    thread_infeed,
 )
 
 
@@ -33,8 +38,8 @@ def turret():
         TurretEntry(2, make_tool(2, "turning_rough", iso="P")),
         TurretEntry(3, make_tool(3, "turning_rough", iso="M")),
         TurretEntry(4, make_tool(4, "turning_finish", insert="DNMG 150408", f_min=0.05, f_max=0.3)),
-        TurretEntry(5, make_tool(5, "grooving", iso="PN")),
-        TurretEntry(6, make_tool(6, "threading")),
+        TurretEntry(5, make_tool(5, "grooving", iso="PN", insert_width=3.0)),
+        TurretEntry(6, make_tool(6, "threading", ap_min=0.05, ap_max=0.2)),
         TurretEntry(7, make_tool(7, "parting")),
     ]
 
@@ -147,20 +152,40 @@ def test_threading_without_pitch_warns(turret):
     assert any("pitch" in w for w in op.warnings)
 
 
-# --- rough passes --------------------------------------------------------
+# --- rough passes with finishing allowance -------------------------------
 
 def test_rough_passes_formula():
-    assert rough_passes(60, 50, 2.0) == 3  # 5 mm radial / 2 -> 2.5 -> 3
-    assert rough_passes(60, 52, 2.0) == 2  # exactly 2
-    assert rough_passes(50, 50, 2.0) == 0
+    assert rough_passes(60, 50, 2.0) == (3, 1.667)  # 5 mm / 2.0 -> 3 equal passes
+    assert rough_passes(60, 52, 2.0) == (2, 2.0)  # exactly 2
+    assert rough_passes(50, 50, 2.0) == (0, 0.0)
 
 
-def test_rough_operation_reports_passes(turret):
+def test_rough_passes_leave_finish_allowance():
+    # stock = (60 - 50) / 2 - 0.2 = 4.8 -> ceil(4.8 / 2.0) = 3 passes of 1.6
+    assert rough_passes(60, 50, 2.0, finish_allowance=0.2) == (3, 1.6)
+    # allowance eats all the stock
+    assert rough_passes(40.4, 40, 2.0, finish_allowance=0.2) == (0, 0.0)
+
+
+def test_rough_operation_splits_stock_evenly(turret):
     job = JobSpec("P", 60, 100, (FeatureSpec(1, "od_turn", diameter=40),))
     rough, finish = plan_job(job, turret, max_rpm=4000)
-    assert rough.mode == "rough"
-    assert rough.passes == math.ceil((60 - 40) / 2 / rough.ap)
+    rough_tool = turret[1].tool
+    stock = (60 - 40) / 2 - finish.ap  # finishing ap is the allowance
+    assert rough.passes == math.ceil(stock / rough_tool.ap_max)
+    assert rough.ap == pytest.approx(stock / rough.passes, abs=1e-3)
+    assert rough.ap <= rough_tool.ap_max
+    assert any(f"leaves {finish.ap:g} mm/side" in n for n in rough.notes)
     assert finish.passes is None
+
+
+def test_rough_uses_default_allowance_without_finish_tool(turret):
+    turret = [e for e in turret if e.tool.type != "turning_finish"]
+    job = JobSpec("P", 60, 100, (FeatureSpec(1, "od_turn", diameter=40),))
+    rough = plan_job(job, turret, max_rpm=4000)[0]
+    stock = 10 - DEFAULT_FINISH_ALLOWANCE_MM
+    assert rough.ap * rough.passes == pytest.approx(stock, abs=1e-2)
+    assert any("default allowance" in n for n in rough.notes)
 
 
 # --- reference diameter and notes ----------------------------------------
@@ -192,3 +217,89 @@ def test_operation_order():
     ]
     steps = order_steps([s for f in features for s in feature_to_steps(f)])
     assert [s.stage for s in steps] == ["face", "rough", "finish", "groove", "thread", "parting"]
+
+
+# --- chamfer is part of the finishing pass -------------------------------
+
+def test_chamfer_merged_into_finish_pass(turret):
+    job = JobSpec("P", 60, 100, (
+        FeatureSpec(1, "od_turn", diameter=40, ra=1.6),
+        FeatureSpec(2, "chamfer", diameter=40),
+    ))
+    ops = plan_job(job, turret, max_rpm=4000)
+    assert [(op.feature_id, op.mode) for op in ops] == [(1, "rough"), (1, "finish")]
+    assert CHAMFER_NOTE in ops[1].notes
+    assert CHAMFER_NOTE not in ops[0].notes
+
+
+def test_chamfer_without_matching_diameter_gets_own_pass(turret):
+    job = JobSpec("P", 60, 100, (
+        FeatureSpec(1, "od_turn", diameter=40),
+        FeatureSpec(2, "chamfer", diameter=30),
+    ))
+    ops = plan_job(job, turret, max_rpm=4000)
+    chamfer_ops = [op for op in ops if op.feature_id == 2]
+    assert len(chamfer_ops) == 1
+    assert any("chamfer machined separately" in n for n in chamfer_ops[0].notes)
+    assert all(CHAMFER_NOTE not in op.notes for op in ops)
+
+
+# --- groove: n from the start diameter, width and depth instead of ap -----
+
+def test_groove_speed_from_start_diameter(turret):
+    job = JobSpec("P", 60, 100, (FeatureSpec(1, "groove", diameter=36, length=3, start_diameter=40),))
+    (op,) = plan_job(job, turret, max_rpm=4000)
+    assert op.ref_diameter == 40
+    assert op.n == spindle_speed(op.vc, 40, 4000)[0]
+    assert op.n < spindle_speed(op.vc, 36, 4000)[0]  # not computed at the bottom
+
+
+def test_groove_shows_width_and_depth_instead_of_ap(turret):
+    job = JobSpec("P", 60, 100, (FeatureSpec(1, "groove", diameter=36, start_diameter=40),))
+    (op,) = plan_job(job, turret, max_rpm=4000)
+    assert op.ap is None
+    assert op.insert_width == 3.0
+    assert op.depth == 2.0  # (40 - 36) / 2 per side
+
+
+def test_groove_without_start_diameter_uses_blank(turret):
+    job = JobSpec("P", 60, 100, (FeatureSpec(1, "groove", diameter=36),))
+    (op,) = plan_job(job, turret, max_rpm=4000)
+    assert op.ref_diameter == 60
+    assert op.depth == 12.0
+    assert any("blank" in n for n in op.notes)
+
+
+# --- metric external thread ----------------------------------------------
+
+def test_thread_depth_is_0613_pitch():
+    assert thread_depth(1.5) == pytest.approx(0.613 * 1.5, abs=1e-3)
+    assert thread_depth(1.0) == 0.613
+
+
+def test_thread_infeed_decreases_and_ends_with_spring_pass():
+    h = thread_depth(1.5)
+    infeed = thread_infeed(h, ap_max=0.2, ap_min=0.05)
+    cutting, spring = infeed[:-1], infeed[-1]
+    assert spring == 0.0
+    assert sum(cutting) == pytest.approx(h, abs=1e-3)
+    assert cutting[0] <= 0.2
+    assert all(a > b for a, b in zip(cutting, cutting[1:]))  # strictly decreasing
+    assert all(d >= 0.05 for d in cutting)
+
+
+def test_thread_infeed_respects_min_depth():
+    infeed = thread_infeed(0.613, ap_max=0.1, ap_min=0.06)
+    assert all(d >= 0.06 for d in infeed[:-1])
+    assert sum(infeed) == pytest.approx(0.613, abs=1e-3)
+
+
+def test_thread_operation_shows_depth_passes_and_g97(turret):
+    job = JobSpec("P", 30, 60, (FeatureSpec(1, "thread", diameter=20, pitch=1.5),))
+    (op,) = plan_job(job, turret, max_rpm=4000)
+    h = thread_depth(1.5)
+    assert op.depth == h
+    assert op.passes == len(thread_infeed(h, 0.2, 0.05))
+    assert op.ap is None
+    assert G97_THREAD_NOTE in op.notes
+    assert G96_NOTE not in op.notes

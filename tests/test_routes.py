@@ -104,3 +104,25 @@ def test_deleting_feature_keeps_operations_and_edits(client):
 
     assert db.session.execute(db.select(db.func.count(Edit.id))).scalar() == edits_before > 0
     assert db.session.get(Operation, op.id) is not None
+
+
+def test_groove_and_chamfer_through_the_app(client):
+    job = _create_job(client)
+    client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=40, length=50))
+    client.post(f"/jobs/{job.id}/features", data=dict(type="chamfer", diameter=40))
+    client.post(f"/jobs/{job.id}/features", data=dict(type="groove", diameter=36, length=3, start_diameter=40))
+    client.post(f"/jobs/{job.id}/calculate")
+
+    ops = _current_ops()
+    assert [op.tool_type for op in ops] == ["turning_rough", "turning_finish", "grooving"]
+    assert "incl. chamfer" in ops[1].note
+    groove = ops[2]
+    assert (groove.ref_diameter, groove.insert_width, groove.depth, groove.ap) == (40, 3.0, 2.0, None)
+
+
+def test_groove_start_diameter_must_exceed_bottom(client):
+    job = _create_job(client)
+    resp = client.post(f"/jobs/{job.id}/features", follow_redirects=True,
+                       data=dict(type="groove", diameter=36, start_diameter=30))
+    assert b"must be larger than the groove bottom" in resp.data
+    assert not db.session.get(Job, job.id).active_features

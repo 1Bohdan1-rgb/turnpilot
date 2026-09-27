@@ -19,7 +19,7 @@
   <thead>
     <tr>
       <th>#</th><th>Feature</th><th>Operation</th><th>Pos.</th><th>Tool</th>
-      <th>Vc</th><th>n</th><th>f</th><th>ap</th><th>Passes</th><th>Status</th><th>Edit log</th>
+      <th>Vc</th><th>n</th><th>f</th><th>ap</th><th>Width</th><th>Depth/side</th><th>Passes</th><th>Status</th><th>Edit log</th>
     </tr>
   </thead>
   <tbody>
@@ -35,6 +35,8 @@
       <td>{{ op.n if op.n is not none else "—" }}</td>
       <td>{{ op.f if op.f is not none else "—" }}</td>
       <td>{{ op.ap if op.ap is not none else "—" }}</td>
+      <td>{{ op.insert_width if op.insert_width is not none else "" }}</td>
+      <td>{{ op.depth if op.depth is not none else "" }}</td>
       <td>{{ op.passes if op.passes is not none else "" }}</td>
       <td><span class="badge badge-{{ op.status }}">{{ op.status }}</span></td>
       <td class="notes">

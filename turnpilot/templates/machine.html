@@ -43,7 +43,7 @@
   <table>
     <thead>
       <tr><th>Name</th><th>Type</th><th>Insert</th><th>Grade</th><th>ISO</th>
-          <th>Vc, m/min</th><th>f, mm/rev</th><th>ap, mm</th></tr>
+          <th>Vc, m/min</th><th>f, mm/rev</th><th>ap, mm</th><th>Width, mm</th></tr>
     </thead>
     <tbody>
     {% for tool in tools %}
@@ -78,6 +78,7 @@
   <label>f max <input name="f_max" type="number" step="any" required></label>
   <label>ap min <input name="ap_min" type="number" step="any" required></label>
   <label>ap max <input name="ap_max" type="number" step="any" required></label>
+  <label>Insert width, mm (grooving/parting) <input name="insert_width" type="number" step="any" min="0"></label>
   <button type="submit">Add tool</button>
 </form>
 {% endblock %}

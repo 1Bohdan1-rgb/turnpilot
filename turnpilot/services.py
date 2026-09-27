@@ -21,6 +21,7 @@ def tool_spec(tool):
         f_max=tool.f_max,
         ap_min=tool.ap_min,
         ap_max=tool.ap_max,
+        insert_width=tool.insert_width,
     )
 
 
@@ -31,7 +32,8 @@ def turret_entries(machine):
 def job_spec(job):
     features = tuple(
         planner.FeatureSpec(
-            id=f.id, type=f.type, diameter=f.diameter, length=f.length, ra=f.ra, pitch=f.pitch
+            id=f.id, type=f.type, diameter=f.diameter, length=f.length, ra=f.ra, pitch=f.pitch,
+            start_diameter=f.start_diameter,
         )
         for f in job.active_features
     )
@@ -65,6 +67,8 @@ def calculate_operations(job, machine):
                 f=planned.f,
                 ap=planned.ap,
                 passes=planned.passes,
+                insert_width=planned.insert_width,
+                depth=planned.depth,
                 ref_diameter=planned.ref_diameter,
                 note="; ".join(planned.notes) or None,
                 warning="; ".join(planned.warnings) or None,

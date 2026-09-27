@@ -18,7 +18,7 @@
   <thead>
     <tr>
       <th>#</th><th>Feature</th><th>Operation</th><th>Pos.</th><th>Tool</th>
-      <th>Vc, m/min</th><th>n, rpm</th><th>f, mm/rev</th><th>ap, mm</th><th>Passes</th>
+      <th>Vc, m/min</th><th>n, rpm</th><th>f, mm/rev</th><th>ap, mm</th><th>Width, mm</th><th>Depth/side, mm</th><th>Passes</th>
       <th>Notes</th><th>Status</th><th></th>
     </tr>
   </thead>
@@ -34,6 +34,8 @@
       <td>{{ op.n if op.n is not none else "—" }}</td>
       <td>{{ op.f if op.f is not none else "—" }}</td>
       <td>{{ op.ap if op.ap is not none else "—" }}</td>
+      <td>{{ op.insert_width if op.insert_width is not none else "" }}</td>
+      <td>{{ op.depth if op.depth is not none else "" }}</td>
       <td>{{ op.passes if op.passes is not none else "" }}</td>
       <td class="notes">
         {% if op.warning %}<div class="warning">⚠ {{ op.warning }}</div>{% endif %}

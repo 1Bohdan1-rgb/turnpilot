@@ -29,11 +29,11 @@ TURRET_TOOLS = {
     5: dict(name="Finish turning VCGT (N)", type="turning_finish", insert_code="VCGT 160404", grade="H10",
             iso_group="N", vc_min=300, vc_max=600, f_min=0.05, f_max=0.2, ap_min=0.2, ap_max=1.5),
     6: dict(name="Grooving 3 mm", type="grooving", insert_code="GRV 3.0", grade="P25",
-            iso_group="PN", vc_min=90, vc_max=160, f_min=0.05, f_max=0.12, ap_min=3.0, ap_max=3.0),
+            iso_group="PN", vc_min=90, vc_max=160, f_min=0.05, f_max=0.12, ap_min=3.0, ap_max=3.0, insert_width=3.0),
     7: dict(name="Threading 60 deg", type="threading", insert_code="16ER AG60", grade="P25",
             iso_group="PMN", vc_min=80, vc_max=150, f_min=0.5, f_max=3.0, ap_min=0.05, ap_max=0.2),
     8: dict(name="Parting 3 mm", type="parting", insert_code="PRT 3.0", grade="P25",
-            iso_group="PMN", vc_min=80, vc_max=150, f_min=0.05, f_max=0.12, ap_min=3.0, ap_max=3.0),
+            iso_group="PMN", vc_min=80, vc_max=150, f_min=0.05, f_max=0.12, ap_min=3.0, ap_max=3.0, insert_width=3.0),
     9: dict(name="Boring bar CCMT", type="boring", insert_code="CCMT 09T304", grade="P25",
             iso_group="PMN", vc_min=120, vc_max=220, f_min=0.08, f_max=0.25, ap_min=0.2, ap_max=2.0),
 }

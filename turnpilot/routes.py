@@ -99,6 +99,7 @@ def add_tool():
                 insert_code=form.get("insert_code", "").strip(),
                 grade=form.get("grade", "").strip(),
                 iso_group=iso_group,
+                insert_width=_number(form, "insert_width"),
                 **values,
             )
         )
@@ -159,6 +160,12 @@ def add_feature(job_id):
         pitch = _number(form, "pitch", required=feature_type == "thread")
         if diameter and diameter > job.blank_diameter and feature_type != "bore":
             raise FormError("Feature diameter is larger than the blank diameter")
+        start_diameter = _number(form, "start_diameter") if feature_type == "groove" else None
+        if start_diameter is not None:
+            if start_diameter > job.blank_diameter:
+                raise FormError("Groove start diameter is larger than the blank diameter")
+            if diameter is not None and start_diameter <= diameter:
+                raise FormError("Groove start diameter must be larger than the groove bottom diameter")
         job.features.append(
             Feature(
                 type=feature_type,
@@ -167,6 +174,7 @@ def add_feature(job_id):
                 tolerance=form.get("tolerance", "").strip() or None,
                 ra=_number(form, "ra"),
                 pitch=pitch,
+                start_diameter=start_diameter,
             )
         )
         db.session.commit()
