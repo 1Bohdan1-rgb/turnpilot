@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Review drawing{% endblock %}
+{% block content %}
+<h1>Check the drawing data</h1>
+<p class="muted">
+  {{ extraction.original_filename }} · read by {{ extraction.model }} ·
+  nothing is saved as a job until you press <strong>Confirm</strong>.
+</p>
+
+{% if data and data.warnings %}
+<div class="flash flash-error">
+  <strong>Model warnings:</strong>
+  <ul>{% for w in data.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="review-layout">
+  <figure class="card drawing-preview">
+    <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='sent') }}" target="_blank">
+      <img src="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='sent') }}" alt="Drawing as sent to the model">
+    </a>
+    <figcaption class="muted small">
+      Image sent to the model ·
+      <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='original') }}" target="_blank">original file</a>
+    </figcaption>
+  </figure>
+
+  <form method="post" action="{{ url_for('main.confirm_extraction', extraction_id=extraction.id) }}" class="review-form">
+    <div class="card grid-form">
+      <label>Job name <input name="name" value="{{ values.name }}" required></label>
+      <label>Material
+        <select name="material_id" required>
+          <option value="">— select —</option>
+          {% for m in materials %}
+            <option value="{{ m.id }}" {% if values.material_id == m.id %}selected{% endif %}>{{ m.name }} (ISO {{ m.iso_group }})</option>
+          {% endfor %}
+        </select>
+        <span class="small">On drawing: {{ data.material if data and data.material else "not found" }}</span>
+      </label>
+      <label>Quantity <input name="quantity" type="number" min="1" value="{{ values.quantity }}"></label>
+      <label>Blank Ø, mm
+        {% if values.blank_diameter_suggested %}<span class="badge badge-suggested">suggested</span>{% endif %}
+        <input name="blank_diameter" type="number" step="any" min="0" value="{{ values.blank_diameter if values.blank_diameter is not none else '' }}" required
+               {% if values.blank_diameter_suggested %}class="suggested"{% endif %}>
+      </label>
+      <label>Blank length, mm
+        {% if values.blank_length_suggested %}<span class="badge badge-suggested">suggested</span>{% endif %}
+        <input name="blank_length" type="number" step="any" min="0" value="{{ values.blank_length if values.blank_length is not none else '' }}" required
+               {% if values.blank_length_suggested %}class="suggested"{% endif %}>
+      </label>
+      <input type="hidden" name="blank_diameter_suggested" value="{{ '1' if values.blank_diameter_suggested else '' }}">
+      <input type="hidden" name="blank_length_suggested" value="{{ '1' if values.blank_length_suggested else '' }}">
+      {% if values.blank_diameter_suggested or values.blank_length_suggested %}
+      <p class="muted small">
+        The drawing has no blank size. Suggested: largest Ø + {{ config.BLANK_DIAMETER_ALLOWANCE_MM|round(1) }} mm rounded up to the
+        next bar size; length = overall length + {{ config.BLANK_FACING_ALLOWANCE_MM|round(1) }} mm facing + parting tool width.
+        {% for n in values.blank_notes %}<br>{{ n }}{% endfor %}
+      </p>
+      {% endif %}
+    </div>
+
+    <h2>Features</h2>
+    <p class="muted small">
+      Rows with low confidence (&lt; {{ config.LOW_CONFIDENCE_THRESHOLD }}) are highlighted. Untick a row to leave it out.
+      Groove: Ø = bottom, Start Ø = diameter it is cut from, Length = width.
+    </p>
+    <input type="hidden" name="feature_count" value="{{ values.rows|length }}">
+    <div class="table-wrap">
+    <table class="card review-table">
+      <thead>
+        <tr><th>Use</th><th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Ra</th><th>Pitch</th><th>Conf.</th></tr>
+      </thead>
+      <tbody>
+      {% for row in values.rows %}
+        {% set i = loop.index0 %}
+        <tr class="{% if row.low_confidence %}low-confidence{% endif %}">
+          <td><input type="checkbox" name="f{{ i }}-include" value="1" {% if row.include %}checked{% endif %}></td>
+          <td>
+            <select name="f{{ i }}-type">
+              {% for t in feature_types %}<option {% if t == row.type %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+          </td>
+          {% for key in ("diameter", "start_diameter", "length") %}
+          <td><input name="f{{ i }}-{{ key }}" type="number" step="any" min="0" value="{{ row[key] if row[key] is not none else '' }}"></td>
+          {% endfor %}
+          <td><input name="f{{ i }}-tolerance" value="{{ row.tolerance or '' }}" size="8"></td>
+          <td><input name="f{{ i }}-ra" type="number" step="any" min="0" value="{{ row.ra if row.ra is not none else '' }}"></td>
+          <td><input name="f{{ i }}-pitch" type="number" step="any" min="0" value="{{ row.pitch if row.pitch is not none else '' }}"></td>
+          <td>
+            <input type="hidden" name="f{{ i }}-confidence" value="{{ row.confidence if row.confidence is not none else '' }}">
+            {{ "%.2f"|format(row.confidence|float) if row.confidence is not none else "—" }}
+          </td>
+        </tr>
+        {% if row.grinding %}
+        <tr class="row-warning"><td></td><td colspan="8"><div class="warning">⚠ {{ grinding_warning }}</div></td></tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    <div class="card">
+      <label class="inline"><input type="checkbox" name="add_face" value="1" {% if values.add_face %}checked{% endif %}> Add facing</label>
+      <label class="inline"><input type="checkbox" name="add_parting" value="1" {% if values.add_parting %}checked{% endif %}> Add parting</label>
+      <p class="muted small">Drawings rarely show facing and parting; they are added as features unless unticked.</p>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="primary">Confirm</button>
+      <a href="{{ url_for('main.upload_drawing') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

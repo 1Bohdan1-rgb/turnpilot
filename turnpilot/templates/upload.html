@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Upload drawing{% endblock %}
+{% block content %}
+<h1>New job from a drawing</h1>
+<p class="muted">
+  Upload a PNG, JPG or PDF drawing (up to {{ (config.MAX_CONTENT_LENGTH / 1048576)|round(0)|int }} MB).
+  Claude reads it, then you check every value before the job is created.
+  For a PDF only the first page is read.
+</p>
+
+<form method="post" enctype="multipart/form-data" class="card upload-form">
+  <input type="file" name="drawing" accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf" required>
+  <button type="submit" class="primary">Read drawing</button>
+  <span class="muted small">Reading takes up to a minute.</span>
+</form>
+
+{% if recent %}
+<h2>Recent uploads</h2>
+<table class="card">
+  <thead><tr><th>Uploaded (UTC)</th><th>File</th><th>Model</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for ex in recent %}
+    <tr>
+      <td>{{ ex.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td><a href="{{ url_for('main.extraction_file', extraction_id=ex.id, which='original') }}">{{ ex.original_filename }}</a></td>
+      <td>{{ ex.model or "" }}</td>
+      <td>
+        <span class="badge badge-{{ ex.status }}">{{ ex.status }}</span>
+        {% if ex.error %}<div class="muted small">{{ ex.error[:160] }}</div>{% endif %}
+      </td>
+      <td>
+        {% if ex.status == "extracted" %}<a href="{{ url_for('main.review_extraction', extraction_id=ex.id) }}">Review</a>
+        {% elif ex.job_id %}<a href="{{ url_for('main.job_detail', job_id=ex.job_id) }}">Job</a>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

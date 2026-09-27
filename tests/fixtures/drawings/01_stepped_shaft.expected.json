@@ -1,0 +1,37 @@
+{
+  "material": "Steel 45 (C45)",
+  "blank_diameter": null,
+  "blank_length": null,
+  "overall_length": 120,
+  "quantity": 20,
+  "features": [
+    {
+      "type": "od_turn",
+      "diameter": 40,
+      "start_diameter": null,
+      "length": 30,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null
+    },
+    {
+      "type": "od_turn",
+      "diameter": 32,
+      "start_diameter": null,
+      "length": 50,
+      "tolerance": null,
+      "ra": 3.2,
+      "pitch": null
+    },
+    {
+      "type": "od_turn",
+      "diameter": 25,
+      "start_diameter": null,
+      "length": 40,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null
+    }
+  ],
+  "warnings": []
+}

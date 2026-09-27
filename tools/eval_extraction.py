@@ -1,0 +1,263 @@
+"""Measure drawing extraction accuracy against the expected answers. Uses the REAL API and costs money.
+
+Runs every drawing in tests/fixtures/drawings/ in three variants: clean PNG, clean PDF and the
+"photo" JPG, compares the result with <name>.expected.json and reports accuracy separately for
+clean and photo drawings. Output: a table in the console and docs/eval_results.md.
+
+Not part of pytest. Usage:
+    python tools/eval_extraction.py            # asks for confirmation first
+    python tools/eval_extraction.py --yes      # no confirmation
+    python tools/eval_extraction.py --only 02_threaded_shaft --variants png photo
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from turnpilot import drawing_reader  # noqa: E402
+from turnpilot.extraction_schema import DrawingData  # noqa: E402
+from turnpilot.services import MATERIAL_ALIASES, match_material  # noqa: E402
+
+FIXTURES = ROOT / "tests" / "fixtures" / "drawings"
+RESULTS_MD = ROOT / "docs" / "eval_results.md"
+
+# variant -> (file suffix, file type, group)
+VARIANTS = {
+    "png": (".png", "png", "clean"),
+    "pdf": (".pdf", "pdf", "clean"),
+    "photo": (".photo.jpg", "jpeg", "photo"),
+}
+METRICS = ("diameter", "length", "tolerance", "ra", "material")
+NUMBER_TOLERANCE = 0.01  # mm / µm
+
+
+@dataclass
+class Score:
+    correct: int = 0
+    total: int = 0
+
+    def add(self, ok: bool):
+        self.correct += int(ok)
+        self.total += 1
+
+    @property
+    def pct(self):
+        return 100 * self.correct / self.total if self.total else None
+
+
+@dataclass
+class RunResult:
+    drawing: str
+    variant: str
+    group: str
+    scores: dict = field(default_factory=lambda: {m: Score() for m in METRICS})
+    missing: int = 0
+    extra: int = 0
+    error: str | None = None
+    seconds: float = 0.0
+    tokens: tuple[int, int] = (0, 0)
+    mismatches: list[str] = field(default_factory=list)
+
+
+def _same_number(a, b):
+    if a is None or b is None:
+        return a is None and b is None
+    return abs(a - b) <= NUMBER_TOLERANCE
+
+
+def _norm_tolerance(value):
+    if value is None:
+        return None
+    return value.replace(" ", "").replace("+/-", "±").replace("−", "-")
+
+
+def _match_features(expected, predicted):
+    """Pair each expected feature with the unused predicted feature of the same type and closest diameter."""
+    unused = list(predicted)
+    pairs = []
+    for exp in expected:
+        candidates = [p for p in unused if p.type == exp.type]
+        if not candidates:
+            pairs.append((exp, None))
+            continue
+        best = min(candidates, key=lambda p: abs((p.diameter or 0) - (exp.diameter or 0)))
+        unused.remove(best)
+        pairs.append((exp, best))
+    return pairs, unused
+
+
+def _material_key(text):
+    materials = [SimpleNamespace(name=name) for name in MATERIAL_ALIASES]
+    found = match_material(text, materials)
+    return found.name if found else (text or "").strip().lower() or None
+
+
+def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
+    pairs, extra = _match_features(expected.features, predicted.features)
+    result.extra = len(extra)
+    for exp, got in pairs:
+        label = f"{exp.type} Ø{exp.diameter:g}" if exp.diameter else exp.type
+        if got is None:
+            result.missing += 1
+            result.mismatches.append(f"missing {label}")
+        # Diameters and lengths: counted where the drawing has a value.
+        for metric in ("diameter", "length"):
+            want = getattr(exp, metric)
+            if want is not None:
+                ok = got is not None and _same_number(getattr(got, metric), want)
+                result.scores[metric].add(ok)
+                if got is not None and not ok:
+                    result.mismatches.append(f"{label}: {metric} {getattr(got, metric)} (expected {want:g})")
+        # Tolerance and Ra: counted for every feature, so an invented value counts as wrong.
+        tol_ok = got is not None and _norm_tolerance(got.tolerance) == _norm_tolerance(exp.tolerance)
+        result.scores["tolerance"].add(tol_ok)
+        if got is not None and not tol_ok:
+            result.mismatches.append(f"{label}: tolerance {got.tolerance!r} (expected {exp.tolerance!r})")
+        ra_ok = got is not None and _same_number(got.ra, exp.ra)
+        result.scores["ra"].add(ra_ok)
+        if got is not None and not ra_ok:
+            result.mismatches.append(f"{label}: Ra {got.ra} (expected {exp.ra})")
+    for p in extra:
+        result.mismatches.append(f"extra {p.type} Ø{p.diameter}")
+    material_ok = _material_key(predicted.material) == _material_key(expected.material)
+    result.scores["material"].add(material_ok)
+    if not material_ok:
+        result.mismatches.append(f"material {predicted.material!r} (expected {expected.material!r})")
+
+
+def run_one(client, model, name, variant) -> RunResult:
+    suffix, file_type, group = VARIANTS[variant]
+    result = RunResult(name, variant, group)
+    expected = DrawingData.model_validate_json((FIXTURES / f"{name}.expected.json").read_text(encoding="utf-8"))
+    start = time.monotonic()
+    try:
+        image = drawing_reader.prepare_image((FIXTURES / f"{name}{suffix}").read_bytes(), file_type)
+        extraction = drawing_reader.extract_drawing(image, client=client, model=model)
+        usage = extraction.raw.get("usage", {})
+        result.tokens = (usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+        score(expected, extraction.data, result)
+    except Exception as exc:  # count the whole drawing as wrong, keep going
+        result.error = f"{type(exc).__name__}: {exc}"[:300]
+        for m in METRICS:
+            n = len(expected.features) if m in ("tolerance", "ra") else (
+                1 if m == "material" else sum(getattr(f, m) is not None for f in expected.features))
+            result.scores[m].total += n
+    result.seconds = time.monotonic() - start
+    return result
+
+
+def aggregate(results, group):
+    totals = {m: Score() for m in METRICS}
+    for r in results:
+        if r.group == group:
+            for m in METRICS:
+                totals[m].correct += r.scores[m].correct
+                totals[m].total += r.scores[m].total
+    return totals
+
+
+def _pct(score: Score):
+    return "—" if score.pct is None else f"{score.pct:.0f}% ({score.correct}/{score.total})"
+
+
+def summary_table(results):
+    header = "| Group | " + " | ".join(m.capitalize() if m != "ra" else "Ra" for m in METRICS) + " | Missing | Extra | Errors |"
+    lines = [header, "|" + "---|" * (len(METRICS) + 4)]
+    for group in ("clean", "photo"):
+        runs = [r for r in results if r.group == group]
+        if not runs:
+            continue
+        totals = aggregate(results, group)
+        lines.append(
+            f"| {group} ({len(runs)} runs) | " + " | ".join(_pct(totals[m]) for m in METRICS)
+            + f" | {sum(r.missing for r in runs)} | {sum(r.extra for r in runs)} | {sum(bool(r.error) for r in runs)} |"
+        )
+    return "\n".join(lines)
+
+
+def detail_table(results):
+    lines = ["| Drawing | Variant | " + " | ".join(METRICS) + " | Time, s | Tokens in/out |", "|" + "---|" * (len(METRICS) + 4)]
+    for r in results:
+        cells = " | ".join("—" if r.scores[m].pct is None else f"{r.scores[m].pct:.0f}%" for m in METRICS)
+        lines.append(f"| {r.drawing} | {r.variant} | {cells} | {r.seconds:.1f} | {r.tokens[0]}/{r.tokens[1]} |")
+    return "\n".join(lines)
+
+
+def write_markdown(results, model):
+    problems = [f"- **{r.drawing} / {r.variant}**: " + (r.error or "; ".join(r.mismatches))
+                for r in results if r.error or r.mismatches]
+    text = f"""# Drawing extraction accuracy
+
+Generated by `tools/eval_extraction.py` on {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC with model `{model}`.
+
+Test drawings: `tests/fixtures/drawings/` (made by `tools/generate_drawings.py`).
+*clean* = PNG and PDF renders, *photo* = rotated, downscaled, noisy JPEG.
+
+Scoring: expected features are paired with extracted ones of the same type (closest diameter).
+Diameter and length count only where the drawing has a value; tolerance and Ra count for every
+feature, so an invented tolerance or Ra is an error; a missing feature is wrong on every metric.
+Numbers match within {NUMBER_TOLERANCE}.
+
+## Summary
+
+{summary_table(results)}
+
+## Per drawing
+
+{detail_table(results)}
+
+## Differences
+
+{chr(10).join(problems) if problems else "None."}
+"""
+    RESULTS_MD.parent.mkdir(parents=True, exist_ok=True)
+    RESULTS_MD.write_text(text, encoding="utf-8")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    parser.add_argument("--only", nargs="*", help="drawing names (default: all)")
+    parser.add_argument("--variants", nargs="*", choices=list(VARIANTS), default=list(VARIANTS))
+    parser.add_argument("--model", default=None, help="overrides ANTHROPIC_MODEL")
+    args = parser.parse_args(argv)
+
+    names = sorted(p.name.removesuffix(".expected.json") for p in FIXTURES.glob("*.expected.json"))
+    if args.only:
+        names = [n for n in names if n in args.only]
+    runs = [(n, v) for n in names for v in args.variants]
+    client = drawing_reader.make_client()  # loads .env
+    model = args.model or os.environ.get("ANTHROPIC_MODEL") or drawing_reader.DEFAULT_MODEL
+
+    print(f"{len(runs)} API calls with model {model} (roughly 5k input + 1k output tokens each).")
+    if not args.yes and input("Continue? [y/N] ").strip().lower() != "y":
+        print("Cancelled.")
+        return 1
+
+    results = []
+    for name, variant in runs:
+        result = run_one(client, model, name, variant)
+        status = result.error or ", ".join(f"{m} {_pct(result.scores[m])}" for m in METRICS)
+        print(f"  {name:22} {variant:6} {result.seconds:5.1f}s  {status}")
+        results.append(result)
+
+    print()
+    print(summary_table(results))
+    write_markdown(results, model)
+    print(f"\nWritten to {RESULTS_MD.relative_to(ROOT)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

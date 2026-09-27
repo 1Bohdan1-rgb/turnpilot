@@ -1,0 +1,180 @@
+"""drawing_reader with a mocked API client: no network, no cost."""
+
+import pymupdf
+import pytest
+from conftest import FIXTURES, FakeClient, feature, make_response, part
+
+from turnpilot import drawing_reader
+from turnpilot.drawing_reader import ExtractionError, detect_file_type, extract_drawing, parse_response, prepare_image
+from turnpilot.extraction_schema import RECORD_PART_TOOL, DrawingData
+
+VALID = part(
+    [
+        feature("od_turn", 30, length=60, ra=1.6),
+        feature("groove", 17, start_diameter=20, length=3, confidence=0.55),
+        feature("thread", 20, length=25, tolerance="6g", pitch=1.5),
+    ],
+    overall_length=90,
+    quantity=50,
+)
+
+
+def _png_image():
+    return prepare_image((FIXTURES / "01_stepped_shaft.png").read_bytes(), "png")
+
+
+# --- parsing the response -------------------------------------------------------
+
+def test_parse_valid_response():
+    data = parse_response(make_response(VALID))
+    assert data.material == "Steel 45 (C45)"
+    assert data.quantity == 50
+    assert [f.type for f in data.features] == ["od_turn", "groove", "thread"]
+    groove = data.features[1]
+    assert (groove.diameter, groove.start_diameter, groove.length, groove.confidence) == (17, 20, 3, 0.55)
+    assert data.features[2].pitch == 1.5
+
+
+def test_missing_values_stay_null():
+    data = parse_response(make_response(VALID))
+    assert data.blank_diameter is None and data.blank_length is None
+    od = data.features[0]
+    assert od.tolerance is None and od.pitch is None and od.start_diameter is None
+
+
+def test_empty_strings_become_null():
+    raw = part([feature("od_turn", 30, length=60, tolerance="  ")], material="")
+    data = parse_response(make_response(raw))
+    assert data.material is None
+    assert data.features[0].tolerance is None
+
+
+def test_text_before_tool_call_is_ignored():
+    data = parse_response(make_response(VALID, text="Reading the drawing..."))
+    assert len(data.features) == 3
+
+
+@pytest.mark.parametrize(
+    "bad_feature, message",
+    [
+        (feature("keyway", 20), "type"),
+        (feature("od_turn", -30, length=10), "diameter"),
+        (feature("od_turn", 30, pitch=1.5), "pitch is only valid for threads"),
+        (feature("groove", 20, start_diameter=18, length=3), "start_diameter must be larger"),
+        (feature("od_turn", 30, confidence=1.7), "confidence"),
+    ],
+)
+def test_invalid_values_are_rejected(bad_feature, message):
+    with pytest.raises(ExtractionError) as err:
+        parse_response(make_response(part([bad_feature])))
+    assert message in str(err.value)
+    assert err.value.raw["content"][0]["name"] == "record_part"  # raw response kept for the audit log
+
+
+def test_unknown_field_is_rejected():
+    raw = part([feature("od_turn", 30)])
+    raw["surface_treatment"] = "anodize"
+    with pytest.raises(ExtractionError):
+        parse_response(make_response(raw))
+
+
+def test_no_tool_call_is_an_error():
+    with pytest.raises(ExtractionError, match="no record_part call"):
+        parse_response(make_response(None, stop_reason="end_turn", text="I cannot read this."))
+
+
+def test_refusal_is_an_error():
+    with pytest.raises(ExtractionError, match="declined"):
+        parse_response(make_response(None, stop_reason="refusal"))
+
+
+def test_truncated_response_is_an_error():
+    with pytest.raises(ExtractionError, match="max_tokens"):
+        parse_response(make_response(VALID, stop_reason="max_tokens"))
+
+
+# --- the request sent to the API -------------------------------------------------
+
+def test_request_uses_strict_tool_and_image(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+    client = FakeClient(make_response(VALID))
+    result = extract_drawing(_png_image(), client=client)
+
+    (call,) = client.messages.calls
+    assert call["model"] == "claude-sonnet-5"  # default model
+    assert call["tools"] == [RECORD_PART_TOOL]
+    assert RECORD_PART_TOOL["strict"] is True
+    assert call["tool_choice"] == {"type": "auto"}
+    image_block, text_block = call["messages"][0]["content"]
+    assert image_block["type"] == "image" and image_block["source"]["media_type"] == "image/png"
+    assert text_block["type"] == "text"
+    assert result.model == "claude-sonnet-5"
+    assert result.raw["usage"]["input_tokens"] == 1500
+
+
+def test_model_from_environment(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-opus-5")
+    client = FakeClient(make_response(VALID))
+    assert extract_drawing(_png_image(), client=client).model == "claude-opus-5"
+    assert client.messages.calls[0]["model"] == "claude-opus-5"
+
+
+def test_schema_marks_every_field_required():
+    schema = RECORD_PART_TOOL["input_schema"]
+    assert set(schema["required"]) == set(schema["properties"])
+    item = schema["properties"]["features"]["items"]
+    assert set(item["required"]) == set(item["properties"])
+    assert schema["additionalProperties"] is False and item["additionalProperties"] is False
+
+
+# --- file handling -----------------------------------------------------------------
+
+def test_detect_file_type():
+    assert detect_file_type((FIXTURES / "01_stepped_shaft.png").read_bytes()) == "png"
+    assert detect_file_type((FIXTURES / "01_stepped_shaft.photo.jpg").read_bytes()) == "jpeg"
+    assert detect_file_type((FIXTURES / "01_stepped_shaft.pdf").read_bytes()) == "pdf"
+    assert detect_file_type(b"hello, not a drawing") is None
+
+
+def test_pdf_is_converted_to_png():
+    image = prepare_image((FIXTURES / "02_threaded_shaft.pdf").read_bytes(), "pdf")
+    assert image.media_type == "image/png"
+    assert image.data.startswith(b"\x89PNG")
+    assert max(image.width, image.height) == drawing_reader.MAX_LONG_EDGE_PX
+
+
+def test_small_jpeg_is_sent_unchanged():
+    data = (FIXTURES / "02_threaded_shaft.photo.jpg").read_bytes()
+    image = prepare_image(data, "jpeg")
+    assert image.data == data and image.media_type == "image/jpeg"
+
+
+def test_large_image_is_downscaled():
+    big = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 5000, 400), False)
+    big.clear_with(255)
+    image = prepare_image(big.tobytes("png"), "png")
+    assert max(image.width, image.height) == drawing_reader.MAX_LONG_EDGE_PX
+    assert any("downscaled" in n for n in image.notes)
+
+
+def test_broken_pdf_is_an_error():
+    with pytest.raises(ExtractionError, match="Cannot open"):
+        prepare_image(b"%PDF-1.7 truncated garbage", "pdf")
+
+
+def test_notes_become_warnings():
+    image = _png_image()
+    image.notes.append("The PDF has 2 pages; only page 1 was read.")
+    result = extract_drawing(image, client=FakeClient(make_response(VALID)))
+    assert result.data.warnings[0].startswith("The PDF has 2 pages")
+
+
+# --- fixtures ------------------------------------------------------------------------
+
+@pytest.mark.parametrize("path", sorted(FIXTURES.glob("*.expected.json")), ids=lambda p: p.name)
+def test_expected_files_match_the_schema(path):
+    data = DrawingData.model_validate_json(path.read_text(encoding="utf-8"))
+    assert data.features and data.material
+    name = path.name.removesuffix(".expected.json")
+    for suffix in (".png", ".pdf", ".photo.jpg"):
+        assert (FIXTURES / f"{name}{suffix}").exists()

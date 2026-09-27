@@ -1,0 +1,5 @@
+# Only needed to regenerate the test drawings (tools/generate_drawings.py).
+-r requirements.txt
+matplotlib>=3.8
+pillow>=10.0
+numpy>=1.26

@@ -5,12 +5,13 @@
 <p class="muted">
   {{ job.material.name }} (ISO {{ job.material.iso_group }}) · qty {{ job.quantity }} ·
   blank Ø{{ job.blank_diameter|round(2) }} × {{ job.blank_length|round(2) }} mm
+  {% if job.extraction %}· created from drawing <a href="{{ url_for('main.extraction_file', extraction_id=job.extraction.id, which='original') }}" target="_blank">{{ job.extraction.original_filename }}</a>{% endif %}
 </p>
 
 <h2>Features</h2>
 {% if job.active_features %}
 <table class="card">
-  <thead><tr><th>#</th><th>Type</th><th>Ø, mm</th><th>Length, mm</th><th>Tolerance</th><th>Ra, µm</th><th>Pitch, mm</th><th>Groove start Ø, mm</th><th></th></tr></thead>
+  <thead><tr><th>#</th><th>Type</th><th>Ø, mm</th><th>Length, mm</th><th>Tolerance</th><th>Ra, µm</th><th>Pitch, mm</th><th>Groove start Ø, mm</th><th>Conf.</th><th></th></tr></thead>
   <tbody>
   {% for f in job.active_features %}
     <tr>
@@ -22,6 +23,7 @@
       <td>{{ f.ra if f.ra is not none else "" }}</td>
       <td>{{ f.pitch if f.pitch is not none else "" }}</td>
       <td>{{ f.start_diameter if f.start_diameter is not none else "" }}</td>
+      <td>{{ "%.2f"|format(f.confidence) if f.confidence is not none else "" }}</td>
       <td>
         <form method="post" action="{{ url_for('main.delete_feature', job_id=job.id, feature_id=f.id) }}">
           <button class="link danger" type="submit">Delete</button>

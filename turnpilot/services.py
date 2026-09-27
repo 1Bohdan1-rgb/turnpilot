@@ -1,7 +1,29 @@
-"""Glue between the database models and the pure planner."""
+"""Glue between the database models, the pure planner and the drawing reader."""
 
-from . import planner
-from .models import Edit, Machine, Operation, TurretSlot, db
+import hashlib
+import json
+import os
+import re
+import uuid
+
+from werkzeug.utils import secure_filename
+
+from . import drawing_reader, planner
+from .extraction_schema import DrawingData
+from .models import DrawingExtraction, Edit, Machine, Operation, TurretSlot, db
+
+# Extra names a material may appear under on a drawing (compared after normalization).
+MATERIAL_ALIASES = {
+    "Steel 45 (C45)": ("steel 45", "c45", "c45e", "1045", "ст45", "сталь 45"),
+    "AISI 304": ("aisi 304", "304", "1.4301", "x5crni18-10", "08х18н10"),
+    "Aluminium 6061": ("aluminium 6061", "aluminum 6061", "6061", "en aw-6061", "almg1sicu"),
+}
+
+FILE_TYPE_BY_EXTENSION = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "pdf": "pdf"}
+
+
+class UploadError(ValueError):
+    pass
 
 
 def get_machine():
@@ -33,7 +55,7 @@ def job_spec(job):
     features = tuple(
         planner.FeatureSpec(
             id=f.id, type=f.type, diameter=f.diameter, length=f.length, ra=f.ra, pitch=f.pitch,
-            start_diameter=f.start_diameter,
+            start_diameter=f.start_diameter, tolerance=f.tolerance,
         )
         for f in job.active_features
     )
@@ -133,3 +155,116 @@ def apply_operation_edit(op, machine, turret_position, vc, f, ap, passes):
         db.session.add_all(edits)
     db.session.commit()
     return edits
+
+
+# --- drawings ----------------------------------------------------------------
+
+def _normalize(text):
+    return re.sub(r"[\s\-_().,/]+", "", text.lower())
+
+
+def match_material(text, materials):
+    """Find the material named on a drawing among the known materials. None if unsure."""
+    if not text:
+        return None
+    wanted = _normalize(text)
+    for material in materials:
+        names = (material.name,) + MATERIAL_ALIASES.get(material.name, ())
+        if any(_normalize(name) and _normalize(name) in wanted for name in names):
+            return material
+    return None
+
+
+def parting_width(machine, default):
+    """Insert width of the first parting tool in the turret, or the configured default."""
+    for slot in machine.slots if machine else []:
+        if slot.tool and slot.tool.type == "parting" and slot.tool.insert_width:
+            return slot.tool.insert_width
+    return default
+
+
+def suggest_blank(data: DrawingData, machine, config):
+    specs = [
+        planner.FeatureSpec(id=None, type=f.type, diameter=f.diameter, length=f.length,
+                            start_diameter=f.start_diameter)
+        for f in data.features
+    ]
+    return planner.suggest_blank(
+        specs,
+        overall_length=data.overall_length,
+        bar_diameters=tuple(config["BAR_STOCK_DIAMETERS"]),
+        diameter_allowance=config["BLANK_DIAMETER_ALLOWANCE_MM"],
+        facing_allowance=config["BLANK_FACING_ALLOWANCE_MM"],
+        parting_width=parting_width(machine, config["DEFAULT_PARTING_WIDTH_MM"]),
+    )
+
+
+def drawings_dir(instance_path):
+    path = os.path.join(instance_path, "drawings")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def check_upload(filename, data, allowed_extensions):
+    """Validate an uploaded drawing. Returns (safe_filename, file_type) or raises UploadError."""
+    safe_name = secure_filename(filename or "")
+    extension = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+    if extension not in allowed_extensions:
+        raise UploadError(f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}.")
+    if not data:
+        raise UploadError("The file is empty.")
+    file_type = drawing_reader.detect_file_type(data)
+    if file_type != FILE_TYPE_BY_EXTENSION[extension]:
+        raise UploadError(f"The file content is not a valid .{extension} file.")
+    return safe_name, file_type
+
+
+def read_drawing(filename, data, instance_path, config, client=None):
+    """Store an uploaded drawing, send it to the model and record everything in DrawingExtraction.
+
+    Always returns the DrawingExtraction row; on failure its status is "failed" and `error` says why.
+    Raises UploadError for files that are rejected before anything is stored.
+    """
+    safe_name, file_type = check_upload(filename, data, config["ALLOWED_DRAWING_EXTENSIONS"])
+    folder = drawings_dir(instance_path)
+    token = uuid.uuid4().hex
+    stored = f"{token}.{safe_name.rsplit('.', 1)[-1].lower()}"
+    with open(os.path.join(folder, stored), "wb") as f:
+        f.write(data)
+
+    extraction = DrawingExtraction(
+        original_filename=safe_name,
+        stored_filename=stored,
+        file_type=file_type,
+        size_bytes=len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
+        model=config["ANTHROPIC_MODEL"],
+        status="pending",
+    )
+    db.session.add(extraction)
+    db.session.commit()
+
+    try:
+        image = drawing_reader.prepare_image(data, file_type)
+        sent = f"{token}.sent.{'png' if image.media_type == 'image/png' else 'jpg'}"
+        with open(os.path.join(folder, sent), "wb") as f:
+            f.write(image.data)
+        extraction.sent_filename = sent
+        result = drawing_reader.extract_drawing(image, client=client, model=config["ANTHROPIC_MODEL"])
+    except drawing_reader.ExtractionError as exc:
+        extraction.status = "failed"
+        extraction.error = str(exc)
+        extraction.raw_response = json.dumps(exc.raw) if exc.raw is not None else None
+    except Exception as exc:  # API/network/auth errors: keep a record instead of a 500
+        extraction.status = "failed"
+        extraction.error = f"{type(exc).__name__}: {exc}"
+    else:
+        extraction.status = "extracted"
+        extraction.raw_response = json.dumps(result.raw)
+        extraction.parsed = result.data.model_dump_json()
+    db.session.commit()
+    return extraction
+
+
+def extraction_data(extraction):
+    return DrawingData.model_validate_json(extraction.parsed) if extraction.parsed else None

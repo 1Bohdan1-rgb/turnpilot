@@ -1,8 +1,21 @@
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from datetime import datetime, timezone
 
-from . import services
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    url_for,
+)
+
+from . import planner, services
 from .models import (
     FEATURE_TYPES,
+    DrawingExtraction,
     ISO_GROUPS,
     TOOL_TYPES,
     Feature,
@@ -110,26 +123,60 @@ def add_tool():
     return redirect(url_for("main.machine"))
 
 
+def _job_from_form(form):
+    """Build an unsaved Job from form fields or raise FormError."""
+    name = form.get("name", "").strip()
+    if not name:
+        raise FormError("Job name is required")
+    material = db.session.get(Material, _number(form, "material_id", int, required=True))
+    if material is None:
+        raise FormError("Unknown material")
+    job = Job(
+        name=name,
+        material=material,
+        quantity=_number(form, "quantity", int) or 1,
+        blank_diameter=_number(form, "blank_diameter", required=True),
+        blank_length=_number(form, "blank_length", required=True),
+    )
+    machine = services.get_machine()
+    if machine and job.blank_diameter > machine.max_diameter:
+        raise FormError(f"Blank diameter exceeds machine max diameter ({machine.max_diameter:g} mm)")
+    return job
+
+
+def _feature_from_form(form, blank_diameter, prefix=""):
+    """Build an unsaved Feature from form fields (optionally prefixed) or raise FormError."""
+    feature_type = form.get(prefix + "type")
+    if feature_type not in FEATURE_TYPES:
+        raise FormError("Unknown feature type")
+    diameter = _number(
+        form, prefix + "diameter", required=feature_type in ("od_turn", "bore", "groove", "thread", "chamfer")
+    )
+    pitch = _number(form, prefix + "pitch", required=feature_type == "thread")
+    if diameter and diameter > blank_diameter and feature_type != "bore":
+        raise FormError("Feature diameter is larger than the blank diameter")
+    start_diameter = _number(form, prefix + "start_diameter") if feature_type == "groove" else None
+    if start_diameter is not None:
+        if start_diameter > blank_diameter:
+            raise FormError("Groove start diameter is larger than the blank diameter")
+        if diameter is not None and start_diameter <= diameter:
+            raise FormError("Groove start diameter must be larger than the groove bottom diameter")
+    return Feature(
+        type=feature_type,
+        diameter=diameter,
+        length=_number(form, prefix + "length"),
+        tolerance=form.get(prefix + "tolerance", "").strip() or None,
+        ra=_number(form, prefix + "ra"),
+        pitch=pitch if feature_type == "thread" else None,
+        start_diameter=start_diameter,
+    )
+
+
 @bp.route("/jobs", methods=["GET", "POST"])
 def jobs():
     if request.method == "POST":
         try:
-            name = request.form.get("name", "").strip()
-            if not name:
-                raise FormError("Job name is required")
-            material = db.session.get(Material, _number(request.form, "material_id", int, required=True))
-            if material is None:
-                raise FormError("Unknown material")
-            job = Job(
-                name=name,
-                material=material,
-                quantity=_number(request.form, "quantity", int) or 1,
-                blank_diameter=_number(request.form, "blank_diameter", required=True),
-                blank_length=_number(request.form, "blank_length", required=True),
-            )
-            machine = services.get_machine()
-            if machine and job.blank_diameter > machine.max_diameter:
-                raise FormError(f"Blank diameter exceeds machine max diameter ({machine.max_diameter:g} mm)")
+            job = _job_from_form(request.form)
             db.session.add(job)
             db.session.commit()
             return redirect(url_for("main.job_detail", job_id=job.id))
@@ -151,32 +198,8 @@ def job_detail(job_id):
 @bp.route("/jobs/<int:job_id>/features", methods=["POST"])
 def add_feature(job_id):
     job = db.get_or_404(Job, job_id)
-    form = request.form
     try:
-        feature_type = form.get("type")
-        if feature_type not in FEATURE_TYPES:
-            raise FormError("Unknown feature type")
-        diameter = _number(form, "diameter", required=feature_type in ("od_turn", "bore", "groove", "thread", "chamfer"))
-        pitch = _number(form, "pitch", required=feature_type == "thread")
-        if diameter and diameter > job.blank_diameter and feature_type != "bore":
-            raise FormError("Feature diameter is larger than the blank diameter")
-        start_diameter = _number(form, "start_diameter") if feature_type == "groove" else None
-        if start_diameter is not None:
-            if start_diameter > job.blank_diameter:
-                raise FormError("Groove start diameter is larger than the blank diameter")
-            if diameter is not None and start_diameter <= diameter:
-                raise FormError("Groove start diameter must be larger than the groove bottom diameter")
-        job.features.append(
-            Feature(
-                type=feature_type,
-                diameter=diameter,
-                length=_number(form, "length"),
-                tolerance=form.get("tolerance", "").strip() or None,
-                ra=_number(form, "ra"),
-                pitch=pitch,
-                start_diameter=start_diameter,
-            )
-        )
+        job.features.append(_feature_from_form(request.form, job.blank_diameter))
         db.session.commit()
     except FormError as e:
         flash(str(e), "error")
@@ -260,3 +283,179 @@ def edit_operation(op_id):
             flash(str(e), "error")
     slots = [s for s in machine.slots if s.tool is not None]
     return render_template("operation_edit.html", op=op, slots=slots)
+
+
+# --- drawing upload and review --------------------------------------------------
+
+REVIEW_FIELDS = ("type", "diameter", "start_diameter", "length", "tolerance", "ra", "pitch", "confidence")
+
+
+def _to_float(value):
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def _decorate_row(row, threshold):
+    confidence = _to_float(row.get("confidence"))
+    row["low_confidence"] = confidence is not None and confidence < threshold
+    row["grinding"] = planner.needs_grinding(
+        row.get("tolerance") or None, _to_float(row.get("diameter")), _to_float(row.get("ra"))
+    )
+    return row
+
+
+def _review_values_from_extraction(extraction):
+    data = services.extraction_data(extraction)
+    materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
+    material = services.match_material(data.material, materials)
+    suggestion = services.suggest_blank(data, services.get_machine(), current_app.config)
+    threshold = current_app.config["LOW_CONFIDENCE_THRESHOLD"]
+    rows = [
+        _decorate_row({**{k: getattr(f, k) for k in REVIEW_FIELDS}, "include": True}, threshold)
+        for f in data.features
+    ]
+    blank_missing = data.blank_diameter is None or data.blank_length is None
+    return {
+        "name": extraction.original_filename.rsplit(".", 1)[0],
+        "material_id": material.id if material else None,
+        "quantity": data.quantity or 1,
+        # A blank written on the drawing wins; otherwise the suggestion, flagged as such.
+        "blank_diameter": data.blank_diameter or suggestion.diameter,
+        "blank_length": data.blank_length or suggestion.length,
+        "blank_diameter_suggested": data.blank_diameter is None and suggestion.diameter is not None,
+        "blank_length_suggested": data.blank_length is None and suggestion.length is not None,
+        "blank_notes": suggestion.notes if blank_missing else (),
+        "add_face": True,
+        "add_parting": True,
+        "rows": rows,
+    }
+
+
+def _review_values_from_form(form):
+    """Re-render the review form with what the user submitted (after a validation error)."""
+    threshold = current_app.config["LOW_CONFIDENCE_THRESHOLD"]
+    count = _number(form, "feature_count", int, positive=False) or 0
+    rows = []
+    for i in range(count):
+        row = {k: form.get(f"f{i}-{k}") or None for k in REVIEW_FIELDS}
+        row["include"] = bool(form.get(f"f{i}-include"))
+        rows.append(_decorate_row(row, threshold))
+    material_id = _to_float(form.get("material_id"))
+    return {
+        "name": form.get("name", ""),
+        "material_id": int(material_id) if material_id else None,
+        "quantity": form.get("quantity"),
+        "blank_diameter": form.get("blank_diameter"),
+        "blank_length": form.get("blank_length"),
+        "blank_diameter_suggested": form.get("blank_diameter_suggested") == "1",
+        "blank_length_suggested": form.get("blank_length_suggested") == "1",
+        "blank_notes": (),
+        "add_face": bool(form.get("add_face")),
+        "add_parting": bool(form.get("add_parting")),
+        "rows": rows,
+    }
+
+
+def _render_review(extraction, values, status=200):
+    materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
+    page = render_template(
+        "extraction_review.html",
+        extraction=extraction,
+        data=services.extraction_data(extraction),
+        values=values,
+        materials=materials,
+        feature_types=FEATURE_TYPES,
+        grinding_warning=planner.GRINDING_WARNING,
+    )
+    return page, status
+
+
+@bp.route("/jobs/upload", methods=["GET", "POST"])
+def upload_drawing():
+    if request.method == "POST":
+        upload = request.files.get("drawing")
+        if upload is None or not upload.filename:
+            flash("Choose a drawing file to upload.", "error")
+            return redirect(url_for("main.upload_drawing"))
+        try:
+            extraction = services.read_drawing(
+                upload.filename,
+                upload.read(),
+                current_app.instance_path,
+                current_app.config,
+                client=current_app.config.get("ANTHROPIC_CLIENT"),  # tests inject a fake client here
+            )
+        except services.UploadError as e:
+            flash(str(e), "error")
+            return redirect(url_for("main.upload_drawing"))
+        if extraction.status != "extracted":
+            flash(f"The drawing could not be read: {extraction.error}", "error")
+            return redirect(url_for("main.upload_drawing"))
+        return redirect(url_for("main.review_extraction", extraction_id=extraction.id))
+
+    recent = db.session.execute(
+        db.select(DrawingExtraction).order_by(DrawingExtraction.created_at.desc()).limit(10)
+    ).scalars().all()
+    return render_template("upload.html", recent=recent)
+
+
+@bp.route("/extractions/<int:extraction_id>/review")
+def review_extraction(extraction_id):
+    extraction = db.get_or_404(DrawingExtraction, extraction_id)
+    if extraction.status == "confirmed" and extraction.job_id:
+        return redirect(url_for("main.job_detail", job_id=extraction.job_id))
+    if extraction.status != "extracted":
+        abort(404)
+    return _render_review(extraction, _review_values_from_extraction(extraction))
+
+
+@bp.route("/extractions/<int:extraction_id>/confirm", methods=["POST"])
+def confirm_extraction(extraction_id):
+    extraction = db.get_or_404(DrawingExtraction, extraction_id)
+    if extraction.status == "confirmed" and extraction.job_id:
+        return redirect(url_for("main.job_detail", job_id=extraction.job_id))
+    if extraction.status != "extracted":
+        abort(400)
+
+    form = request.form
+    try:
+        job = _job_from_form(form)
+        features = [Feature(type="face")] if form.get("add_face") else []
+        for i in range(_number(form, "feature_count", int, positive=False) or 0):
+            if not form.get(f"f{i}-include"):
+                continue
+            try:
+                feature = _feature_from_form(form, job.blank_diameter, prefix=f"f{i}-")
+                feature.confidence = _number(form, f"f{i}-confidence", positive=False)
+            except FormError as e:
+                raise FormError(f"Feature {i + 1}: {e}") from None
+            features.append(feature)
+        if form.get("add_parting"):
+            features.append(Feature(type="parting"))
+        if not features:
+            raise FormError("Include at least one feature")
+    except FormError as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return _render_review(extraction, _review_values_from_form(form), status=400)
+
+    job.features = features
+    db.session.add(job)
+    extraction.job = job
+    extraction.status = "confirmed"
+    extraction.confirmed_at = datetime.now(timezone.utc)
+    db.session.commit()
+    flash("Job created from the drawing. Check the features and press Calculate.")
+    return redirect(url_for("main.job_detail", job_id=job.id))
+
+
+@bp.route("/extractions/<int:extraction_id>/drawing/<which>")
+def extraction_file(extraction_id, which):
+    """Serve the original upload or the image that was sent to the model."""
+    extraction = db.get_or_404(DrawingExtraction, extraction_id)
+    filename = {"original": extraction.stored_filename, "sent": extraction.sent_filename}.get(which)
+    if not filename:
+        abort(404)
+    return send_from_directory(services.drawings_dir(current_app.instance_path), filename)

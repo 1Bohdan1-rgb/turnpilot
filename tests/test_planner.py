@@ -365,3 +365,162 @@ def test_parting_to_inner_diameter(turret):
     assert PARTING_BORE_NOTE in op.notes
     assert "reduce feed ~50% for last 2 mm before breakthrough into bore" in op.notes
     assert PARTING_CENTER_NOTE not in op.notes
+
+
+# --- blank suggestion ----------------------------------------------------------------
+
+from turnpilot.planner import GRINDING_WARNING, iso_fit_grade, needs_grinding, suggest_blank, tolerance_band_mm  # noqa: E402
+
+BARS = (20, 22, 25, 28, 30, 32, 35, 36, 38, 40, 42, 45, 48, 50)
+
+
+def _suggest(features, overall_length=None, bars=BARS):
+    return suggest_blank(features, overall_length, bars, diameter_allowance=2.0, facing_allowance=2.0,
+                         parting_width=3.0)
+
+
+def test_blank_diameter_rounds_up_to_next_bar():
+    s = _suggest([FeatureSpec(1, "od_turn", diameter=40, length=30), FeatureSpec(2, "od_turn", diameter=32, length=50)])
+    assert s.diameter == 42  # 40 + 2 = 42, an exact bar size
+    s = _suggest([FeatureSpec(1, "od_turn", diameter=41, length=30)])
+    assert s.diameter == 45  # 41 + 2 = 43 -> next bar 45
+
+
+def test_blank_length_adds_facing_and_parting():
+    s = _suggest([FeatureSpec(1, "od_turn", diameter=30, length=60)], overall_length=90)
+    assert s.length == 95  # 90 + 2 facing + 3 parting width
+    assert s.notes == ()
+
+
+def test_blank_length_falls_back_to_sum_of_sections():
+    s = _suggest([FeatureSpec(1, "od_turn", diameter=40, length=30), FeatureSpec(2, "od_turn", diameter=32, length=50.5)])
+    assert s.length == 86  # 80.5 + 5 = 85.5 -> rounded up
+    assert any("sum of the OD sections" in n for n in s.notes)
+
+
+def test_blank_ignores_bores_and_uses_groove_start_diameter():
+    s = _suggest([
+        FeatureSpec(1, "bore", diameter=60, length=20),
+        FeatureSpec(2, "groove", diameter=30, start_diameter=35, length=3),
+        FeatureSpec(3, "od_turn", diameter=33, length=20),
+    ], overall_length=20)
+    assert s.diameter == 38  # groove start Ø35 + 2 = 37 -> 38; the Ø60 bore does not count
+
+
+def test_blank_larger_than_bar_list():
+    s = _suggest([FeatureSpec(1, "od_turn", diameter=49.5, length=10)], overall_length=10)
+    assert s.diameter is None
+    assert any("No bar size" in n for n in s.notes)
+
+
+def test_blank_without_dimensions():
+    s = _suggest([FeatureSpec(1, "face")])
+    assert s.diameter is None and s.length is None and len(s.notes) == 2
+
+
+# --- grinding warning ------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "tolerance, diameter, ra, expected",
+    [
+        ("h6", 30, None, False),
+        ("h5", 30, None, True),  # IT5
+        ("js4", 30, None, True),  # finer than IT5
+        ("H7", 30, 1.6, False),
+        (None, 30, 0.4, True),  # Ra <= 0.4
+        (None, 30, 0.2, True),
+        ("h6", 30, 0.8, False),
+        ("±0.004", 30, None, True),  # band 0.008 <= IT5 for Ø30 (0.009)
+        ("±0.005", 30, None, False),  # band 0.010 > 0.009
+        ("0/-0.011", 40, None, True),  # IT5 for Ø30-50 is 0.011
+        ("+0.02/-0.01", 30, None, False),
+        ("6g", 20, None, False),  # thread class is not a fit grade
+        ("M20x1.5-6g", 20, None, False),
+        (None, None, None, False),
+    ],
+)
+def test_needs_grinding(tolerance, diameter, ra, expected):
+    assert needs_grinding(tolerance, diameter, ra) is expected
+
+
+def test_tolerance_parsing():
+    assert iso_fit_grade("h6") == 6 and iso_fit_grade("H7") == 7 and iso_fit_grade("js5") == 5
+    assert iso_fit_grade("M20x1.5") is None and iso_fit_grade("±0.01") is None
+    assert tolerance_band_mm("±0.01") == 0.02
+    assert tolerance_band_mm("+0.02/-0.01") == 0.03
+    assert tolerance_band_mm("0.05") is None
+
+
+def test_grinding_warning_on_finish_operations_only(turret):
+    job = JobSpec("P", 60, 100, (
+        FeatureSpec(1, "od_turn", diameter=40, tolerance="h5"),
+        FeatureSpec(2, "od_turn", diameter=30, ra=0.4),
+        FeatureSpec(3, "od_turn", diameter=20, tolerance="h7", ra=1.6),
+    ))
+    ops = plan_job(job, turret, max_rpm=4000)
+    flagged = {(op.feature_id, op.mode) for op in ops if GRINDING_WARNING in op.warnings}
+    assert flagged == {(1, "finish"), (2, "finish")}
+
+
+def test_grinding_warning_kept_when_tool_is_missing(turret):
+    turret = [e for e in turret if e.tool.type != "turning_finish"]
+    job = JobSpec("P", 60, 100, (FeatureSpec(1, "od_turn", diameter=40, tolerance="h5"),))
+    finish = plan_job(job, turret, max_rpm=4000)[1]
+    assert finish.tool_id is None
+    assert GRINDING_WARNING in finish.warnings
+
+
+# --- OD under an external thread ----------------------------------------------------------
+
+from turnpilot.planner import THREAD_MAJOR_NOTE, thread_major_diameter  # noqa: E402
+
+
+def test_thread_major_diameter():
+    assert thread_major_diameter(20, 1.5) == 19.85
+    assert thread_major_diameter(12, 1.75) == 11.825
+    assert thread_major_diameter(20, 1.0) == 19.9
+
+
+def test_od_under_thread_turned_to_major_diameter(turret):
+    job = JobSpec("P", 40, 100, (
+        FeatureSpec(1, "od_turn", diameter=30, length=60),
+        FeatureSpec(2, "od_turn", diameter=20, length=30),
+        FeatureSpec(3, "thread", diameter=20, length=25, pitch=1.5),
+    ))
+    ops = plan_job(job, turret, max_rpm=4000)
+    rough20, finish20 = [op for op in ops if op.feature_id == 2]
+
+    assert finish20.ref_diameter == 19.85
+    assert f"{THREAD_MAJOR_NOTE}: Ø19.85 (nominal Ø20)" in finish20.notes
+    # roughing stock is taken down to the reduced diameter as well
+    stock = (40 - 19.85) / 2 - finish20.ap
+    assert rough20.ap * rough20.passes == pytest.approx(stock, abs=1e-2)
+    assert not any(THREAD_MAJOR_NOTE in n for n in rough20.notes)
+
+    # the plain Ø30 section and the thread itself are unchanged
+    finish30 = next(op for op in ops if op.feature_id == 1 and op.mode == "finish")
+    assert finish30.ref_diameter == 30
+    assert not any(THREAD_MAJOR_NOTE in n for n in finish30.notes)
+    thread = next(op for op in ops if op.tool_type == "threading")
+    assert thread.ref_diameter == 20
+
+
+def test_od_without_thread_keeps_nominal_diameter(turret):
+    job = JobSpec("P", 40, 100, (
+        FeatureSpec(1, "od_turn", diameter=20, length=30),
+        FeatureSpec(2, "thread", diameter=16, length=20, pitch=2.0),  # different diameter
+    ))
+    finish = next(op for op in plan_job(job, turret, max_rpm=4000) if op.mode == "finish")
+    assert finish.ref_diameter == 20
+    assert not any(THREAD_MAJOR_NOTE in n for n in finish.notes)
+
+
+def test_chamfer_still_merged_on_thread_diameter(turret):
+    job = JobSpec("P", 40, 100, (
+        FeatureSpec(1, "od_turn", diameter=20, length=30),
+        FeatureSpec(2, "chamfer", diameter=20, length=1),
+        FeatureSpec(3, "thread", diameter=20, length=25, pitch=1.5),
+    ))
+    finish = next(op for op in plan_job(job, turret, max_rpm=4000) if op.mode == "finish")
+    assert CHAMFER_NOTE in finish.notes
+    assert any(THREAD_MAJOR_NOTE in n for n in finish.notes)

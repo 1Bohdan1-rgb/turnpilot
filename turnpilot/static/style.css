@@ -111,3 +111,25 @@ tr.has-warning { background: #fffaf2; }
   main { padding: 8px 16px 32px; }
   .topbar { padding: 12px 16px; }
 }
+
+/* drawing upload and review */
+.upload-form { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.review-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }
+.drawing-preview { margin: 0; position: sticky; top: 12px; }
+.drawing-preview img { width: 100%; height: auto; display: block; border: 1px solid var(--border); }
+.review-table input { width: 80px; }
+.review-table td { vertical-align: middle; }
+tr.low-confidence { background: #fff1c2; }
+tr.low-confidence td:first-child { box-shadow: inset 4px 0 0 #d69e2e; }
+tr.row-warning td { border-top: none; padding-top: 0; }
+.badge-suggested { background: #e8f0fe; color: var(--accent); align-self: flex-start; }
+input.suggested { border-color: var(--accent); background: #f3f7ff; }
+.badge-extracted { background: #e8f0fe; color: var(--accent); }
+.badge-confirmed { background: #e3f5ea; color: var(--ok); }
+.badge-failed { background: var(--error-bg); color: #c0392b; }
+.flash ul { margin: 4px 0 0; padding-left: 20px; }
+
+@media (max-width: 900px) {
+  .review-layout { grid-template-columns: 1fr; }
+  .drawing-preview { position: static; }
+}

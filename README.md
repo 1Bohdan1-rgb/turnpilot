@@ -14,8 +14,9 @@ machine's max RPM, or a finishing feed that cannot reach the required surface ro
 TurnPilot works for one machine. The machine profile and the turret (T1..T12) are set up once.
 After that the user:
 
-1. creates a job (material, quantity, blank size);
-2. enters the part features: face, OD turning, groove, thread, bore, chamfer, parting;
+1. creates a job (material, quantity, blank size) by hand, or uploads a drawing and lets Claude
+   read it (see [Reading drawings](#reading-drawings-with-claude));
+2. enters or checks the part features: face, OD turning, groove, thread, bore, chamfer, parting;
 3. presses **Calculate**, and the planner proposes operations, tools and cutting data;
 4. approves or edits each operation. Every change is written to an edit log (old value, new value, time).
 
@@ -51,6 +52,12 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   pass thinner than `ap_min`, the whole depth is split into equal passes instead. A final spring
   pass follows. The table shows h and the number of passes; the infeed schedule is in the notes,
   together with "G97 constant RPM — required for threading".
+  The OD section under an external thread (an od_turn with the thread's nominal diameter) is
+  roughed and finished to `d - 0.1 * pitch` (Ø19.85 for M20x1.5), noted "major diameter for thread".
+  The feature keeps the nominal diameter from the drawing.
+- **Grinding check:** a finishing operation whose tolerance is IT5 or finer (fit grade such as `h5`,
+  or a numeric band within IT5 for the diameter, ISO 286) or whose Ra ≤ 0.4 µm gets the warning
+  "may require grinding — not guaranteed by turning".
 - **Spindle speed:** `n = 1000 * Vc / (pi * D)`, capped at the machine max RPM. Roughing uses the
   diameter before the pass (the blank diameter). Facing and parting are marked
   "G96 constant surface speed, capped at max RPM".
@@ -58,9 +65,66 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 > The seed cutting data are **placeholders** and have not been validated. Replace them with values
 > from your tool catalogue before real use.
 
+## Reading drawings with Claude
+
+**Upload drawing** (`/jobs/upload`) accepts PNG, JPG and PDF up to 10 MB. The file type is checked
+by extension *and* content, and the name is sanitized. For a PDF the first page is rendered to PNG
+(pymupdf); images larger than 2576 px on the long edge are downscaled.
+
+`turnpilot/drawing_reader.py` sends the image to Claude (model from `ANTHROPIC_MODEL`, default
+`claude-sonnet-5`) with one strict tool, `record_part`, whose JSON schema matches our models:
+material, blank size, overall length, quantity and features (type, diameter, start diameter,
+length, tolerance, Ra, pitch) with a confidence per feature, plus warnings. The model is told to
+use `null` for anything not visible on the drawing instead of guessing. The tool input is
+validated with pydantic (`turnpilot/extraction_schema.py`); invalid output is rejected.
+
+Nothing becomes a job until a person checks it. The review screen shows the drawing next to an
+editable form:
+
+- features with confidence below 0.7 are highlighted; model warnings are listed on top;
+- the material is matched to the materials list by name and common aliases;
+- if the drawing has no blank size, one is **suggested** (marked as such): largest external Ø +
+  2 mm rounded up to the next bar size from `BAR_STOCK_DIAMETERS` in `turnpilot/config.py`,
+  length = overall length + 2 mm facing + the parting tool width;
+- tolerances of IT5 or finer and Ra ≤ 0.4 get the grinding warning;
+- facing and parting are added unless unticked (drawings rarely show them).
+
+**Confirm** creates the job and its features; then the usual **Calculate**. For the audit trail
+every upload is kept in `DrawingExtraction`: the original file and the image sent to the model
+(`instance/drawings/`), the model name, the full raw API response, the validated result, errors,
+and the job it became.
+
+### Setup
+
+```bash
+copy .env.example .env           # Windows (cp on Linux / macOS), then set ANTHROPIC_API_KEY
+```
+
+### Test drawings and accuracy
+
+`tools/generate_drawings.py` (needs `pip install -r requirements-dev.txt`) draws four parts with
+matplotlib: a stepped shaft, a shaft with groove, chamfer and M20x1.5 thread, a bushing with a
+bore, and a shaft with h6/f7 fits and Ra 0.8/1.6. Each comes as PNG, PDF and a "photo" JPG (rotated
+1–3°, lower resolution, JPEG artefacts, noise), plus `<name>.expected.json` with the correct
+answer, all in `tests/fixtures/drawings/`.
+
+`tools/eval_extraction.py` runs all of them through the **real API** and reports the share of
+correct diameters, lengths, tolerances, Ra values and materials, separately for clean and photo
+drawings, in the console and in `docs/eval_results.md`. It costs money (12 API calls), asks for
+confirmation (`--yes` to skip) and is not part of pytest.
+
+```bash
+python tools/eval_extraction.py
+```
+
+pytest never calls the API: `tests/test_drawing_reader.py`, `tests/test_upload.py` and
+`tests/test_eval_scoring.py` use a fake client.
+
 ## Stack
 
-Python, Flask, SQLAlchemy (Flask-SQLAlchemy), Flask-Migrate (Alembic), SQLite, Jinja2 with plain CSS, pytest.
+Python, Flask, SQLAlchemy (Flask-SQLAlchemy), Flask-Migrate (Alembic), SQLite, Jinja2 with plain CSS,
+Anthropic Python SDK, pydantic, pymupdf, python-dotenv, pytest. matplotlib and Pillow for the
+test drawing generator only.
 
 ## Run
 
@@ -106,13 +170,18 @@ pytest
 turnpilot/
   __init__.py      app factory
   models.py        SQLAlchemy models
-  planner.py       pure planning logic
-  services.py      ORM <-> planner glue, edit logging
+  planner.py       pure planning logic (incl. blank suggestion, grinding check)
+  drawing_reader.py  Claude vision: image preparation, request, response validation
+  extraction_schema.py  record_part tool schema + pydantic models
+  config.py        settings: upload limit, model, bar sizes, allowances
+  services.py      ORM <-> planner glue, edit logging, drawing upload
   routes.py        pages
   seed.py          seed data and `seed` CLI command
   templates/, static/
 migrations/        Alembic migrations (Flask-Migrate)
-tests/             pytest suite
+tools/             generate_drawings.py, eval_extraction.py
+docs/              eval_results.md
+tests/             pytest suite; fixtures/drawings/ test drawings + expected answers
 ```
 
 ## Seed data

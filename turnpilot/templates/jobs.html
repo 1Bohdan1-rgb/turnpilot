@@ -4,6 +4,7 @@
 <h1>Jobs</h1>
 
 <h2>New job</h2>
+<p class="muted">Enter the job by hand, or <a href="{{ url_for('main.upload_drawing') }}">create it from a drawing</a>.</p>
 <form method="post" class="card grid-form">
   <label>Name <input name="name" required></label>
   <label>Material

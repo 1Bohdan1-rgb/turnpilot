@@ -1,0 +1,37 @@
+{
+  "material": "AISI 304",
+  "blank_diameter": 55,
+  "blank_length": 50,
+  "overall_length": 45,
+  "quantity": 10,
+  "features": [
+    {
+      "type": "od_turn",
+      "diameter": 50,
+      "start_diameter": null,
+      "length": 45,
+      "tolerance": "±0.05",
+      "ra": null,
+      "pitch": null
+    },
+    {
+      "type": "chamfer",
+      "diameter": 50,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null
+    },
+    {
+      "type": "bore",
+      "diameter": 30,
+      "start_diameter": null,
+      "length": 45,
+      "tolerance": "H7",
+      "ra": 1.6,
+      "pitch": null
+    }
+  ],
+  "warnings": []
+}

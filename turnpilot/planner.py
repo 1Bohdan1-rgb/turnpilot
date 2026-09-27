@@ -9,13 +9,27 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 G96_NOTE = "G96 constant surface speed, capped at max RPM"
 G97_THREAD_NOTE = "G97 constant RPM — required for threading"
 CHAMFER_NOTE = "incl. chamfer"
 PARTING_CENTER_NOTE = "reduce feed ~50% for last 2 mm before center"
 PARTING_BORE_NOTE = "reduce feed ~50% for last 2 mm before breakthrough into bore"
+GRINDING_WARNING = "may require grinding — not guaranteed by turning"
+THREAD_MAJOR_NOTE = "major diameter for thread"
+# The OD under an external thread is turned slightly below nominal: d - 0.1 * pitch.
+THREAD_MAJOR_REDUCTION = 0.1
+
+# Finest tolerance / roughness that turning is expected to hold.
+GRINDING_IT_GRADE = 5  # IT5 or finer
+GRINDING_RA_UM = 0.4  # Ra <= 0.4 um
+
+# ISO 286-1 standard tolerance IT5 in um: (upper bound of the diameter range in mm, IT5).
+IT5_UM = (
+    (3, 4), (6, 5), (10, 6), (18, 8), (30, 9), (50, 11), (80, 13),
+    (120, 15), (180, 18), (250, 20), (315, 23), (400, 25), (500, 27),
+)
 
 # Stage order of the process sheet: face -> rough -> finish -> groove -> thread -> parting.
 STAGE_ORDER = {"face": 0, "rough": 1, "finish": 2, "groove": 3, "thread": 4, "parting": 5}
@@ -67,6 +81,7 @@ class FeatureSpec:
     ra: float | None = None
     pitch: float | None = None
     start_diameter: float | None = None  # groove: outer diameter the groove starts from
+    tolerance: str | None = None
 
 
 @dataclass(frozen=True)
@@ -206,6 +221,102 @@ def thread_infeed(h: float, ap_max: float, ap_min: float) -> tuple[list[float], 
     return cutting + [0.0], method
 
 
+def iso_fit_grade(tolerance: str | None) -> int | None:
+    """IT grade of an ISO fit tolerance: 'h6' -> 6, 'H7' -> 7, 'js5' -> 5. None otherwise."""
+    if not tolerance:
+        return None
+    # The lookahead skips thread designations such as "M20x1.5".
+    match = re.search(r"(?<![A-Za-z0-9.])([A-Za-z]{1,2})\s?(\d{1,2})(?![\d.xX×])", tolerance)
+    if not match or int(match.group(2)) > 18:  # ISO 286 grades go up to IT18
+        return None
+    return int(match.group(2))
+
+
+def tolerance_band_mm(tolerance: str | None) -> float | None:
+    """Width of a numeric tolerance: '±0.01' -> 0.02, '+0.02/-0.01' -> 0.03, '0/-0.013' -> 0.013."""
+    if not tolerance:
+        return None
+    text = tolerance.replace(",", ".").replace("−", "-")
+    if "±" in text or "+/-" in text:
+        match = re.search(r"\d*\.?\d+", text.split("±")[-1].split("+/-")[-1])
+        return round(2 * float(match.group()), 6) if match else None
+    values = [float(v.replace(" ", "")) for v in re.findall(r"[+-]?\s*\d*\.?\d+", text)]
+    if len(values) < 2:
+        return None
+    return round(max(values) - min(values), 6)
+
+
+def it5_mm(diameter: float) -> float | None:
+    """IT5 tolerance for a nominal diameter (ISO 286-1), in mm. None above 500 mm."""
+    for upper, um in IT5_UM:
+        if diameter <= upper:
+            return um / 1000
+    return None
+
+
+def needs_grinding(tolerance: str | None, diameter: float | None, ra: float | None) -> bool:
+    """True when the tolerance is IT5 or finer, or Ra <= 0.4 um."""
+    if ra is not None and ra <= GRINDING_RA_UM:
+        return True
+    grade = iso_fit_grade(tolerance)
+    if grade is not None:
+        return grade <= GRINDING_IT_GRADE
+    band = tolerance_band_mm(tolerance)
+    if band is not None and diameter:
+        limit = it5_mm(diameter)
+        return limit is not None and band <= limit + 1e-9
+    return False
+
+
+@dataclass(frozen=True)
+class BlankSuggestion:
+    diameter: float | None
+    length: float | None
+    notes: tuple[str, ...] = ()
+
+
+def suggest_blank(
+    features: list[FeatureSpec],
+    overall_length: float | None,
+    bar_diameters: tuple[float, ...],
+    diameter_allowance: float,
+    facing_allowance: float,
+    parting_width: float,
+) -> BlankSuggestion:
+    """Suggest a bar blank for a part whose drawing does not state one.
+
+    Diameter: the largest external diameter + allowance, rounded up to the next bar size.
+    Length: overall length + facing allowance + parting tool width.
+    """
+    notes = []
+    external = [f.diameter for f in features if f.type in ("od_turn", "thread", "chamfer", "parting") and f.diameter]
+    external += [f.start_diameter for f in features if f.type == "groove" and f.start_diameter]
+
+    diameter = None
+    if external:
+        needed = max(external) + diameter_allowance
+        bigger = [d for d in sorted(bar_diameters) if d >= needed - 1e-9]
+        if bigger:
+            diameter = float(bigger[0])
+        else:
+            notes.append(f"No bar size in the list covers Ø{needed:g}.")
+    else:
+        notes.append("No external diameter to size the blank from.")
+
+    base = overall_length
+    if base is None:
+        sections = [f.length for f in features if f.type == "od_turn" and f.length]
+        if sections:
+            base = sum(sections)
+            notes.append("Overall length not on the drawing: sum of the OD sections used.")
+    length = None
+    if base is not None:
+        length = float(math.ceil(round(base + facing_allowance + parting_width, 6)))
+    else:
+        notes.append("No length to size the blank from.")
+    return BlankSuggestion(diameter, length, tuple(notes))
+
+
 def cutting_data(tool: ToolSpec, mode: str, ra: float | None = None) -> tuple[float, float, float]:
     """Pick (vc, f, ap) from the tool ranges.
 
@@ -280,6 +391,22 @@ def match_chamfers(features: list[FeatureSpec]) -> dict[int, FeatureSpec]:
                 hosts[id(chamfer)] = host
                 break
     return hosts
+
+
+def thread_major_diameter(nominal: float, pitch: float) -> float:
+    """Turned diameter under an external thread: slightly below nominal, d - 0.1 * pitch."""
+    return round(nominal - THREAD_MAJOR_REDUCTION * pitch, 3)
+
+
+def match_thread_diameters(features: list[FeatureSpec]) -> dict[int, float]:
+    """Map each od_turn feature (by id()) that carries an external thread to the thread pitch."""
+    threads = [f for f in features if f.type == "thread" and f.diameter and f.pitch]
+    pitches = {}
+    for od in (f for f in features if f.type == "od_turn" and f.diameter):
+        thread = next((t for t in threads if math.isclose(t.diameter, od.diameter)), None)
+        if thread:
+            pitches[id(od)] = thread.pitch
+    return pitches
 
 
 def select_tool(tool_type: str, iso_group: str, turret: list[TurretEntry]) -> tuple[TurretEntry | None, str | None]:
@@ -390,6 +517,8 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         tool_type=step.tool_type,
         mode=step.mode,
     )
+    if step.mode == "finish" and needs_grinding(feature.tolerance, feature.diameter, feature.ra):
+        op.warnings.append(GRINDING_WARNING)
 
     entry, warning = select_tool(step.tool_type, job.iso_group, turret)
     if entry is None:
@@ -432,11 +561,21 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> list[Plan
     chamfer_hosts = match_chamfers(features)
     hosts_with_chamfer = {id(host) for host in chamfer_hosts.values()}
 
+    thread_pitches = match_thread_diameters(features)
+
     steps = [s for f in features if id(f) not in chamfer_hosts for s in feature_to_steps(f)]
     operations = []
     for step in order_steps(steps):
+        original = step.feature
+        pitch = thread_pitches.get(id(original))
+        if pitch:
+            # Rough and finish the OD under the thread to the reduced major diameter.
+            major = thread_major_diameter(original.diameter, pitch)
+            step = replace(step, feature=replace(original, diameter=major))
         op = _plan_step(step, job, turret, max_rpm)
-        if step.mode == "finish" and id(step.feature) in hosts_with_chamfer:
+        if pitch and step.mode == "finish":
+            op.notes.append(f"{THREAD_MAJOR_NOTE}: Ø{major:g} (nominal Ø{original.diameter:g})")
+        if step.mode == "finish" and id(original) in hosts_with_chamfer:
             op.notes.append(CHAMFER_NOTE)
         operations.append(op)
     for i, op in enumerate(operations, start=1):

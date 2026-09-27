@@ -83,6 +83,7 @@ class Job(db.Model):
         back_populates="job",
         order_by=lambda: (Operation.calculation_version.desc(), Operation.sequence),
     )
+    extraction = db.relationship("DrawingExtraction", back_populates="job", uselist=False)
 
     @property
     def active_features(self):
@@ -111,6 +112,7 @@ class Feature(db.Model):
     ra = db.Column(db.Float)  # um
     pitch = db.Column(db.Float)  # mm, threads only
     start_diameter = db.Column(db.Float)  # mm, grooves: outer diameter the groove starts from
+    confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 
     job = db.relationship("Job", back_populates="features")
@@ -158,3 +160,25 @@ class Edit(db.Model):
     created_at = db.Column(db.DateTime, default=_now, nullable=False)
 
     operation = db.relationship("Operation", back_populates="edits")
+
+
+class DrawingExtraction(db.Model):
+    """An uploaded drawing and what the model read from it. Kept for audit, never deleted."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_filename = db.Column(db.String(100), nullable=False)  # original file in instance/drawings/
+    sent_filename = db.Column(db.String(100))  # the image actually sent to the model
+    file_type = db.Column(db.String(10), nullable=False)  # png / jpeg / pdf
+    size_bytes = db.Column(db.Integer, nullable=False)
+    sha256 = db.Column(db.String(64), nullable=False)
+    model = db.Column(db.String(100))
+    status = db.Column(db.String(10), nullable=False, default="pending")  # pending/extracted/failed/confirmed
+    raw_response = db.Column(db.Text)  # full API response as JSON
+    parsed = db.Column(db.Text)  # validated DrawingData as JSON
+    error = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=_now, nullable=False)
+    confirmed_at = db.Column(db.DateTime)
+    job_id = db.Column(db.Integer, db.ForeignKey("job.id"))
+
+    job = db.relationship("Job", back_populates="extraction")
