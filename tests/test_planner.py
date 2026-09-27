@@ -7,6 +7,8 @@ from turnpilot.planner import (
     DEFAULT_FINISH_ALLOWANCE_MM,
     G96_NOTE,
     G97_THREAD_NOTE,
+    PARTING_BORE_NOTE,
+    PARTING_CENTER_NOTE,
     FeatureSpec,
     JobSpec,
     ToolSpec,
@@ -40,7 +42,7 @@ def turret():
         TurretEntry(4, make_tool(4, "turning_finish", insert="DNMG 150408", f_min=0.05, f_max=0.3)),
         TurretEntry(5, make_tool(5, "grooving", iso="PN", insert_width=3.0)),
         TurretEntry(6, make_tool(6, "threading", ap_min=0.05, ap_max=0.2)),
-        TurretEntry(7, make_tool(7, "parting")),
+        TurretEntry(7, make_tool(7, "parting", insert_width=3.0)),
     ]
 
 
@@ -279,8 +281,9 @@ def test_thread_depth_is_0613_pitch():
 
 def test_thread_infeed_decreases_and_ends_with_spring_pass():
     h = thread_depth(1.5)
-    infeed = thread_infeed(h, ap_max=0.2, ap_min=0.05)
+    infeed, method = thread_infeed(h, ap_max=0.2, ap_min=0.05)
     cutting, spring = infeed[:-1], infeed[-1]
+    assert method == "decreasing"
     assert spring == 0.0
     assert sum(cutting) == pytest.approx(h, abs=1e-3)
     assert cutting[0] <= 0.2
@@ -288,10 +291,34 @@ def test_thread_infeed_decreases_and_ends_with_spring_pass():
     assert all(d >= 0.05 for d in cutting)
 
 
-def test_thread_infeed_respects_min_depth():
-    infeed = thread_infeed(0.613, ap_max=0.1, ap_min=0.06)
-    assert all(d >= 0.06 for d in infeed[:-1])
-    assert sum(infeed) == pytest.approx(0.613, abs=1e-3)
+# (pitch, ap_max, ap_min): common pitches, tight and loose ap ranges
+INFEED_CASES = [
+    (p, ap_max, ap_min)
+    for p in (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0)
+    for ap_max, ap_min in ((0.2, 0.05), (0.1, 0.06), (0.35, 0.03), (0.15, 0.1), (0.3, 0.15))
+]
+
+
+@pytest.mark.parametrize("pitch, ap_max, ap_min", INFEED_CASES)
+def test_thread_infeed_never_increases(pitch, ap_max, ap_min):
+    h = thread_depth(pitch)
+    infeed, _ = thread_infeed(h, ap_max, ap_min)
+    # every next pass is <= the previous one, spring pass included
+    assert all(b <= a for a, b in zip(infeed, infeed[1:])), infeed
+    assert sum(infeed) == pytest.approx(h, abs=1e-6)
+    assert infeed[-1] == 0.0
+    assert infeed[0] <= ap_max + 1e-9
+
+
+def test_thread_infeed_small_remainder_recalculated_evenly():
+    # The decreasing series for M1.0 with ap 0.06..0.1 would need passes < 0.06:
+    # the depth is spread evenly instead of adding a remainder to the last pass.
+    infeed, method = thread_infeed(0.613, ap_max=0.1, ap_min=0.06)
+    cutting = infeed[:-1]
+    assert method == "equal"
+    assert all(d >= 0.06 for d in cutting)
+    assert max(cutting) - min(cutting) <= 0.001 + 1e-9  # only rounding differences
+    assert sum(cutting) == pytest.approx(0.613, abs=1e-6)
 
 
 def test_thread_operation_shows_depth_passes_and_g97(turret):
@@ -299,7 +326,40 @@ def test_thread_operation_shows_depth_passes_and_g97(turret):
     (op,) = plan_job(job, turret, max_rpm=4000)
     h = thread_depth(1.5)
     assert op.depth == h
-    assert op.passes == len(thread_infeed(h, 0.2, 0.05))
+    assert op.passes == len(thread_infeed(h, 0.2, 0.05)[0])
     assert op.ap is None
     assert G97_THREAD_NOTE in op.notes
     assert G96_NOTE not in op.notes
+
+
+# --- parting: width and depth instead of ap -------------------------------
+
+def test_parting_to_center(turret):
+    job = JobSpec("P", 60, 100, (FeatureSpec(1, "parting"),))
+    (op,) = plan_job(job, turret, max_rpm=4000)
+    assert op.ap is None
+    assert op.insert_width == 3.0
+    assert op.depth == 30.0  # blank diameter / 2
+    assert PARTING_CENTER_NOTE in op.notes
+    assert G96_NOTE in op.notes
+
+
+def test_parting_uses_feature_diameter(turret):
+    job = JobSpec("P", 60, 100, (FeatureSpec(1, "parting", diameter=40),))
+    (op,) = plan_job(job, turret, max_rpm=4000)
+    assert op.depth == 20.0
+    assert op.ref_diameter == 40
+
+
+def test_parting_to_inner_diameter(turret):
+    turret = turret + [TurretEntry(9, make_tool(9, "boring"))]
+    job = JobSpec("P", 60, 100, (
+        FeatureSpec(1, "bore", diameter=24),
+        FeatureSpec(2, "bore", diameter=20),
+        FeatureSpec(3, "parting"),
+    ))
+    op = plan_job(job, turret, max_rpm=4000)[-1]
+    assert op.tool_type == "parting"
+    assert op.depth == 20.0  # (60 - 20) / 2, to the smallest bore
+    assert PARTING_BORE_NOTE in op.notes
+    assert PARTING_CENTER_NOTE not in op.notes

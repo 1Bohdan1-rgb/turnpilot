@@ -41,11 +41,15 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 - **Grooves:** n is calculated on the start (larger) diameter, not the groove bottom. The table
   shows insert width and groove depth per side instead of ap. Feature fields: Diameter = bottom,
   Start Ø = diameter the groove is cut from (blank diameter if empty).
+- **Parting:** insert width and depth per side instead of ap. Depth = diameter / 2 (the parting
+  feature's diameter, or the blank), or down to the smallest bore if the part has one.
+  Note: "reduce feed ~50% for last 2 mm before center".
 - **Threads** (external metric): feed = pitch, profile depth per side `h = 0.613 * pitch`.
-  Radial infeed with decreasing depth per pass (modified constant chip area method, first pass
-  within the tool's `ap_max`, every pass at least `ap_min`) plus a final spring pass. The table
-  shows h and the number of passes; the infeed schedule is in the notes, together with
-  "G97 constant RPM — required for threading".
+  Radial infeed that never increases from pass to pass: decreasing depth by the modified
+  constant chip area method (first pass within the tool's `ap_max`). If that series would need a
+  pass thinner than `ap_min`, the whole depth is split into equal passes instead. A final spring
+  pass follows. The table shows h and the number of passes; the infeed schedule is in the notes,
+  together with "G97 constant RPM — required for threading".
 - **Spindle speed:** `n = 1000 * Vc / (pi * D)`, capped at the machine max RPM. Roughing uses the
   diameter before the pass (the blank diameter). Facing and parting are marked
   "G96 constant surface speed, capped at max RPM".

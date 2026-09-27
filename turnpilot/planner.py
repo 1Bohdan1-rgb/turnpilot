@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 G96_NOTE = "G96 constant surface speed, capped at max RPM"
 G97_THREAD_NOTE = "G97 constant RPM — required for threading"
 CHAMFER_NOTE = "incl. chamfer"
+PARTING_CENTER_NOTE = "reduce feed ~50% for last 2 mm before center"
+PARTING_BORE_NOTE = "reduce feed ~50% for last 2 mm before breaking into the bore"
 
 # Stage order of the process sheet: face -> rough -> finish -> groove -> thread -> parting.
 STAGE_ORDER = {"face": 0, "rough": 1, "finish": 2, "groove": 3, "thread": 4, "parting": 5}
@@ -161,31 +163,47 @@ def thread_depth(pitch: float) -> float:
     return round(METRIC_THREAD_DEPTH_FACTOR * pitch, 3)
 
 
-def thread_infeed(h: float, ap_max: float, ap_min: float) -> list[float]:
-    """Radial infeed per pass (mm per side) with decreasing depth, plus a final spring pass.
+def _decreasing_infeed(h: float, n: int) -> list[float]:
+    """Modified constant chip area method with n cutting passes.
 
-    Modified constant chip area method: the cumulative depth after pass x is
-    h * sqrt(0.3 / (n - 1)) for x = 1 and h * sqrt((x - 1) / (n - 1)) for x >= 2.
-    n is the smallest count that keeps the first pass within ap_max; every cutting
-    pass is at least ap_min. The last entry (0.0) is the spring (clean-up) pass.
+    Cumulative depth after pass x: h * sqrt(0.3 / (n - 1)) for x = 1,
+    h * sqrt((x - 1) / (n - 1)) for x >= 2. Increments decrease with every pass.
+    """
+    cumulative = [
+        round(h * math.sqrt((THREAD_FIRST_PASS_FACTOR if x == 1 else x - 1) / (n - 1)), 3)
+        for x in range(1, n + 1)
+    ]
+    return [round(b - a, 3) for a, b in zip([0.0] + cumulative, cumulative)]
+
+
+def _equal_infeed(h: float, k: int) -> list[float]:
+    """Split h into k equal passes; rounding leftovers go to the first passes (never the last)."""
+    units = round(h * 1000)
+    base, extra = divmod(units, k)
+    return [(base + (1 if i < extra else 0)) / 1000 for i in range(k)]
+
+
+def _non_increasing(values: list[float]) -> bool:
+    return all(b <= a for a, b in zip(values, values[1:]))
+
+
+def thread_infeed(h: float, ap_max: float, ap_min: float) -> tuple[list[float], str]:
+    """Radial infeed per pass (mm per side), never increasing, plus a final 0.0 spring pass.
+
+    Returns (infeed, method). Method "decreasing": modified constant chip area series with
+    the fewest passes that keep the first pass within ap_max. If that series would need a
+    pass thinner than ap_min, the whole depth is split evenly instead (method "equal"),
+    using the fewest passes that keep each pass within ap_max.
     """
     if h <= 0 or ap_max <= 0:
         raise ValueError("Thread depth and ap_max must be positive")
     n = max(2, math.ceil(round(THREAD_FIRST_PASS_FACTOR * (h / ap_max) ** 2, 9)) + 1)
-    infeed = []
-    done = 0.0
-    for x in range(1, n + 1):
-        share = THREAD_FIRST_PASS_FACTOR if x == 1 else x - 1
-        target = min(max(h * math.sqrt(share / (n - 1)), done + ap_min), h)
-        if h - target < ap_min:
-            target = h  # do not leave a remainder thinner than ap_min
-        target = round(target, 3)
-        if target <= done:
-            break
-        infeed.append(round(target - done, 3))
-        done = target
-    infeed.append(0.0)
-    return infeed
+    cutting = _decreasing_infeed(h, n)
+    method = "decreasing"
+    if min(cutting) < ap_min or not _non_increasing(cutting):
+        cutting = _equal_infeed(h, max(1, math.ceil(round(h / ap_max, 9))))
+        method = "equal"
+    return cutting + [0.0], method
 
 
 def cutting_data(tool: ToolSpec, mode: str, ra: float | None = None) -> tuple[float, float, float]:
@@ -289,8 +307,10 @@ def finish_allowance(iso_group: str, turret: list[TurretEntry]) -> tuple[float, 
 
 def _reference_diameter(step: Step, job: JobSpec) -> float:
     """Diameter used for the spindle speed calculation."""
-    if step.stage in ("face", "parting"):
+    if step.stage == "face":
         return job.blank_diameter
+    if step.stage == "parting":
+        return step.feature.diameter or job.blank_diameter
     if step.tool_type == "turning_rough":
         # Diameter before the first pass is the blank diameter.
         return job.blank_diameter
@@ -334,10 +354,32 @@ def _plan_thread(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec) -> 
         return
     op.f = feature.pitch
     op.depth = thread_depth(feature.pitch)
-    infeed = thread_infeed(op.depth, tool.ap_max, tool.ap_min)
+    infeed, method = thread_infeed(op.depth, tool.ap_max, tool.ap_min)
     op.passes = len(infeed)
     cutting = ", ".join(f"{d:g}" for d in infeed[:-1])
     op.notes.append(f"radial infeed per pass: {cutting} + spring pass")
+    if method == "equal":
+        op.notes.append("equal infeed: a decreasing series would need passes thinner than ap_min")
+    if min(infeed[:-1]) < tool.ap_min:
+        op.warnings.append("Thread infeed per pass is below the tool's ap_min: check the tool ap range.")
+
+
+def _plan_parting(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec) -> None:
+    op.ap = None
+    op.insert_width = tool.insert_width
+    if tool.insert_width is None:
+        op.warnings.append("Insert width is not set for this parting tool.")
+    outer = op.ref_diameter
+    bores = [f.diameter for f in job.features if f.type == "bore" and f.diameter and f.diameter < outer]
+    if bores:
+        # Cut to the smallest bore so the part separates whatever bore step is at the cut.
+        inner = min(bores)
+        op.depth = round((outer - inner) / 2, 3)
+        op.notes.append(f"parting to bore Ø{inner:g}")
+        op.notes.append(PARTING_BORE_NOTE)
+    else:
+        op.depth = round(outer / 2, 3)
+        op.notes.append(PARTING_CENTER_NOTE)
 
 
 def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> PlannedOperation:
@@ -376,6 +418,8 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         _plan_groove(op, tool, feature, job)
     elif step.tool_type == "threading":
         _plan_thread(op, tool, feature)
+    elif step.tool_type == "parting":
+        _plan_parting(op, tool, feature, job)
     elif feature.type == "chamfer":
         op.notes.append("no finishing pass on this diameter: chamfer machined separately")
 
