@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Machine{% endblock %}
+{% block content %}
+<h1>Machine profile</h1>
+<form method="post" class="card grid-form">
+  <input type="hidden" name="action" value="profile">
+  <label>Name <input name="name" value="{{ machine.name }}" required></label>
+  <label>Max RPM <input name="max_rpm" type="number" min="1" value="{{ machine.max_rpm }}" required></label>
+  <label>Power, kW <input name="power_kw" type="number" step="0.1" min="0.1" value="{{ machine.power_kw }}" required></label>
+  <label>Max diameter, mm <input name="max_diameter" type="number" step="0.1" min="1" value="{{ machine.max_diameter }}" required></label>
+  <button type="submit">Save profile</button>
+</form>
+
+<h2>Turret</h2>
+<form method="post" class="card">
+  <input type="hidden" name="action" value="turret">
+  <table>
+    <thead><tr><th>Pos.</th><th>Tool</th><th>Type</th><th>ISO</th><th>Insert</th></tr></thead>
+    <tbody>
+    {% for slot in machine.slots %}
+      <tr>
+        <td><strong>{{ slot.label }}</strong></td>
+        <td>
+          <select name="slot_{{ slot.position }}">
+            <option value="">— empty —</option>
+            {% for tool in tools %}
+              <option value="{{ tool.id }}" {% if slot.tool_id == tool.id %}selected{% endif %}>{{ tool.name }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td>{{ slot.tool.type if slot.tool else "" }}</td>
+        <td>{{ slot.tool.iso_group if slot.tool else "" }}</td>
+        <td>{{ slot.tool.insert_code if slot.tool else "" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <button type="submit">Save turret</button>
+</form>
+
+<h2>Tool library</h2>
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Type</th><th>Insert</th><th>Grade</th><th>ISO</th>
+          <th>Vc, m/min</th><th>f, mm/rev</th><th>ap, mm</th></tr>
+    </thead>
+    <tbody>
+    {% for tool in tools %}
+      <tr>
+        <td>{{ tool.name }}</td><td>{{ tool.type }}</td><td>{{ tool.insert_code }}</td><td>{{ tool.grade }}</td>
+        <td>{{ tool.iso_group }}</td>
+        <td>{{ tool.vc_min|round(0)|int }}–{{ tool.vc_max|round(0)|int }}</td>
+        <td>{{ tool.f_min }}–{{ tool.f_max }}</td>
+        <td>{{ tool.ap_min }}–{{ tool.ap_max }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">Cutting data ranges in the seed are placeholders. Check them against the tool catalogue.</p>
+</div>
+
+<h3>Add tool</h3>
+<form method="post" action="{{ url_for('main.add_tool') }}" class="card grid-form">
+  <label>Name <input name="name" required></label>
+  <label>Type
+    <select name="type">{% for t in tool_types %}<option>{{ t }}</option>{% endfor %}</select>
+  </label>
+  <label>Insert code <input name="insert_code" placeholder="CNMG 120408"></label>
+  <label>Grade <input name="grade"></label>
+  <fieldset>
+    <legend>ISO groups</legend>
+    {% for g in iso_groups %}<label class="inline"><input type="checkbox" name="iso_group" value="{{ g }}"> {{ g }}</label>{% endfor %}
+  </fieldset>
+  <label>Vc min <input name="vc_min" type="number" step="any" required></label>
+  <label>Vc max <input name="vc_max" type="number" step="any" required></label>
+  <label>f min <input name="f_min" type="number" step="any" required></label>
+  <label>f max <input name="f_max" type="number" step="any" required></label>
+  <label>ap min <input name="ap_min" type="number" step="any" required></label>
+  <label>ap max <input name="ap_max" type="number" step="any" required></label>
+  <button type="submit">Add tool</button>
+</form>
+{% endblock %}

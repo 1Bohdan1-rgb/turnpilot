@@ -1,0 +1,137 @@
+from datetime import datetime, timezone
+
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
+
+FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting")
+TOOL_TYPES = ("facing", "turning_rough", "turning_finish", "grooving", "threading", "boring", "parting")
+ISO_GROUPS = ("P", "M", "N")
+OPERATION_STATUSES = ("proposed", "approved", "edited")
+TURRET_POSITIONS = range(1, 13)  # T1..T12
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+class Machine(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    max_rpm = db.Column(db.Integer, nullable=False)
+    power_kw = db.Column(db.Float, nullable=False)
+    max_diameter = db.Column(db.Float, nullable=False)
+
+    slots = db.relationship(
+        "TurretSlot", back_populates="machine", order_by="TurretSlot.position", cascade="all, delete-orphan"
+    )
+
+
+class Tool(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    type = db.Column(db.String(30), nullable=False)
+    insert_code = db.Column(db.String(50))
+    grade = db.Column(db.String(30))
+    iso_group = db.Column(db.String(10), nullable=False)  # e.g. "P" or "PMN"
+    vc_min = db.Column(db.Float, nullable=False)
+    vc_max = db.Column(db.Float, nullable=False)
+    f_min = db.Column(db.Float, nullable=False)
+    f_max = db.Column(db.Float, nullable=False)
+    ap_min = db.Column(db.Float, nullable=False)
+    ap_max = db.Column(db.Float, nullable=False)
+
+
+class TurretSlot(db.Model):
+    __table_args__ = (db.UniqueConstraint("machine_id", "position"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id"), nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+    tool_id = db.Column(db.Integer, db.ForeignKey("tool.id"))
+
+    machine = db.relationship("Machine", back_populates="slots")
+    tool = db.relationship("Tool")
+
+    @property
+    def label(self):
+        return f"T{self.position}"
+
+
+class Material(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    iso_group = db.Column(db.String(1), nullable=False)
+    hardness_hb = db.Column(db.Integer)
+
+
+class Job(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    material_id = db.Column(db.Integer, db.ForeignKey("material.id"), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+    blank_diameter = db.Column(db.Float, nullable=False)
+    blank_length = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=_now)
+
+    material = db.relationship("Material")
+    features = db.relationship(
+        "Feature", back_populates="job", order_by="Feature.id", cascade="all, delete-orphan"
+    )
+    operations = db.relationship(
+        "Operation", back_populates="job", order_by="Operation.sequence", cascade="all, delete-orphan"
+    )
+
+
+class Feature(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey("job.id"), nullable=False)
+    type = db.Column(db.String(20), nullable=False)
+    diameter = db.Column(db.Float)
+    length = db.Column(db.Float)
+    tolerance = db.Column(db.String(30))  # free text, e.g. "h7" or "+0/-0.05"
+    ra = db.Column(db.Float)  # um
+    pitch = db.Column(db.Float)  # mm, threads only
+
+    job = db.relationship("Job", back_populates="features")
+    operations = db.relationship("Operation", back_populates="feature", cascade="all, delete-orphan")
+
+
+class Operation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey("job.id"), nullable=False)
+    feature_id = db.Column(db.Integer, db.ForeignKey("feature.id"), nullable=False)
+    tool_id = db.Column(db.Integer, db.ForeignKey("tool.id"))
+    turret_position = db.Column(db.Integer)
+    sequence = db.Column(db.Integer, nullable=False)
+    tool_type = db.Column(db.String(30), nullable=False)
+    rough_finish = db.Column(db.String(10), nullable=False)
+    vc = db.Column(db.Float)
+    n = db.Column(db.Integer)
+    f = db.Column(db.Float)
+    ap = db.Column(db.Float)
+    passes = db.Column(db.Integer)
+    ref_diameter = db.Column(db.Float)  # diameter used to compute n
+    note = db.Column(db.Text)
+    warning = db.Column(db.Text)
+    status = db.Column(db.String(10), nullable=False, default="proposed")
+
+    job = db.relationship("Job", back_populates="operations")
+    feature = db.relationship("Feature", back_populates="operations")
+    tool = db.relationship("Tool")
+    edits = db.relationship(
+        "Edit", back_populates="operation", order_by="Edit.created_at", cascade="all, delete-orphan"
+    )
+
+
+class Edit(db.Model):
+    """Audit log: one row per changed field of an operation."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    operation_id = db.Column(db.Integer, db.ForeignKey("operation.id"), nullable=False)
+    field = db.Column(db.String(30), nullable=False)
+    old_value = db.Column(db.String(100))
+    new_value = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=_now, nullable=False)
+
+    operation = db.relationship("Operation", back_populates="edits")

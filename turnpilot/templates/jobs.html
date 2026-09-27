@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Jobs{% endblock %}
+{% block content %}
+<h1>Jobs</h1>
+
+<h2>New job</h2>
+<form method="post" class="card grid-form">
+  <label>Name <input name="name" required></label>
+  <label>Material
+    <select name="material_id" required>
+      {% for m in materials %}<option value="{{ m.id }}">{{ m.name }} (ISO {{ m.iso_group }}, {{ m.hardness_hb }} HB)</option>{% endfor %}
+    </select>
+  </label>
+  <label>Quantity <input name="quantity" type="number" min="1" value="1"></label>
+  <label>Blank diameter, mm <input name="blank_diameter" type="number" step="any" min="0" required></label>
+  <label>Blank length, mm <input name="blank_length" type="number" step="any" min="0" required></label>
+  <button type="submit">Create job</button>
+</form>
+
+<h2>Existing jobs</h2>
+{% if jobs %}
+<table class="card">
+  <thead><tr><th>Name</th><th>Material</th><th>Qty</th><th>Blank Ø × L</th><th>Features</th><th>Operations</th></tr></thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td><a href="{{ url_for('main.job_detail', job_id=job.id) }}">{{ job.name }}</a></td>
+      <td>{{ job.material.name }}</td>
+      <td>{{ job.quantity }}</td>
+      <td>{{ job.blank_diameter|round(2) }} × {{ job.blank_length|round(2) }}</td>
+      <td>{{ job.features|length }}</td>
+      <td>{% if job.operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">{{ job.operations|length }}</a>{% else %}—{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No jobs yet.</p>
+{% endif %}
+{% endblock %}

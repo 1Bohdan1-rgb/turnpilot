@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Operations · {{ job.name }}{% endblock %}
+{% block content %}
+<h1>Process sheet: {{ job.name }}</h1>
+<p class="muted">
+  {{ job.material.name }} (ISO {{ job.material.iso_group }}) · blank Ø{{ job.blank_diameter|round(2) }} × {{ job.blank_length|round(2) }} mm ·
+  {{ machine.name }}, max {{ machine.max_rpm }} rpm ·
+  <a href="{{ url_for('main.job_detail', job_id=job.id) }}">back to features</a>
+</p>
+
+{% if not job.operations %}
+<p class="muted">No operations yet. Press "Calculate" on the job page.</p>
+{% else %}
+<div class="table-wrap">
+<table class="card ops">
+  <thead>
+    <tr>
+      <th>#</th><th>Feature</th><th>Operation</th><th>Pos.</th><th>Tool</th>
+      <th>Vc, m/min</th><th>n, rpm</th><th>f, mm/rev</th><th>ap, mm</th><th>Passes</th>
+      <th>Notes</th><th>Status</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for op in job.operations %}
+    <tr class="status-{{ op.status }}{% if op.warning %} has-warning{% endif %}">
+      <td>{{ op.sequence }}</td>
+      <td>{{ op.feature.type }}{% if op.feature.diameter %} Ø{{ op.feature.diameter }}{% endif %}</td>
+      <td>{{ op.tool_type }} <span class="muted">({{ op.rough_finish }})</span></td>
+      <td>{{ "T%d"|format(op.turret_position) if op.turret_position else "—" }}</td>
+      <td>{{ op.tool.name if op.tool else "—" }}</td>
+      <td>{{ op.vc if op.vc is not none else "—" }}</td>
+      <td>{{ op.n if op.n is not none else "—" }}</td>
+      <td>{{ op.f if op.f is not none else "—" }}</td>
+      <td>{{ op.ap if op.ap is not none else "—" }}</td>
+      <td>{{ op.passes if op.passes is not none else "" }}</td>
+      <td class="notes">
+        {% if op.warning %}<div class="warning">⚠ {{ op.warning }}</div>{% endif %}
+        {% if op.note %}<div>{{ op.note }}</div>{% endif %}
+      </td>
+      <td><span class="badge badge-{{ op.status }}">{{ op.status }}</span>
+        {% if op.edits %}<div class="muted small">{{ op.edits|length }} edit(s)</div>{% endif %}</td>
+      <td class="row-actions">
+        {% if op.status != "approved" and op.tool %}
+        <form method="post" action="{{ url_for('main.approve_operation', op_id=op.id) }}">
+          <button type="submit">Approve</button>
+        </form>
+        {% endif %}
+        <a class="button" href="{{ url_for('main.edit_operation', op_id=op.id) }}">Edit</a>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="muted small">Cutting data comes from placeholder tool ranges. Verify every value before machining.</p>
+{% endif %}
+{% endblock %}

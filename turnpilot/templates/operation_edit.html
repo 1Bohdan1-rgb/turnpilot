@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Edit operation {{ op.sequence }}{% endblock %}
+{% block content %}
+<h1>Operation {{ op.sequence }}: {{ op.tool_type }} ({{ op.rough_finish }})</h1>
+<p class="muted">
+  Feature: {{ op.feature.type }}{% if op.feature.diameter %} Ø{{ op.feature.diameter }}{% endif %}
+  {% if op.ref_diameter %}· n is calculated at Ø{{ op.ref_diameter }}{% endif %}
+</p>
+{% if op.warning %}<div class="flash flash-error">⚠ {{ op.warning }}</div>{% endif %}
+
+<form method="post" class="card grid-form">
+  <label>Turret position / tool
+    <select name="turret_position">
+      <option value="">— none —</option>
+      {% for slot in slots %}
+        <option value="{{ slot.position }}" {% if slot.position == op.turret_position %}selected{% endif %}>
+          {{ slot.label }} · {{ slot.tool.name }} ({{ slot.tool.type }}, {{ slot.tool.iso_group }})
+        </option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Vc, m/min <input name="vc" type="number" step="any" min="0" value="{{ op.vc if op.vc is not none else '' }}"></label>
+  <label>f, mm/rev <input name="f" type="number" step="any" min="0" value="{{ op.f if op.f is not none else '' }}"></label>
+  <label>ap, mm <input name="ap" type="number" step="any" min="0" value="{{ op.ap if op.ap is not none else '' }}"></label>
+  <label>Passes <input name="passes" type="number" min="1" value="{{ op.passes if op.passes is not none else '' }}"></label>
+  <p class="muted small">n is recalculated from Vc and capped at the machine max RPM.</p>
+  <div class="actions">
+    <button type="submit" class="primary">Save</button>
+    <a href="{{ url_for('main.operations', job_id=op.job_id) }}">Cancel</a>
+  </div>
+</form>
+
+<h2>Edit log</h2>
+{% if op.edits %}
+<table class="card">
+  <thead><tr><th>When (UTC)</th><th>Field</th><th>Was</th><th>Now</th></tr></thead>
+  <tbody>
+  {% for e in op.edits %}
+    <tr><td>{{ e.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td><td>{{ e.field }}</td><td>{{ e.old_value }}</td><td>{{ e.new_value }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No edits yet.</p>
+{% endif %}
+{% endblock %}
