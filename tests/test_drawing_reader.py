@@ -293,6 +293,8 @@ def test_schema_has_new_fields():
         "taper",
         "fillet",
         "A taper never replaces the cylinder next to it",
+        "A diameter dimensioned at the end of a taper is the diameter of that end of the taper",
+        "not a separate od_turn cylinder",
         "separate od_turn with its own length and tolerance",
     ],
 )

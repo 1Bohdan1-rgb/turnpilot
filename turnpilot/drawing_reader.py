@@ -72,6 +72,9 @@ than the thread's minor diameter, is a groove (thread relief groove), not an od_
 groove with start_diameter = the thread's major diameter.
 - A conical section is a taper: start_diameter and diameter are the diameters at its two ends, length \
 its axial length. A radius between two sections (R10) is a fillet with radius = 10.
+- A diameter dimensioned at the end of a taper is the diameter of that end of the taper (the taper's \
+diameter or start_diameter), not a separate od_turn cylinder. Add a cylinder only where the drawing \
+shows one.
 - A taper never replaces the cylinder next to it. If a diameter has its own dimension or tolerance on a \
 cylindrical section (e.g. Ø60 ±0.05), that section is a separate od_turn with its own length and \
 tolerance, and the taper is a separate feature that starts from that diameter (start_diameter = 60).
