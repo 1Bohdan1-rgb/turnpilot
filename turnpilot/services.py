@@ -7,8 +7,6 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from werkzeug.utils import secure_filename
-
 from . import drawing_reader, planner
 from .extraction_schema import DrawingData, normalize_tolerance
 from .models import DrawingExtraction, Edit, Machine, Operation, TurretSlot, db
@@ -210,10 +208,21 @@ def drawings_dir(instance_path):
     return path
 
 
+def display_filename(filename):
+    """The uploaded file's name for display and audit: no path, no control characters, any script.
+
+    Files are stored under a generated name, so the original name never reaches the file system.
+    (werkzeug's secure_filename() drops non-ASCII letters: "Втулка.pdf" became "pdf".)
+    """
+    name = (filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    name = "".join(ch for ch in name if ch.isprintable()).strip()
+    return name[-200:] or "drawing"
+
+
 def check_upload(filename, data, allowed_extensions):
-    """Validate an uploaded drawing. Returns (safe_filename, file_type) or raises UploadError."""
-    safe_name = secure_filename(filename or "")
-    extension = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+    """Validate an uploaded drawing. Returns (display_name, extension, file_type) or raises UploadError."""
+    name = display_filename(filename)
+    extension = os.path.splitext(name)[1].lstrip(".").lower()
     if extension not in allowed_extensions:
         raise UploadError(f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}.")
     if not data:
@@ -221,7 +230,7 @@ def check_upload(filename, data, allowed_extensions):
     file_type = drawing_reader.detect_file_type(data)
     if file_type != FILE_TYPE_BY_EXTENSION[extension]:
         raise UploadError(f"The file content is not a valid .{extension} file.")
-    return safe_name, file_type
+    return name, extension, file_type
 
 
 def _previous_result(sha256, model, prompt_version):
@@ -245,11 +254,11 @@ def _reading_in_progress(sha256, model, prompt_version):
     ).scalars().first()
 
 
-def _cached_copy(previous, safe_name):
+def _cached_copy(previous, name):
     """A new extraction row that reuses an earlier result: same files, same response, no API call."""
     origin = previous.cached_from or previous
     extraction = DrawingExtraction(
-        original_filename=safe_name,
+        original_filename=name,
         stored_filename=origin.stored_filename,
         sent_filename=origin.sent_filename,
         file_type=origin.file_type,
@@ -278,7 +287,7 @@ def read_drawing(filename, data, instance_path, config, client=None, force=False
     Always returns the DrawingExtraction row; on failure its status is "failed" and `error` says why.
     Raises UploadError for files that are rejected before anything is stored.
     """
-    safe_name, file_type = check_upload(filename, data, config["ALLOWED_DRAWING_EXTENSIONS"])
+    name, extension, file_type = check_upload(filename, data, config["ALLOWED_DRAWING_EXTENSIONS"])
     sha256 = hashlib.sha256(data).hexdigest()
     model = config["ANTHROPIC_MODEL"]
     mode = config.get("DRAWING_READ_MODE", drawing_reader.DEFAULT_READ_MODE)
@@ -286,18 +295,18 @@ def read_drawing(filename, data, instance_path, config, client=None, force=False
     if not force:
         previous = _previous_result(sha256, model, version)
         if previous:
-            return _cached_copy(previous, safe_name)
+            return _cached_copy(previous, name)
     if _reading_in_progress(sha256, model, version):
         raise UploadError("This drawing is already being read. Wait for the result instead of uploading it again.")
 
     folder = drawings_dir(instance_path)
     token = uuid.uuid4().hex
-    stored = f"{token}.{safe_name.rsplit('.', 1)[-1].lower()}"
+    stored = f"{token}.{extension}"  # generated name on disk; the original name is only stored in the DB
     with open(os.path.join(folder, stored), "wb") as f:
         f.write(data)
 
     extraction = DrawingExtraction(
-        original_filename=safe_name,
+        original_filename=name,
         stored_filename=stored,
         file_type=file_type,
         size_bytes=len(data),

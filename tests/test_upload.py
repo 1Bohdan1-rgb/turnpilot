@@ -91,8 +91,35 @@ def test_filename_is_sanitized(app, client):
     _use_model(app, THREADED_SHAFT)
     _upload(client, PNG, "../../etc/pass wd.png")
     (extraction,) = _extractions()
-    assert extraction.original_filename == "etc_pass_wd.png"
+    assert extraction.original_filename == "pass wd.png"  # no path; shown as uploaded
     assert "/" not in extraction.stored_filename and ".." not in extraction.stored_filename
+    assert extraction.stored_filename.endswith(".png") and "pass" not in extraction.stored_filename
+
+
+@pytest.mark.parametrize(
+    "filename, data, extension",
+    [
+        ("Втулка.pdf", (FIXTURES / "03_bushing.pdf").read_bytes(), "pdf"),
+        ("wałek.png", PNG, "png"),
+        ("ВАЛ 01.PNG", PNG, "png"),
+    ],
+    ids=["cyrillic-pdf", "polish-png", "uppercase-ext"],
+)
+def test_non_ascii_filenames_are_accepted(app, client, filename, data, extension):
+    fake = _use_model(app, THREADED_SHAFT)
+    resp = _upload(client, data, filename)
+    (extraction,) = _extractions()
+    assert resp.headers["Location"].endswith(f"/extractions/{extraction.id}/review")
+    assert extraction.status == "extracted" and len(fake.messages.calls) == 1
+    assert extraction.original_filename == filename
+    assert extraction.stored_filename.endswith(f".{extension}")
+    assert extraction.stored_filename.isascii()
+    page = client.get(f"/extractions/{extraction.id}/review").data.decode()
+    assert filename in page
+
+
+def test_upload_page_states_reading_time(client):
+    assert "Reading takes 3–7 minutes" in client.get("/jobs/upload").data.decode()
 
 
 # --- successful upload and audit trail -----------------------------------------------
