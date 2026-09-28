@@ -5,6 +5,7 @@ For every part in PARTS this writes to tests/fixtures/drawings/:
   <name>.pdf            the same drawing as a vector PDF
   <name>.photo.jpg      a "photographed" copy: rotated 1-3°, lower resolution, JPEG artefacts, noise
   <name>.expected.json  the correct answer in the DrawingData format
+and for the parts in LOWRES_OF also <name>_lowres.png (downscaled to 1169 px, same expected answer).
 
 Drawing and expected answer are built from the same part description, so they always agree.
 
@@ -393,6 +394,201 @@ def draw(part: dict):
 
 # --- "photo" version -----------------------------------------------------------------
 
+# --- GOST-style drawing close to the real shaft --------------------------------------------------
+#
+# A separate, more demanding drawing: small text, decimal commas, tolerances on every size, a fillet,
+# a taper, a thread relief groove, a thread with class 6g, a chamfer, baseline dimensions from the
+# right end face plus chain dimensions, and the general roughness symbol in the top-right corner.
+# Sections run left to right; boundaries are 0 (left face) .. N (right face).
+
+GOST_FONT = 6
+
+GOST_PARTS = [
+    {
+        "name": "06_gost_shaft",
+        "title": "Shaft",
+        "number": "TP-006",
+        "material": "Steel 45 (C45)",
+        "quantity": 12,
+        "general_ra": 3.2,
+        "sections": [
+            {"type": "od_turn", "d": 80, "l": 40.1, "tol": "+0,5/-1,3"},
+            {"type": "fillet", "r": 10, "l": 10, "tol": "±0,05"},
+            {"type": "od_turn", "d": 60, "l": 40, "tol": "±0,05"},
+            {"type": "taper", "d0": 60, "d": 55, "l": 30, "tol": "±0,85"},
+            {"type": "groove", "d0": 48, "d": 44, "l": 4, "tol": "±0,85"},
+            {"type": "od_turn", "d": 48, "l": 16},
+        ],
+        "thread": {"section": 5, "pitch": 1.5, "cls": "6g"},  # 0-based section, over its whole length
+        "chamfer": {"size": 1.5},  # on the right end face
+        # (text, from boundary, to boundary, side, row); rows count away from the part
+        "length_dims": [
+            ("140,1js12", 0, 6, "below", 3),
+            ("100js12", 1, 6, "below", 2),
+            ("90js12(±0,175)", 2, 6, "below", 1),
+            ("30±0,105", 3, 4, "above", 1),
+            ("4±0,08", 4, 5, "above", 2),
+            ("20js12", 4, 6, "above", 3),
+        ],
+    },
+]
+
+
+def _dot(text):
+    """Drawing text uses decimal commas; the expected answer uses points (as the app stores them)."""
+    return text.replace(",", ".") if text else None
+
+
+def _comma(value):
+    return f"{value:g}".replace(".", ",")
+
+
+def expected_gost(part: dict) -> dict:
+    features = []
+    for s in part["sections"]:
+        if s["type"] == "fillet":
+            features.append(_feature("fillet", tolerance=_dot(s.get("tol")), radius=s["r"]))
+        elif s["type"] in ("taper", "groove"):
+            features.append(_feature(s["type"], s["d"], start_diameter=s["d0"], length=s["l"],
+                                     tolerance=_dot(s.get("tol"))))
+        else:
+            features.append(_feature("od_turn", s["d"], length=s["l"], tolerance=_dot(s.get("tol"))))
+    thread_section = part["sections"][part["thread"]["section"]]
+    features.append(_feature("thread", thread_section["d"], length=thread_section["l"],
+                             tolerance=part["thread"]["cls"], pitch=part["thread"]["pitch"]))
+    features.append(_feature("chamfer", part["sections"][-1]["d"], length=part["chamfer"]["size"]))
+    return {
+        "part_type": "turned",
+        "material": part["material"],
+        "blank_diameter": None,
+        "blank_length": None,
+        "overall_length": round(sum(s["l"] for s in part["sections"]), 3),
+        "quantity": part["quantity"],
+        "general_ra": part["general_ra"],
+        "features": features,
+        "warnings": [],
+    }
+
+
+def draw_gost(part: dict):
+    global FONT
+    sections = part["sections"]
+    bounds = [0.0]
+    for s in sections:
+        bounds.append(round(bounds[-1] + s["l"], 3))
+    length = bounds[-1]
+
+    fig = plt.figure(figsize=(PAPER_W / 25.4, PAPER_H / 25.4))
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, PAPER_W)
+    ax.set_ylim(0, PAPER_H)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.add_patch(Rectangle((10, 10), PAPER_W - 20, PAPER_H - 20, fill=False, lw=LINE))
+
+    ox, oy = 32.0, 118.0  # scale 1:1
+
+    def px(x):
+        return ox + x
+
+    def py(r):
+        return oy + r
+
+    # Upper outline (x, r), mirrored for the lower half.
+    pts = [(0.0, 0.0)]
+    chamfer = part["chamfer"]["size"]
+    for i, s in enumerate(sections):
+        x0, x1 = bounds[i], bounds[i + 1]
+        if s["type"] == "fillet":
+            r_prev = sections[i - 1]["d"] / 2
+            r_next = sections[i + 1]["d"] / 2 if sections[i + 1]["type"] != "taper" else sections[i + 1]["d0"] / 2
+            cx, cy = x1, r_next + s["r"]
+            for k in range(0, 31):
+                a = np.pi + (np.pi / 2) * k / 30
+                pts.append((cx + s["r"] * np.cos(a), cy + s["r"] * np.sin(a)))
+            assert abs(r_prev - cy) < 1e-6  # the shoulder is exactly one fillet radius high
+        elif s["type"] == "taper":
+            pts += [(x0, s["d0"] / 2), (x1, s["d"] / 2)]
+        elif s["type"] == "groove":
+            pts += [(x0, s["d"] / 2), (x1, s["d"] / 2)]
+        elif i == len(sections) - 1:
+            pts += [(x0, s["d"] / 2), (x1 - chamfer, s["d"] / 2), (x1, s["d"] / 2 - chamfer)]
+        else:
+            pts += [(x0, s["d"] / 2), (x1, s["d"] / 2)]
+    pts.append((length, 0.0))
+    xs = [px(x) for x, _ in pts]
+    ax.plot(xs, [py(r) for _, r in pts], color="k", lw=LINE)
+    ax.plot(xs, [py(-r) for _, r in pts], color="k", lw=LINE)
+
+    # Visible edges across the part.
+    edge_radius = {
+        bounds[1]: sections[0]["d"] / 2,  # end of the Ø80 cylinder where the fillet starts
+        bounds[2]: sections[2]["d"] / 2,  # fillet runs out on Ø60
+        bounds[3]: sections[2]["d"] / 2,  # taper start
+        bounds[4]: sections[3]["d"] / 2,  # taper end / groove
+        bounds[5]: sections[5]["d"] / 2,  # groove / thread section
+        length - chamfer: sections[5]["d"] / 2 - 0,
+    }
+    for x, r in edge_radius.items():
+        ax.plot([px(x), px(x)], [py(-r), py(r)], color="k", lw=THIN if x in (bounds[2], length - chamfer) else LINE)
+    ax.plot([px(-6), px(length + 6)], [oy, oy], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
+
+    # Thread: minor diameter as thin lines over the threaded section.
+    t = part["thread"]
+    ts = sections[t["section"]]
+    r_minor = ts["d"] / 2 - 0.613 * t["pitch"]
+    x0, x1 = bounds[t["section"]], bounds[t["section"] + 1]
+    for sign in (1, -1):
+        ax.plot([px(x0), px(x1)], [py(sign * r_minor)] * 2, color="k", lw=THIN)
+
+    old_font, FONT = FONT, GOST_FONT
+    try:
+        # Diameters.
+        _vdim(ax, px(bounds[0] + 22), py(-40), py(40), f"Ø80{sections[0]['tol'].replace('+', ' +')}")
+        _vdim(ax, px(bounds[2] + 22), py(-30), py(30), f"Ø60{sections[2]['tol']}")
+        _vdim(ax, px(bounds[4] - 2), py(-27.5), py(27.5), f"Ø55{sections[3]['tol']}")
+        _vdim(ax, px(bounds[5] + 9), py(-24), py(24), f"M48×{_comma(t['pitch'])}-{t['cls']}")
+        _leader(ax, (px(bounds[4] + 2), py(-22)), (px(bounds[4] - 16), py(-40)), f"Ø44{sections[4]['tol']}")
+        _leader(ax, (px(bounds[1] + 3), py(-37)), (px(bounds[1] - 4), py(-52)), f"R10{sections[1]['tol']}")
+        _leader(ax, (px(length - 0.7), py(23.2)), (px(length + 6), py(30)), f"{_comma(chamfer)}×45°")
+
+        # Length dimensions: baseline from the right face below the part, chain above.
+        for text, a, b, side, row in part["length_dims"]:
+            if side == "below":
+                y = py(-40) - 8 * row
+                _hdim(ax, px(bounds[a]), px(bounds[b]), y, text, py(-40), py(-24))
+            else:
+                y = py(40) + 7 * row
+                _hdim(ax, px(bounds[a]), px(bounds[b]), y, text, py(27.5), py(24))
+
+        # General roughness in the top-right corner (no leader).
+        _roughness(ax, PAPER_W - 38, PAPER_H - 22, part["general_ra"])
+        ax.texts[-1].set_text(f"Ra {_comma(part['general_ra'])}")
+
+        _title_block(ax, part, 1)
+    finally:
+        FONT = old_font
+    return fig
+
+
+# --- low resolution copies -----------------------------------------------------------------------
+
+LOWRES_LONG_EDGE = 1169  # the long edge of the real drawing photo real_01
+LOWRES_OF = ("02_threaded_shaft", "06_gost_shaft")
+
+
+def lowres_copy(name: str):
+    """<name>_lowres.png: the clean PNG downscaled to the real drawing's resolution, same expected answer."""
+    image = Image.open(OUT_DIR / f"{name}.png").convert("RGB")
+    factor = LOWRES_LONG_EDGE / max(image.size)
+    small = image.resize((round(image.width * factor), round(image.height * factor)), Image.LANCZOS)
+    small.save(OUT_DIR / f"{name}_lowres.png", optimize=True)
+    (OUT_DIR / f"{name}_lowres.expected.json").write_text(
+        (OUT_DIR / f"{name}.expected.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    return small.size
+
+
 def photo_version(png_path: Path, out_path: Path, seed: int):
     """Simulate a phone photo of a printout: slight rotation, lower resolution, noise, JPEG artefacts."""
     rng = random.Random(seed)
@@ -425,6 +621,19 @@ def main():
         expected = OUT_DIR / f"{part['name']}.expected.json"
         expected.write_text(json.dumps(expected_answer(part), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"{part['name']}: png, pdf, photo (rotated {angle:+.1f}°), expected.json")
+    for j, part in enumerate(GOST_PARTS, start=len(PARTS)):
+        fig = draw_gost(part)
+        png = OUT_DIR / f"{part['name']}.png"
+        fig.savefig(png, dpi=DPI, facecolor="white")
+        fig.savefig(OUT_DIR / f"{part['name']}.pdf", facecolor="white", metadata=PDF_METADATA)
+        plt.close(fig)
+        angle = photo_version(png, OUT_DIR / f"{part['name']}.photo.jpg", seed=1000 + j)
+        expected = OUT_DIR / f"{part['name']}.expected.json"
+        expected.write_text(json.dumps(expected_gost(part), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"{part['name']}: png, pdf, photo (rotated {angle:+.1f}°), expected.json")
+    for name in LOWRES_OF:
+        width, height = lowres_copy(name)
+        print(f"{name}_lowres: png {width}x{height}, expected.json")
 
 
 if __name__ == "__main__":

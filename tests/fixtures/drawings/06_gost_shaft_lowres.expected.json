@@ -1,0 +1,92 @@
+{
+  "part_type": "turned",
+  "material": "Steel 45 (C45)",
+  "blank_diameter": null,
+  "blank_length": null,
+  "overall_length": 140.1,
+  "quantity": 12,
+  "general_ra": 3.2,
+  "features": [
+    {
+      "type": "od_turn",
+      "diameter": 80,
+      "start_diameter": null,
+      "length": 40.1,
+      "tolerance": "+0.5/-1.3",
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "fillet",
+      "diameter": null,
+      "start_diameter": null,
+      "length": null,
+      "tolerance": "±0.05",
+      "ra": null,
+      "pitch": null,
+      "radius": 10
+    },
+    {
+      "type": "od_turn",
+      "diameter": 60,
+      "start_diameter": null,
+      "length": 40,
+      "tolerance": "±0.05",
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "taper",
+      "diameter": 55,
+      "start_diameter": 60,
+      "length": 30,
+      "tolerance": "±0.85",
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "groove",
+      "diameter": 44,
+      "start_diameter": 48,
+      "length": 4,
+      "tolerance": "±0.85",
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "od_turn",
+      "diameter": 48,
+      "start_diameter": null,
+      "length": 16,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "thread",
+      "diameter": 48,
+      "start_diameter": null,
+      "length": 16,
+      "tolerance": "6g",
+      "ra": null,
+      "pitch": 1.5,
+      "radius": null
+    },
+    {
+      "type": "chamfer",
+      "diameter": 48,
+      "start_diameter": null,
+      "length": 1.5,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    }
+  ],
+  "warnings": []
+}

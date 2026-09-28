@@ -199,6 +199,10 @@ def test_expected_files_match_the_schema(path):
     name = path.name.removesuffix(".expected.json")
     if name.startswith("real_"):
         assert any((FIXTURES / f"{name}{s}").exists() for s in (".png", ".jpg", ".jpeg", ".pdf"))
+    elif name.endswith("_lowres"):  # a downscaled PNG of a generated drawing, same expected answer
+        assert (FIXTURES / f"{name}.png").exists()
+        original = FIXTURES / f"{name.removesuffix('_lowres')}.expected.json"
+        assert path.read_text(encoding="utf-8") == original.read_text(encoding="utf-8")
     else:
         assert data.material
         for suffix in (".png", ".pdf", ".photo.jpg"):
