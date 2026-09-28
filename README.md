@@ -69,7 +69,10 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 
 **Upload drawing** (`/jobs/upload`) accepts PNG, JPG and PDF up to 10 MB. The file type is checked
 by extension *and* content, and the name is sanitized. For a PDF the first page is rendered to PNG
-(pymupdf); images larger than 2576 px on the long edge are downscaled.
+(pymupdf) at the largest size the model reads in full. The model's limits are 2576 px on the long edge
+and 4784 visual tokens (one per 28×28 px patch); an image over either limit is downscaled here, with
+the same aspect ratio, instead of leaving it to the API. An A4 sheet at 2572×1818 (5980 tokens), for
+example, is sent at 2292×1621.
 
 `turnpilot/drawing_reader.py` sends the image to Claude (model from `ANTHROPIC_MODEL`, default
 `claude-sonnet-5`) with one strict tool, `record_part`, whose JSON schema matches our models:

@@ -9,6 +9,7 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import os
 from dataclasses import dataclass, field
 
@@ -40,6 +41,10 @@ TOO_COMPLEX_MESSAGE = "Drawing too complex, try again"
 # 2576 px long edge without downscaling, so larger images are downscaled here to that size.
 MAX_LONG_EDGE_PX = 2576
 MAX_BASE64_BYTES = 10 * 1024 * 1024
+# The model also sees at most 4784 visual tokens (one per 28x28 px patch). A larger image is shrunk by
+# the API on its side; it is shrunk here instead, so what the model sees is known and stored.
+MAX_VISUAL_TOKENS = 4784
+PATCH_PX = 28
 
 MEDIA_TYPES = {"png": "image/png", "jpeg": "image/jpeg", "pdf": "application/pdf"}
 
@@ -155,16 +160,46 @@ def detect_file_type(data: bytes) -> str | None:
     return None
 
 
-def _render(page, long_edge: int) -> pymupdf.Pixmap:
-    zoom = long_edge / max(page.rect.width, page.rect.height)
-    return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
+def visual_tokens(width: int, height: int) -> int:
+    """Visual tokens the model spends on an image: one per started 28x28 px patch."""
+    return math.ceil(width / PATCH_PX) * math.ceil(height / PATCH_PX)
+
+
+def within_limits(width: int, height: int) -> bool:
+    return max(width, height) <= MAX_LONG_EDGE_PX and visual_tokens(width, height) <= MAX_VISUAL_TOKENS
+
+
+def fit_size(width: float, height: float) -> tuple[int, int]:
+    """The largest size with the same aspect ratio that is within both limits (never enlarges)."""
+    scale = min(
+        1.0,
+        MAX_LONG_EDGE_PX / max(width, height),
+        math.sqrt(MAX_VISUAL_TOKENS * PATCH_PX * PATCH_PX / (width * height)),
+    )
+    while True:
+        fitted = max(1, math.floor(width * scale)), max(1, math.floor(height * scale))
+        if within_limits(*fitted):
+            return fitted
+        scale *= 0.995  # rounding up to whole patches can still exceed the token limit
+
+
+def _render(page, width_px: int) -> pymupdf.Pixmap:
+    """Render a page (or an image opened as a document) at a given pixel width, within the limits."""
+    for _ in range(50):
+        zoom = width_px / page.rect.width
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
+        if within_limits(pix.width, pix.height):
+            return pix
+        width_px = int(width_px * 0.995)  # pymupdf rounds sizes; step down until it fits
+    return pix
 
 
 def prepare_image(data: bytes, file_type: str) -> PreparedImage:
     """Turn an uploaded file into one image within the API limits.
 
-    PDF: the first page is rendered to PNG. PNG/JPEG: sent unchanged when small enough,
-    otherwise downscaled to MAX_LONG_EDGE_PX and re-encoded as PNG.
+    Limits: 2576 px on the long edge and 4784 visual tokens. PDF: the first page is rendered to PNG
+    at the largest size within both. PNG/JPEG: sent unchanged when within both, otherwise
+    downscaled (same aspect ratio) and re-encoded as PNG.
     """
     if file_type not in MEDIA_TYPES:
         raise ExtractionError(f"Unsupported file type: {file_type}")
@@ -180,15 +215,22 @@ def prepare_image(data: bytes, file_type: str) -> PreparedImage:
         if file_type == "pdf":
             if doc.page_count > 1:
                 notes.append(f"The PDF has {doc.page_count} pages; only page 1 was read.")
-            pix = _render(doc[0], MAX_LONG_EDGE_PX)
+            rect = doc[0].rect
+            to_long_edge = MAX_LONG_EDGE_PX / max(rect.width, rect.height)  # vector: render as large as allowed
+            width, _ = fit_size(rect.width * to_long_edge, rect.height * to_long_edge)
+            pix = _render(doc[0], width)
             image = PreparedImage(pix.tobytes("png"), "image/png", pix.width, pix.height, notes)
         else:
             original = pymupdf.Pixmap(data)
-            if max(original.width, original.height) <= MAX_LONG_EDGE_PX:
+            if within_limits(original.width, original.height):
                 image = PreparedImage(data, MEDIA_TYPES[file_type], original.width, original.height, notes)
             else:
-                pix = _render(doc[0], MAX_LONG_EDGE_PX)
-                notes.append(f"Image downscaled from {original.width}x{original.height} to {pix.width}x{pix.height}.")
+                width, _ = fit_size(original.width, original.height)
+                pix = _render(doc[0], width)
+                notes.append(
+                    f"Image downscaled from {original.width}x{original.height} to {pix.width}x{pix.height} "
+                    f"(API limits: {MAX_LONG_EDGE_PX} px long edge, {MAX_VISUAL_TOKENS} visual tokens)."
+                )
                 image = PreparedImage(pix.tobytes("png"), "image/png", pix.width, pix.height, notes)
 
     if len(base64.b64encode(image.data)) > MAX_BASE64_BYTES:

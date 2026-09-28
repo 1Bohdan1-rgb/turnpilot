@@ -161,7 +161,9 @@ def test_pdf_is_converted_to_png():
     image = prepare_image((FIXTURES / "02_threaded_shaft.pdf").read_bytes(), "pdf")
     assert image.media_type == "image/png"
     assert image.data.startswith(b"\x89PNG")
-    assert max(image.width, image.height) == drawing_reader.MAX_LONG_EDGE_PX
+    # rendered as large as both limits allow: an A4 sheet is bound by the visual token limit
+    assert drawing_reader.within_limits(image.width, image.height)
+    assert drawing_reader.visual_tokens(image.width, image.height) > 0.95 * drawing_reader.MAX_VISUAL_TOKENS
 
 
 def test_small_jpeg_is_sent_unchanged():
@@ -187,7 +189,8 @@ def test_notes_become_warnings():
     image = _png_image()
     image.notes.append("The PDF has 2 pages; only page 1 was read.")
     result = extract_drawing(image, client=FakeClient(make_response(VALID)))
-    assert result.data.warnings[0].startswith("The PDF has 2 pages")
+    assert result.data.warnings[:len(image.notes)] == image.notes  # image notes come first
+    assert any(w.startswith("The PDF has 2 pages") for w in result.data.warnings)
 
 
 # --- fixtures ------------------------------------------------------------------------
@@ -316,3 +319,50 @@ def test_unclear_thread_class_is_cleared_with_warning(value):
 def test_thread_class_check_only_touches_threads():
     data = parse_response(make_response(part([feature("od_turn", 48, length=16, tolerance="h6")])))
     assert data.features[0].tolerance == "h6" and data.warnings == []
+
+
+# --- visual token limit ---------------------------------------------------------------------------
+
+def test_visual_tokens():
+    assert drawing_reader.visual_tokens(28, 28) == 1
+    assert drawing_reader.visual_tokens(29, 28) == 2
+    assert drawing_reader.visual_tokens(1169, 858) == 42 * 31
+    assert drawing_reader.visual_tokens(2572, 1818) == 92 * 65  # 5980: over the limit
+
+
+def _png(width, height):
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, width, height), False)
+    pix.clear_with(255)
+    return pix.tobytes("png")
+
+
+def test_a4_sheet_is_shrunk_to_the_token_limit():
+    image = prepare_image(_png(2572, 1818), "png")  # long edge fine, 5980 tokens: too many
+    assert drawing_reader.visual_tokens(image.width, image.height) <= drawing_reader.MAX_VISUAL_TOKENS
+    assert drawing_reader.visual_tokens(image.width, image.height) > 0.95 * drawing_reader.MAX_VISUAL_TOKENS
+    assert abs(image.width / image.height - 2572 / 1818) < 0.01  # aspect ratio kept
+    assert "4784 visual tokens" in image.notes[0]
+
+
+def test_square_image_is_bound_by_tokens_not_by_the_long_edge():
+    image = prepare_image(_png(3000, 3000), "png")
+    assert image.width == image.height and image.width < drawing_reader.MAX_LONG_EDGE_PX
+    assert drawing_reader.within_limits(image.width, image.height)
+
+
+def test_long_narrow_image_is_bound_by_the_long_edge():
+    image = prepare_image(_png(5000, 400), "png")
+    assert max(image.width, image.height) == drawing_reader.MAX_LONG_EDGE_PX
+
+
+def test_image_within_both_limits_is_unchanged():
+    data = _png(2000, 1400)  # 72 x 50 = 3600 tokens
+    image = prepare_image(data, "png")
+    assert image.data == data and image.notes == []
+
+
+@pytest.mark.parametrize("width, height", [(2572, 1818), (1818, 2572), (4000, 3000), (2576, 2576), (10000, 200)])
+def test_fit_size_is_within_limits_and_never_enlarges(width, height):
+    w, h = drawing_reader.fit_size(width, height)
+    assert drawing_reader.within_limits(w, h)
+    assert w <= width and h <= height
