@@ -167,10 +167,10 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
         result.scores["tolerance"].add(tol_ok)
         if got is not None and not tol_ok:
             result.mismatches.append(f"{label}: tolerance {got.tolerance!r} (expected {exp.tolerance!r})")
-        ra_ok = got is not None and _same_number(got.ra, exp.ra)
+        ra_ok = got is not None and _same_number(got.ra, exp.ra) and (exp.ra is None or got.ra_param == exp.ra_param)
         result.scores["ra"].add(ra_ok)
         if got is not None and not ra_ok:
-            result.mismatches.append(f"{label}: Ra {got.ra} (expected {exp.ra})")
+            result.mismatches.append(f"{label}: {got.ra_param} {got.ra} (expected {exp.ra_param} {exp.ra})")
     for p in extra:
         result.mismatches.append(f"extra {p.type} Ø{p.diameter}")
     material_ok = _material_key(predicted.material) == _material_key(expected.material)
@@ -180,6 +180,8 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
     for metric in ("overall_length", "general_ra"):
         want, got = getattr(expected, metric), getattr(predicted, metric)
         ok = _same_number(got, want)
+        if metric == "general_ra" and want is not None:
+            ok = ok and predicted.general_ra_param == expected.general_ra_param
         result.scores[metric].add(ok)
         if not ok:
             result.mismatches.append(f"{metric} {got} (expected {want})")

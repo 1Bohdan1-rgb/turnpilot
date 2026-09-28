@@ -18,6 +18,14 @@ PARTING_CENTER_NOTE = "reduce feed ~50% for last 2 mm before center"
 PARTING_BORE_NOTE = "reduce feed ~50% for last 2 mm before breakthrough into bore"
 GRINDING_WARNING = "may require grinding — not guaranteed by turning"
 THREAD_MAJOR_NOTE = "major diameter for thread"
+# GOST 2789: Rz is roughly 4 x Ra over the usual turning range. An approximation, used only for the
+# finishing feed; the drawing's Rz is kept as written everywhere else.
+RZ_PER_RA = 4.0
+
+
+def rz_to_ra(rz: float) -> float:
+    """Approximate Ra (µm) for an Rz value: Ra ≈ Rz / 4 (GOST 2789)."""
+    return round(rz / RZ_PER_RA, 3)
 # Tapers and fillets are recognised on drawings but not planned automatically yet.
 MANUAL_OPERATION_WARNING = "manual operation"
 MANUAL_FEATURE_TYPES = ("taper", "fillet")
@@ -86,6 +94,7 @@ class FeatureSpec:
     start_diameter: float | None = None  # groove: diameter it is cut from; taper: diameter at its start
     tolerance: str | None = None
     radius: float | None = None  # fillet
+    ra_from_rz: float | None = None  # the Rz written on the drawing when ra was converted from it
 
 
 @dataclass(frozen=True)
@@ -570,6 +579,10 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     )
     if step.mode == "finish" and needs_grinding(feature.tolerance, feature.diameter, feature.ra):
         op.warnings.append(GRINDING_WARNING)
+    if step.mode == "finish" and feature.ra_from_rz is not None:
+        op.warnings.append(
+            f"Ra {feature.ra:g} µm assumed from Rz {feature.ra_from_rz:g} (Ra ≈ Rz/4, GOST 2789): check"
+        )
     if step.tool_type == "manual":
         op.warnings.append(MANUAL_OPERATION_WARNING)
         return op

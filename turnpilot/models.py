@@ -109,7 +109,8 @@ class Feature(db.Model):
     diameter = db.Column(db.Float)
     length = db.Column(db.Float)
     tolerance = db.Column(db.String(30))  # free text, e.g. "h7" or "+0/-0.05"
-    ra = db.Column(db.Float)  # um
+    ra = db.Column(db.Float)  # um, of the parameter in ra_param
+    ra_param = db.Column(db.String(2))  # "Ra" (default when empty) or "Rz", as written on the drawing
     pitch = db.Column(db.Float)  # mm, threads only
     start_diameter = db.Column(db.Float)  # mm, groove: diameter it is cut from; taper: diameter at its start
     radius = db.Column(db.Float)  # mm, fillets only

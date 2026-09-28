@@ -53,10 +53,18 @@ def turret_entries(machine):
     return [planner.TurretEntry(s.position, tool_spec(s.tool)) for s in machine.slots if s.tool is not None]
 
 
+def _roughness_for_planner(feature):
+    """(Ra for the planner, the original Rz or None): the planner works with Ra only."""
+    if feature.ra is not None and feature.ra_param == "Rz":
+        return planner.rz_to_ra(feature.ra), feature.ra
+    return feature.ra, None
+
+
 def job_spec(job):
     features = tuple(
         planner.FeatureSpec(
-            id=f.id, type=f.type, diameter=f.diameter, length=f.length, ra=f.ra, pitch=f.pitch,
+            id=f.id, type=f.type, diameter=f.diameter, length=f.length,
+            ra=_roughness_for_planner(f)[0], ra_from_rz=_roughness_for_planner(f)[1], pitch=f.pitch,
             # normalized again for features saved before decimal commas were converted
             start_diameter=f.start_diameter, tolerance=normalize_tolerance(f.tolerance), radius=f.radius,
         )

@@ -147,6 +147,13 @@ def _job_from_form(form):
     return job
 
 
+def _roughness_param(form, prefix=""):
+    value = form.get(prefix + "ra_param") or "Ra"
+    if value not in ("Ra", "Rz"):
+        raise FormError("Roughness parameter must be Ra or Rz")
+    return value
+
+
 def _feature_from_form(form, blank_diameter, prefix=""):
     """Build an unsaved Feature from form fields (optionally prefixed) or raise FormError."""
     feature_type = form.get(prefix + "type")
@@ -170,6 +177,7 @@ def _feature_from_form(form, blank_diameter, prefix=""):
         length=_number(form, prefix + "length"),
         tolerance=normalize_tolerance(form.get(prefix + "tolerance")),
         ra=_number(form, prefix + "ra"),
+        ra_param=_roughness_param(form, prefix),
         pitch=pitch if feature_type == "thread" else None,
         start_diameter=start_diameter,
         radius=_number(form, prefix + "radius") if feature_type == "fillet" else None,
@@ -291,7 +299,9 @@ def edit_operation(op_id):
 
 # --- drawing upload and review --------------------------------------------------
 
-REVIEW_FIELDS = ("type", "diameter", "start_diameter", "length", "tolerance", "ra", "pitch", "radius", "confidence")
+REVIEW_FIELDS = (
+    "type", "diameter", "start_diameter", "length", "tolerance", "ra", "ra_param", "pitch", "radius", "confidence",
+)
 # In the features mode the model reports a length it computed as "Ø60: length derived from chain dimensions".
 DERIVED_LENGTH_WARNING = re.compile(r"Ø\s*(\d+(?:[.,]\d+)?)\s*:\s*length derived", re.IGNORECASE)
 BORE_RA_WARNING = "Ra may belong to the bore — check"
@@ -309,9 +319,17 @@ def _decorate_row(row, threshold):
     confidence = _to_float(row.get("confidence"))
     row["low_confidence"] = confidence is not None and confidence < threshold
     row["grinding"] = planner.needs_grinding(
-        row.get("tolerance") or None, _to_float(row.get("diameter")), _to_float(row.get("ra"))
+        row.get("tolerance") or None, _to_float(row.get("diameter")), _ra_value(row)
     )
     return row
+
+
+def _ra_value(row):
+    """Ra of a review row for checks; an Rz is converted (Ra ≈ Rz/4)."""
+    value = _to_float(row.get("ra"))
+    if value is not None and row.get("ra_param") == "Rz":
+        return planner.rz_to_ra(value)
+    return value
 
 
 def _flag_bore_ra(rows):
@@ -343,14 +361,15 @@ def _flag_derived_lengths(rows, data):
     return rows
 
 
-def _apply_general_ra(rows, general_ra):
-    """The general roughness (corner symbol) applies to every feature without its own Ra."""
+def _apply_general_ra(rows, general_ra, general_ra_param="Ra"):
+    """The general roughness (corner symbol) applies to every feature without its own mark."""
     for row in rows:
         row["ra_general"] = general_ra is not None and row.get("ra") is None
         if row["ra_general"]:
             row["ra"] = general_ra
+            row["ra_param"] = general_ra_param
             row["grinding"] = planner.needs_grinding(
-                row.get("tolerance") or None, _to_float(row.get("diameter")), general_ra
+                row.get("tolerance") or None, _to_float(row.get("diameter")), _ra_value(row)
             )
     return rows
 
@@ -367,7 +386,7 @@ def _review_values_from_extraction(extraction):
     ]
     _flag_derived_lengths(rows, data)
     _flag_bore_ra(rows)  # on the marks read from the drawing, before the general Ra fills the gaps
-    _apply_general_ra(rows, data.general_ra)
+    _apply_general_ra(rows, data.general_ra, data.general_ra_param)
     blank_missing = data.blank_diameter is None or data.blank_length is None
     return {
         "name": extraction.original_filename.rsplit(".", 1)[0],

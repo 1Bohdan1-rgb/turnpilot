@@ -11,7 +11,7 @@
 <h2>Features</h2>
 {% if job.active_features %}
 <table class="card">
-  <thead><tr><th>#</th><th>Type</th><th>Ø, mm</th><th>Length, mm</th><th>Tolerance</th><th>Ra, µm</th><th>Pitch, mm</th><th>Start Ø, mm</th><th>Radius, mm</th><th>Conf.</th><th></th></tr></thead>
+  <thead><tr><th>#</th><th>Type</th><th>Ø, mm</th><th>Length, mm</th><th>Tolerance</th><th>Roughness, µm</th><th>Pitch, mm</th><th>Start Ø, mm</th><th>Radius, mm</th><th>Conf.</th><th></th></tr></thead>
   <tbody>
   {% for f in job.active_features %}
     <tr>
@@ -20,7 +20,7 @@
       <td>{{ f.diameter if f.diameter is not none else "" }}</td>
       <td>{{ f.length if f.length is not none else "" }}</td>
       <td>{{ f.tolerance or "" }}</td>
-      <td>{{ f.ra if f.ra is not none else "" }}</td>
+      <td>{{ ((f.ra_param or "Ra") ~ " " ~ f.ra) if f.ra is not none else "" }}</td>
       <td>{{ f.pitch if f.pitch is not none else "" }}</td>
       <td>{{ f.start_diameter if f.start_diameter is not none else "" }}</td>
       <td>{{ f.radius if f.radius is not none else "" }}</td>
@@ -46,7 +46,12 @@
   <label>Diameter, mm <input name="diameter" type="number" step="any" min="0"></label>
   <label>Length, mm <input name="length" type="number" step="any" min="0"></label>
   <label>Tolerance <input name="tolerance" placeholder="h7"></label>
-  <label>Ra, µm <input name="ra" type="number" step="any" min="0" placeholder="1.6"></label>
+  <label>Roughness, µm
+    <span class="inline-fields">
+      <select name="ra_param"><option>Ra</option><option>Rz</option></select>
+      <input name="ra" type="number" step="any" min="0" placeholder="1.6">
+    </span>
+  </label>
   <label>Pitch, mm (thread) <input name="pitch" type="number" step="any" min="0"></label>
   <label>Start Ø, mm (groove / taper) <input name="start_diameter" type="number" step="any" min="0" placeholder="groove: blank Ø if empty"></label>
   <label>Radius, mm (fillet) <input name="radius" type="number" step="any" min="0"></label>

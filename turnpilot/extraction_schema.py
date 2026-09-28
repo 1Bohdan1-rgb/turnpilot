@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, f
 FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet")
 FeatureType = Literal["face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet"]
 PART_TYPES = ("turned", "not_turned", "unclear")
+# Roughness parameter as written on the drawing: GOST drawings often give Rz instead of Ra.
+ROUGHNESS_PARAMS = ("Ra", "Rz")
+RoughnessParam = Literal["Ra", "Rz"]
 PartType = Literal["turned", "not_turned", "unclear"]
 
 TOOL_NAME = "record_part"
@@ -41,7 +44,8 @@ class ExtractedFeature(BaseModel):
     start_diameter: PositiveFloat | None = None
     length: PositiveFloat | None = None
     tolerance: str | None = None
-    ra: PositiveFloat | None = None
+    ra: PositiveFloat | None = None  # roughness value in µm, of the parameter in ra_param
+    ra_param: RoughnessParam = "Ra"
     pitch: PositiveFloat | None = None
     radius: PositiveFloat | None = None
     # Required in model output (strict tool schema); absent in hand-written expected files.
@@ -83,6 +87,7 @@ class DrawingData(BaseModel):
     quantity: PositiveInt | None = None
     # Roughness symbol without a leader in the top-right corner: applies to surfaces without their own Ra.
     general_ra: PositiveFloat | None = None
+    general_ra_param: RoughnessParam = "Ra"
     features: list[ExtractedFeature]
     warnings: list[str] = Field(default_factory=list)
 
@@ -148,9 +153,14 @@ _FEATURE_SCHEMA = {
         ),
         "ra": _nullable(
             "number",
-            "Surface roughness Ra in µm marked on this feature itself. null if the feature has no own mark "
-            "(the general roughness goes to general_ra, not here).",
+            "Surface roughness value in µm marked on this feature itself (Ra or Rz, see ra_param). null if the "
+            "feature has no own mark (the general roughness goes to general_ra, not here).",
         ),
+        "ra_param": {
+            "type": "string",
+            "enum": list(ROUGHNESS_PARAMS),
+            "description": "The roughness parameter written with the value: Ra or Rz. Do not convert. Ra if none.",
+        },
         "pitch": _nullable("number", "mm. thread only: the pitch (1.5 for M20x1.5). null for other types."),
         "radius": _nullable("number", "mm. fillet only: the radius (10 for R10). null for other types."),
         "confidence": {
@@ -159,7 +169,8 @@ _FEATURE_SCHEMA = {
         },
     },
     "required": [
-        "type", "diameter", "start_diameter", "length", "tolerance", "ra", "pitch", "radius", "confidence",
+        "type", "diameter", "start_diameter", "length", "tolerance", "ra", "ra_param", "pitch", "radius",
+        "confidence",
     ],
     "additionalProperties": False,
 }
@@ -194,9 +205,14 @@ RECORD_PART_TOOL = {
             "quantity": _nullable("integer", "Quantity from the title block."),
             "general_ra": _nullable(
                 "number",
-                "µm. Ra of the roughness symbol without a leader in the top-right corner of the sheet: it applies "
-                "to every surface without its own mark. null if there is no such symbol.",
+                "µm. Value of the roughness symbol without a leader in the top-right corner of the sheet (Ra or "
+                "Rz, see general_ra_param): it applies to every surface without its own mark. null if none.",
             ),
+            "general_ra_param": {
+                "type": "string",
+                "enum": list(ROUGHNESS_PARAMS),
+                "description": "Parameter of the general roughness as written: Ra or Rz. Do not convert. Ra if none.",
+            },
             "features": {"type": "array", "items": _FEATURE_SCHEMA},
             "warnings": {
                 "type": "array",
@@ -206,7 +222,7 @@ RECORD_PART_TOOL = {
         },
         "required": [
             "part_type", "material", "blank_diameter", "blank_length", "overall_length", "quantity",
-            "general_ra", "features", "warnings",
+            "general_ra", "general_ra_param", "features", "warnings",
         ],
         "additionalProperties": False,
     },

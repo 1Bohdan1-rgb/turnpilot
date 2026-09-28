@@ -100,8 +100,9 @@
       other dimensions (e.g. a baseline minus a groove).
       Groove: Ø = bottom, Start Ø = diameter it is cut from, Length = width.
       Taper: Start Ø → Ø over Length. Fillet: Radius. Tapers and fillets are not planned automatically.
+      Roughness is shown as written (Ra or Rz); for cutting data an Rz is converted to Ra ≈ Rz/4 (GOST 2789).
       {% if data and data.general_ra %}
-      <br><strong>General roughness on the drawing: Ra {{ data.general_ra }}</strong>, applied to features without their own mark
+      <br><strong>General roughness on the drawing: {{ data.general_ra_param }} {{ data.general_ra }}</strong>, applied to features without their own mark
       (<span class="badge badge-general">general</span>).
       {% endif %}
     </p>
@@ -109,7 +110,7 @@
     <div class="table-wrap">
     <table class="card review-table">
       <thead>
-        <tr><th>Use</th><th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Ra</th><th>Pitch</th><th>Radius</th><th>Conf.</th></tr>
+        <tr><th>Use</th><th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Roughness, µm</th><th>Pitch</th><th>Radius</th><th>Conf.</th></tr>
       </thead>
       <tbody>
       {% for row in values.rows %}
@@ -131,7 +132,10 @@
           </td>
           {% endfor %}
           <td><input name="f{{ i }}-tolerance" value="{{ row.tolerance or '' }}" size="8"></td>
-          <td>
+          <td class="roughness">
+            <select name="f{{ i }}-ra_param">
+              {% for p in ("Ra", "Rz") %}<option {% if (row.ra_param or "Ra") == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+            </select>
             <input name="f{{ i }}-ra" type="number" step="any" min="0" value="{{ row.ra if row.ra is not none else '' }}">
             {% if row.ra_general %}<span class="badge badge-general">general</span>{% endif %}
           </td>

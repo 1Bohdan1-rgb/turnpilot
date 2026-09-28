@@ -151,3 +151,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .cached-note { background: #f6f2fd; }
 .inline-form { display: inline-flex; gap: 8px; align-items: center; margin-left: 8px; }
 .badge-check { background: #fdf1dc; color: var(--edited); cursor: help; }
+.inline-fields { display: flex; gap: 4px; }
+.inline-fields input { flex: 1; min-width: 0; }
+.review-table td.roughness { white-space: nowrap; }
+.review-table td.roughness input { width: 64px; }

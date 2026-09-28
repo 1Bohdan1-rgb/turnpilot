@@ -21,7 +21,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt
 
-from .extraction_schema import PART_TYPES, DrawingData, ExtractedFeature, PartType
+from .extraction_schema import PART_TYPES, ROUGHNESS_PARAMS, DrawingData, ExtractedFeature, PartType, RoughnessParam
 
 TOOL_NAME = "record_dimensions"
 SECTION_TYPES = ("od_turn", "taper", "groove", "fillet")
@@ -39,6 +39,7 @@ class Section(BaseModel):
     start_diameter: PositiveFloat | None = None
     tolerance: str | None = None
     ra: PositiveFloat | None = None
+    ra_param: RoughnessParam = "Ra"
     radius: PositiveFloat | None = None
     confidence: float = Field(ge=0, le=1)
 
@@ -51,6 +52,7 @@ class Overlay(BaseModel):
     diameter: PositiveFloat | None = None
     tolerance: str | None = None
     ra: PositiveFloat | None = None
+    ra_param: RoughnessParam = "Ra"
     pitch: PositiveFloat | None = None
     size: PositiveFloat | None = None  # chamfer leg (1.5 for 1.5x45°)
     start: int | None = Field(default=None, ge=0)  # boundaries of its extent, when dimensioned
@@ -78,6 +80,7 @@ class DimensionsData(BaseModel):
     blank_length: PositiveFloat | None = None
     quantity: PositiveInt | None = None
     general_ra: PositiveFloat | None = None
+    general_ra_param: RoughnessParam = "Ra"
     sections: list[Section]
     overlays: list[Overlay] = Field(default_factory=list)
     dimensions: list[Dimension] = Field(default_factory=list)
@@ -244,6 +247,7 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
             length=None if s.type == "fillet" else length,
             tolerance=s.tolerance,
             ra=s.ra,
+            ra_param=s.ra_param,
             radius=s.radius if s.type == "fillet" else None,
             confidence=s.confidence,
             length_derived=derived and s.type != "fillet",
@@ -271,6 +275,7 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
             length=length,
             tolerance=o.tolerance,
             ra=o.ra,
+            ra_param=o.ra_param,
             pitch=o.pitch if o.type == "thread" else None,
             confidence=o.confidence,
             length_derived=derived,
@@ -288,6 +293,7 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
         overall_length=overall,
         quantity=data.quantity,
         general_ra=data.general_ra,
+        general_ra_param=data.general_ra_param,
         features=features,
         warnings=warnings,
     )
@@ -377,7 +383,9 @@ RECORD_DIMENSIONS_TOOL = {
         "blank_diameter": _number("mm. Only if the drawing states the blank/stock size; else 0."),
         "blank_length": _number("mm. Only if the drawing states the blank/stock size; else 0."),
         "quantity": _integer("Quantity from the title block; 0 if none."),
-        "general_ra": _number("µm. Ra of the roughness symbol without a leader in the top-right corner; else 0."),
+        "general_ra": _number("µm. Value of the roughness symbol without a leader in the top-right corner; else 0."),
+        "general_ra_param": {"type": "string", "enum": list(ROUGHNESS_PARAMS),
+                             "description": "Ra or Rz as written with the general roughness; Ra if none."},
         "sections": {
             "type": "array",
             "description": "External profile from the left end face to the right end face. Section k lies "
@@ -389,7 +397,9 @@ RECORD_DIMENSIONS_TOOL = {
                                           "from. Else 0."),
                 "tolerance": _text('Tolerance of this diameter (or radius) exactly as written, e.g. "±0.05", '
                                    '"0/-0.021", "h7"; "" if none.'),
-                "ra": _number("µm. Ra marked on this section itself; else 0."),
+                "ra": _number("µm. Roughness value marked on this section itself; else 0."),
+                "ra_param": {"type": "string", "enum": list(ROUGHNESS_PARAMS),
+                             "description": "Ra or Rz as written with that value; Ra if none."},
                 "radius": _number("mm. Fillet radius (10 for R10); else 0."),
                 "confidence": _number("0..1"),
             }),
@@ -402,7 +412,9 @@ RECORD_DIMENSIONS_TOOL = {
                 "section": _integer("1-based number of the section it lies on; 0 for a bore."),
                 "diameter": _number("mm. Thread major diameter or bore diameter; 0 for a chamfer."),
                 "tolerance": _text('Thread class ("6g") or bore tolerance exactly as written; "" if none.'),
-                "ra": _number("µm. Ra marked on it; else 0."),
+                "ra": _number("µm. Roughness value marked on it; else 0."),
+                "ra_param": {"type": "string", "enum": list(ROUGHNESS_PARAMS),
+                             "description": "Ra or Rz as written with that value; Ra if none."},
                 "pitch": _number("mm. Threads only; else 0."),
                 "size": _number("mm. Chamfer leg (1.5 for 1.5x45°); else 0."),
                 "start": _integer("Boundary where it starts if its length is dimensioned (a THRU bore: 0); else -1."),
@@ -466,7 +478,9 @@ on a section; give start/end boundaries only if their length is dimensioned.
 That is reading the drawing, not a guess. A bore with neither THRU nor a length dimension gets start \
 and end -1.
 - material and quantity from the title block; blank size only if the drawing states it. A roughness \
-symbol without a leader in the top-right corner is general_ra; a section's ra is only its own mark.
+symbol without a leader in the top-right corner is general_ra; a section's ra is only its own mark. \
+Roughness may be Ra or Rz (GOST drawings often use Rz): record the value with its parameter as written \
+(ra_param / general_ra_param), never convert.
 - Tolerances and Ra belong to the section or overlay they are written on; do not copy a value to \
 another one. A roughness (Ra) symbol on a leader line belongs to the surface the leader's arrow \
 touches (for example the bore wall), not to the nearest dimension or the side of the part where the \

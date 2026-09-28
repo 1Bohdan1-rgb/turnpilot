@@ -88,6 +88,8 @@ not to the nearest dimension or the side of the part where the symbol is placed.
 - A roughness symbol without a leader in the top-right corner of the sheet is the general roughness for \
 every surface that has no roughness mark of its own. Record it as general_ra; keep each feature's ra for \
 marks on that feature only.
+- Roughness may be given as Ra or as Rz (GOST drawings often use Rz). Record the value with its \
+parameter exactly as written (ra_param / general_ra_param); never convert Rz to Ra.
 - confidence reflects how legible and unambiguous the feature is on the drawing.
 - Put anything unclear, contradictory or not representable into warnings.
 - Keep warnings short: one sentence each, and do not repeat what is already in the recorded fields.
