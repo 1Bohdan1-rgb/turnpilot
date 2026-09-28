@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -291,6 +292,8 @@ def edit_operation(op_id):
 # --- drawing upload and review --------------------------------------------------
 
 REVIEW_FIELDS = ("type", "diameter", "start_diameter", "length", "tolerance", "ra", "pitch", "radius", "confidence")
+# In the features mode the model reports a length it computed as "Ø60: length derived from chain dimensions".
+DERIVED_LENGTH_WARNING = re.compile(r"Ø\s*(\d+(?:[.,]\d+)?)\s*:\s*length derived", re.IGNORECASE)
 BORE_RA_WARNING = "Ra may belong to the bore — check"
 NOT_TURNED_BANNER = "This does not look like a lathe part"
 
@@ -325,6 +328,20 @@ def _flag_bore_ra(rows):
     return rows
 
 
+def _flag_derived_lengths(rows, data):
+    """Mark lengths that are not dimensioned directly but computed (e.g. a baseline minus a groove)."""
+    reported = {
+        float(m.group(1).replace(",", "."))
+        for w in data.warnings for m in [DERIVED_LENGTH_WARNING.search(w)] if m
+    }
+    for row, feature in zip(rows, data.features):
+        from_model = feature.type == "od_turn" and feature.diameter is not None and any(
+            abs(feature.diameter - d) < 1e-6 for d in reported
+        )
+        row["length_derived"] = feature.length is not None and (feature.length_derived or from_model)
+    return rows
+
+
 def _apply_general_ra(rows, general_ra):
     """The general roughness (corner symbol) applies to every feature without its own Ra."""
     for row in rows:
@@ -347,6 +364,7 @@ def _review_values_from_extraction(extraction):
         _decorate_row({**{k: getattr(f, k) for k in REVIEW_FIELDS}, "include": True}, threshold)
         for f in data.features
     ]
+    _flag_derived_lengths(rows, data)
     _flag_bore_ra(rows)  # on the marks read from the drawing, before the general Ra fills the gaps
     _apply_general_ra(rows, data.general_ra)
     blank_missing = data.blank_diameter is None or data.blank_length is None

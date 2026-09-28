@@ -46,6 +46,9 @@ class ExtractedFeature(BaseModel):
     radius: PositiveFloat | None = None
     # Required in model output (strict tool schema); absent in hand-written expected files.
     confidence: float | None = Field(default=None, ge=0, le=1)
+    # Set by the code, not by the model: the length is not dimensioned directly but computed from
+    # other dimensions (e.g. a baseline minus a groove), so the machinist should check it.
+    length_derived: bool = False
 
     @field_validator("tolerance")
     @classmethod

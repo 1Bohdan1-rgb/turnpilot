@@ -709,3 +709,27 @@ def test_geometry_check_uses_edited_rows(app, client):
     form["f6-length"] = "16"
     page = client.post("/extractions/1/confirm", data=form).data.decode()  # name missing: page shown again
     assert "Geometry check" not in page
+
+
+# --- "check" badge on lengths computed from other dimensions --------------------------------------
+
+CHECK_BADGE = '<span class="badge badge-check"'
+
+
+def test_features_mode_derived_length_gets_check_badge(app, client):
+    shaft = {**GOST_SHAFT, "warnings": ["Ø60: length derived from chain dimensions"]}
+    page = _review_page(app, client, shaft)
+    rows = page.split('<tr class="')[1:]
+    flagged = [r for r in rows if CHECK_BADGE in r and 'name="f' in r]
+    assert len(flagged) == 1 and 'value="60.0"' in flagged[0]
+
+
+def test_dimensions_first_derived_lengths_get_check_badge(app, client):
+    from test_dimensions_first import REAL_SHAFT, to_wire
+
+    app.config["DRAWING_READ_MODE"] = "dimensions_first"
+    _use_model(app, to_wire(REAL_SHAFT)).messages.response.content[0].name = "record_dimensions"
+    _upload(client)
+    page = client.get("/extractions/1/review").data.decode()
+    # Ø80, Ø60, Ø48 and the thread are computed; the taper and the groove are dimensioned directly
+    assert page.count(CHECK_BADGE) == 4 + 1  # + the legend above the table

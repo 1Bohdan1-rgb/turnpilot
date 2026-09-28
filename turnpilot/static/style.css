@@ -150,3 +150,4 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .badge-cached { background: #efe7fb; color: #5b3aa8; }
 .cached-note { background: #f6f2fd; }
 .inline-form { display: inline-flex; gap: 8px; align-items: center; margin-left: 8px; }
+.badge-check { background: #fdf1dc; color: var(--edited); cursor: help; }

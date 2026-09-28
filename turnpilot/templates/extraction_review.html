@@ -96,6 +96,8 @@
     <h2>Features</h2>
     <p class="muted small">
       Rows with low confidence (&lt; {{ config.LOW_CONFIDENCE_THRESHOLD }}) are highlighted. Untick a row to leave it out.
+      Lengths marked <span class="badge badge-check">check</span> are not dimensioned directly but computed from
+      other dimensions (e.g. a baseline minus a groove).
       Groove: Ø = bottom, Start Ø = diameter it is cut from, Length = width.
       Taper: Start Ø → Ø over Length. Fillet: Radius. Tapers and fillets are not planned automatically.
       {% if data and data.general_ra %}
@@ -120,7 +122,11 @@
             </select>
           </td>
           {% for key in ("diameter", "start_diameter", "length") %}
-          <td><input name="f{{ i }}-{{ key }}" type="number" step="any" min="0" value="{{ row[key] if row[key] is not none else '' }}"></td>
+          <td>
+            <input name="f{{ i }}-{{ key }}" type="number" step="any" min="0" value="{{ row[key] if row[key] is not none else '' }}">
+            {% if key == "length" and row.length_derived %}<span class="badge badge-check"
+              title="Not dimensioned directly: computed from other dimensions (e.g. a baseline minus a groove). Check it.">check</span>{% endif %}
+          </td>
           {% endfor %}
           <td><input name="f{{ i }}-tolerance" value="{{ row.tolerance or '' }}" size="8"></td>
           <td>

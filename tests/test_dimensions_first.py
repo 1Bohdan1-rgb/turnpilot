@@ -300,3 +300,63 @@ def test_strict_schemas_stay_within_the_union_limit(tool):
 
 def test_dimensions_schema_has_no_nullable_fields():
     assert _union_params(RECORD_DIMENSIONS_TOOL["input_schema"]) == 0
+
+
+# --- lengths computed by subtraction are flagged -------------------------------------------------
+
+def test_derived_lengths_are_flagged():
+    data = to_drawing_data(DimensionsData.model_validate(REAL_SHAFT))
+    flags = [(f.type, f.diameter, f.length_derived) for f in data.features]
+    assert flags == [
+        ("od_turn", 80, True),     # 140.1 - 100
+        ("fillet", None, False),   # no length (radius)
+        ("od_turn", 60, True),     # 90 - 30 - 20
+        ("taper", 55, False),      # the 30 chain dimension
+        ("groove", 44, False),     # the 4 chain dimension
+        ("od_turn", 48, True),     # baseline 20 minus the groove 4
+        ("thread", 48, True),      # over the Ø48 section
+        ("chamfer", 48, False),
+    ]
+
+
+HOLDOUT = {  # 07_holdout transcribed as written: baselines from the LEFT face, groove width 3
+    "part_type": "turned", "material": "Aluminium 6061", "blank_diameter": None, "blank_length": None,
+    "quantity": 25, "general_ra": 3.2,
+    "sections": [
+        section("od_turn", 36, tolerance="0/-0.016"),
+        section("od_turn", 45, tolerance="±0.1"),
+        section("taper", 38, start_diameter=45, tolerance="±0.2"),
+        section("groove", 30, start_diameter=34, tolerance="±0.3"),
+        section("od_turn", 34),
+    ],
+    "overlays": [overlay("thread", 5, 34, tolerance="6g", pitch=1.5), overlay("chamfer", 5, size=1)],
+    "dimensions": [
+        dim(25, "baseline", 0, 1), dim(55, "baseline", 0, 2), dim(75, "baseline", 0, 3),
+        dim(100, "overall", 0, 5), dim(3, "chain", 3, 4, "±0.1"),
+    ],
+    "warnings": [],
+}
+
+
+def test_holdout_baselines_from_the_left_face():
+    data = to_drawing_data(DimensionsData.model_validate(HOLDOUT))
+    got = [(f.type, f.diameter, f.length, f.length_derived) for f in data.features]
+    assert got == [
+        ("od_turn", 36, 25, False), ("od_turn", 45, 30, True), ("taper", 38, 20, True),
+        ("groove", 30, 3, False), ("od_turn", 34, 22, True), ("thread", 34, 22, True), ("chamfer", 34, 1, False),
+    ]
+    expected = DrawingData.model_validate_json((FIXTURES / "07_holdout.expected.json").read_text(encoding="utf-8"))
+    want = [(f.type, f.diameter, f.start_diameter, f.length, f.tolerance, f.pitch) for f in expected.features]
+    assert [(f.type, f.diameter, f.start_diameter, f.length, f.tolerance, f.pitch) for f in data.features] == want
+    assert geometry_warnings(data.features, data.overall_length) == []
+
+
+@pytest.mark.parametrize("phrase", [
+    "may span several sections, including grooves",
+    "following its extension lines to the part",
+    "not a separate cylinder",
+])
+def test_dimensions_prompt_has_the_general_rules(phrase):
+    from turnpilot.dimensions_first import SYSTEM_PROMPT
+
+    assert phrase in SYSTEM_PROMPT.replace("\n", " ")

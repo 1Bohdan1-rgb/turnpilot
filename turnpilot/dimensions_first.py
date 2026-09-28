@@ -162,14 +162,23 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
         if s.tolerance is None and d.tolerance and s.diameter == d.value:
             s.tolerance = d.tolerance
 
+    # Pairs of boundaries that one linear dimension connects directly.
+    direct = {
+        tuple(sorted((d.from_, d.to))) for d in data.dimensions
+        if d.kind in LINEAR_KINDS and d.from_ is not None and d.to is not None
+    }
+
     features = []
     section_lengths = []
+    section_derived = []
     for number, s in enumerate(sections, start=1):
         length = _span(x, number - 1, number)
         if length is not None and length <= 0:
             warnings.append(f"section {number} ({s.type}) gets length {length:g} from the dimensions")
             length = None
+        derived = length is not None and (number - 1, number) not in direct
         section_lengths.append(length)
+        section_derived.append(derived)
         features.append(ExtractedFeature(
             type=s.type,
             diameter=None if s.type == "fillet" else s.diameter,
@@ -180,17 +189,22 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
             ra=s.ra,
             radius=s.radius if s.type == "fillet" else None,
             confidence=s.confidence,
+            length_derived=derived and s.type != "fillet",
         ))
 
     for o in data.overlays:
         section = sections[o.section - 1] if o.section and o.section <= len(sections) else None
         diameter = o.diameter or (section.diameter if section else None)
+        derived = False
         if o.type == "chamfer":
             length = o.size
         else:
             length = _span(x, o.start, o.end)
+            if length is not None and o.start is not None and o.end is not None:
+                derived = tuple(sorted((o.start, o.end))) not in direct
             if length is None and o.type == "thread" and o.section and o.section <= len(sections):
                 length = section_lengths[o.section - 1]  # thread over the whole section
+                derived = section_derived[o.section - 1]
         features.append(ExtractedFeature(
             type=o.type,
             diameter=diameter,
@@ -199,6 +213,7 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
             ra=o.ra,
             pitch=o.pitch if o.type == "thread" else None,
             confidence=o.confidence,
+            length_derived=derived,
         ))
 
     overall = x[-1]
@@ -379,6 +394,11 @@ length dimension, give the two boundaries its extension lines start from (from, 
 overall (the whole part), baseline (measured from a common datum face) or chain (between neighbouring \
 boundaries). Do not add up or subtract dimensions yourself. For a diameter dimension use kind \
 diameter and the section number.
+- A baseline dimension runs from its datum (the base face) to a boundary and may span several \
+sections, including grooves. Find both boundaries of every length dimension by following its extension \
+lines to the part, not by the section the number happens to be written above.
+- A diameter dimensioned at the end of a taper is the diameter of that end of the taper (the taper's \
+diameter or start_diameter), not a separate cylinder. Add a cylinder only where the drawing shows one.
 - Overlays: threads (major diameter, pitch, thread class as tolerance), chamfers (size) and bores lie \
 on a section; give start/end boundaries only if their length is dimensioned.
 - material and quantity from the title block; blank size only if the drawing states it. A roughness \
