@@ -14,6 +14,20 @@ PartType = Literal["turned", "not_turned", "unclear"]
 
 TOOL_NAME = "record_part"
 
+DECIMAL_COMMA = re.compile(r"(?<=\d),(?=\d)")
+
+
+def normalize_tolerance(value: str | None) -> str | None:
+    """Tolerance text with a decimal point: GOST drawings write "±0,05" or "0/-0,021".
+
+    Only a comma between two digits is replaced, so the rest of the text stays as written.
+    Empty text becomes None.
+    """
+    if value is None:
+        return None
+    value = DECIMAL_COMMA.sub(".", value.strip())
+    return value or None
+
 # ISO 965 thread tolerance class: grade 3-9 + position, once or twice (pitch and crest diameter).
 # External threads use e/f/g/h (6g, 4h6h), internal threads G/H (6H, 5H6H).
 THREAD_CLASS = re.compile(r"(?:[3-9][efgh]){1,2}|(?:[3-9][GH]){1,2}")
@@ -35,11 +49,8 @@ class ExtractedFeature(BaseModel):
 
     @field_validator("tolerance")
     @classmethod
-    def _blank_tolerance_is_none(cls, value):
-        if value is None:
-            return None
-        value = value.strip()
-        return value or None
+    def _normalize_tolerance(cls, value):
+        return normalize_tolerance(value)
 
     @model_validator(mode="after")
     def _check_consistency(self):

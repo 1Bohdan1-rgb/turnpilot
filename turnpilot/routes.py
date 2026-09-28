@@ -14,6 +14,7 @@ from flask import (
 )
 
 from . import drawing_reader, planner, services
+from .extraction_schema import normalize_tolerance
 from .models import (
     FEATURE_TYPES,
     DrawingExtraction,
@@ -166,7 +167,7 @@ def _feature_from_form(form, blank_diameter, prefix=""):
         type=feature_type,
         diameter=diameter,
         length=_number(form, prefix + "length"),
-        tolerance=form.get(prefix + "tolerance", "").strip() or None,
+        tolerance=normalize_tolerance(form.get(prefix + "tolerance")),
         ra=_number(form, prefix + "ra"),
         pitch=pitch if feature_type == "thread" else None,
         start_diameter=start_diameter,

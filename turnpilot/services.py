@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from werkzeug.utils import secure_filename
 
 from . import drawing_reader, planner
-from .extraction_schema import DrawingData
+from .extraction_schema import DrawingData, normalize_tolerance
 from .models import DrawingExtraction, Edit, Machine, Operation, TurretSlot, db
 
 # Extra names a material may appear under on a drawing (compared after normalization).
@@ -59,7 +59,8 @@ def job_spec(job):
     features = tuple(
         planner.FeatureSpec(
             id=f.id, type=f.type, diameter=f.diameter, length=f.length, ra=f.ra, pitch=f.pitch,
-            start_diameter=f.start_diameter, tolerance=f.tolerance, radius=f.radius,
+            # normalized again for features saved before decimal commas were converted
+            start_diameter=f.start_diameter, tolerance=normalize_tolerance(f.tolerance), radius=f.radius,
         )
         for f in job.active_features
     )

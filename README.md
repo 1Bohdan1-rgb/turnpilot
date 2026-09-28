@@ -77,6 +77,8 @@ material, blank size, overall length, quantity and features (type, diameter, sta
 length, tolerance, Ra, pitch) with a confidence per feature, plus warnings. The model is told to
 use `null` for anything not visible on the drawing instead of guessing. The tool input is
 validated with pydantic (`turnpilot/extraction_schema.py`); invalid output is rejected.
+Tolerances written with a decimal comma (GOST: `±0,05`, `0/-0,021`) are stored with a decimal point,
+whether they come from the model, from the manual feature form or from older records.
 The request is streamed with an output budget of 64000 tokens (thinking included: a detailed drawing
 used all of the earlier 16000 on thinking). If the budget still runs out, the user sees
 "Drawing too complex, try again" and the token usage is logged and kept with the upload.
