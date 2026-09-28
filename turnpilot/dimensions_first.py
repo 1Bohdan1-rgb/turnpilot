@@ -462,8 +462,15 @@ lines to the part, not by the section the number happens to be written above.
 diameter or start_diameter), not a separate cylinder. Add a cylinder only where the drawing shows one.
 - Overlays: threads (major diameter, pitch, thread class as tolerance), chamfers (size) and bores lie \
 on a section; give start/end boundaries only if their length is dimensioned.
+- A bore marked THRU (through) runs the full part: record it with start 0 and end the last boundary. \
+That is reading the drawing, not a guess. A bore with neither THRU nor a length dimension gets start \
+and end -1.
 - material and quantity from the title block; blank size only if the drawing states it. A roughness \
 symbol without a leader in the top-right corner is general_ra; a section's ra is only its own mark.
+- Tolerances and Ra belong to the section or overlay they are written on; do not copy a value to \
+another one. A roughness (Ra) symbol on a leader line belongs to the surface the leader's arrow \
+touches (for example the bore wall), not to the nearest dimension or the side of the part where the \
+symbol is placed.
 - Keep warnings short: one sentence each.
 """
 

@@ -437,3 +437,48 @@ def test_alternative_that_removes_a_conflict_is_flagged():
 def test_inner_dimension_next_to_a_groove_is_not_flagged():
     # 30 (taper, boundaries 3-4) touches the groove but not an end face: the drawing is unambiguous
     assert ambiguous_face_bindings(DimensionsData.model_validate(REAL_SHAFT)) == []
+
+
+# --- rules carried over from the features prompt --------------------------------------------------
+
+@pytest.mark.parametrize("phrase", [
+    "A bore marked THRU (through) runs the full part",
+    "start 0 and end the last boundary",
+    "neither THRU nor a length dimension gets start and end -1",
+    "belongs to the surface the leader's arrow touches",
+    "do not copy a value to another one",
+])
+def test_dimensions_prompt_has_the_rules_from_the_features_prompt(phrase):
+    from turnpilot.dimensions_first import SYSTEM_PROMPT
+
+    assert phrase in SYSTEM_PROMPT.replace("\n", " ")
+
+
+BUSHING = {  # 03_bushing transcribed as the prompt asks: a THRU bore from boundary 0 to the last one
+    "part_type": "turned", "material": "AISI 304", "blank_diameter": 55, "blank_length": 50, "quantity": 10,
+    "general_ra": None,
+    "sections": [section("od_turn", 50, tolerance="±0.05")],
+    "overlays": [
+        {"type": "bore", "section": None, "diameter": 30, "tolerance": "H7", "ra": 1.6, "pitch": None,
+         "size": None, "start": 0, "end": 1, "confidence": 0.9},
+        overlay("chamfer", 1, size=1),
+    ],
+    "dimensions": [dim(45, "overall", 0, 1)],
+    "warnings": [],
+}
+
+
+def test_thru_bore_gets_the_overall_length():
+    data = to_drawing_data(DimensionsData.model_validate(BUSHING))
+    bore = next(f for f in data.features if f.type == "bore")
+    assert (bore.diameter, bore.length, bore.tolerance, bore.ra) == (30, 45, "H7", 1.6)
+    expected = DrawingData.model_validate_json((FIXTURES / "03_bushing.expected.json").read_text(encoding="utf-8"))
+    want = next(f for f in expected.features if f.type == "bore")
+    assert (bore.diameter, bore.length, bore.tolerance, bore.ra) == (want.diameter, want.length, want.tolerance, want.ra)
+
+
+def test_bore_without_thru_or_length_stays_null():
+    part = copy.deepcopy(BUSHING)
+    part["overlays"][0].update(start=None, end=None)
+    bore = next(f for f in to_drawing_data(DimensionsData.model_validate(part)).features if f.type == "bore")
+    assert bore.length is None
