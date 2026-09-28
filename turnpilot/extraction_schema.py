@@ -73,8 +73,8 @@ class ExtractedFeature(BaseModel):
     ra_param: RoughnessParam = "Ra"
     pitch: PositiveFloat | None = None
     radius: PositiveFloat | None = None
-    location: Location | None = None  # chamfers only
-    face: Face | None = None  # chamfers only
+    location: Location | None = None  # chamfers and threads: external / internal
+    face: Face | None = None  # chamfers only: left / right end face
     # Required in model output (strict tool schema); absent in hand-written expected files.
     confidence: float | None = Field(default=None, ge=0, le=1)
     # Set by the code, not by the model: the length is not dimensioned directly but computed from
@@ -100,9 +100,11 @@ class ExtractedFeature(BaseModel):
     def _check_consistency(self):
         if self.pitch is not None and self.type != "thread":
             raise ValueError(f"pitch is only valid for threads, got it on {self.type}")
-        if (self.location is not None or self.face is not None) and self.type != "chamfer":
-            # only chamfers carry a position; the model may send it for others, it is dropped
+        if self.type not in ("chamfer", "thread"):
+            # only chamfers and threads carry a position; the model may send it for others, it is dropped
             self.location = self.face = None
+        elif self.type == "thread":
+            self.face = None
         if self.radius is not None and self.type != "fillet":
             raise ValueError(f"radius is only valid for fillets, got it on {self.type}")
         if self.start_diameter is not None:
@@ -154,6 +156,26 @@ class DrawingData(BaseModel):
             if feature.type == "thread" and feature.tolerance and not THREAD_CLASS.fullmatch(feature.tolerance):
                 self.warnings.append(f"thread class unclear: '{feature.tolerance}'")
                 feature.tolerance = None
+        return self
+
+    @model_validator(mode="after")
+    def _check_thread_location(self):
+        """The class letter tells the side: capital (7H, 6G) internal, small (6g, 6h) external.
+
+        An unknown location is taken from the class; a location that contradicts it is kept and
+        reported for checking.
+        """
+        for feature in self.features:
+            if feature.type != "thread" or not feature.tolerance:
+                continue
+            by_class = "internal" if any(ch.isupper() for ch in feature.tolerance) else "external"
+            if feature.location is None:
+                feature.location = by_class
+            elif feature.location != by_class:
+                self.warnings.append(
+                    f"thread M{feature.diameter:g}: class {feature.tolerance} means an {by_class} thread, "
+                    f"but it was read as {feature.location}: check"
+                )
         return self
 
     @model_validator(mode="after")
@@ -227,8 +249,9 @@ _FEATURE_SCHEMA = {
         "location": {
             "type": "string",
             "enum": [*LOCATIONS, "none"],
-            "description": "chamfer only: external (on an outside diameter) or internal (at the entrance of a "
-                           "bore or internal thread). none for other types or if not visible.",
+            "description": "chamfer: external (on an outside diameter) or internal (at the entrance of a bore "
+                           "or internal thread). thread: external (on a shaft) or internal (in a hole). none for "
+                           "other types or if not visible.",
         },
         "face": {
             "type": "string",

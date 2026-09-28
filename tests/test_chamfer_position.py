@@ -75,7 +75,7 @@ def test_review_and_confirm_keep_the_position(app, client):
     form = {"name": "Vtulka", "material_id": "1", "quantity": "1", "blank_diameter": "29", "blank_length": "36",
             "feature_count": "2", "f0-include": "1", "f0-type": "od_turn", "f0-diameter": "25", "f0-length": "30",
             "f1-include": "1", "f1-type": "chamfer", "f1-diameter": "14", "f1-length": "2",
-            "f1-chamfer_at": "internal right"}
+            "f1-position": "internal right"}
     client.post("/extractions/1/confirm", data=form)
     stored = next(f for f in db.session.execute(db.select(Job)).scalar_one().features if f.type == "chamfer")
     assert (stored.location, stored.face) == ("internal", "right")
@@ -83,9 +83,9 @@ def test_review_and_confirm_keep_the_position(app, client):
 
 def test_bad_position_is_rejected(app, client):
     client.post("/jobs", data=dict(name="Shaft", material_id=1, quantity=1, blank_diameter=60, blank_length=100))
-    resp = client.post("/jobs/1/features", data=dict(type="chamfer", diameter=40, length=1, chamfer_at="sideways"),
+    resp = client.post("/jobs/1/features", data=dict(type="chamfer", diameter=40, length=1, position="sideways"),
                        follow_redirects=True)
-    assert b"Unknown chamfer position" in resp.data
+    assert b"Unknown position" in resp.data
 
 
 def _eval_module():

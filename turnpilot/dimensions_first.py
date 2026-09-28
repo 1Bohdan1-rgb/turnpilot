@@ -66,7 +66,7 @@ class Overlay(BaseModel):
     ra_param: RoughnessParam = "Ra"
     pitch: PositiveFloat | None = None
     size: PositiveFloat | None = None  # chamfer leg (1.5 for 1.5x45°)
-    location: Location | None = None  # chamfer: external / internal
+    location: Location | None = None  # chamfer / thread: external / internal
     face: Face | None = None  # chamfer: left / right end face
     start: int | None = Field(default=None, ge=0)  # boundaries of its extent, when dimensioned
     end: int | None = Field(default=None, ge=0)
@@ -291,7 +291,7 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
             ra=o.ra,
             ra_param=o.ra_param,
             pitch=o.pitch if o.type == "thread" else None,
-            location=o.location if o.type == "chamfer" else None,
+            location=o.location if o.type in ("chamfer", "thread") else None,
             face=o.face if o.type == "chamfer" else None,
             confidence=o.confidence,
             length_derived=derived,
@@ -441,7 +441,8 @@ RECORD_DIMENSIONS_TOOL = {
                 "size": _number("mm. Chamfer leg (1.5 for 1.5x45°); else 0."),
                 "location": {"type": "string", "enum": [*LOCATIONS, "none"],
                              "description": "Chamfer: external (outside diameter) or internal (entrance of a bore "
-                                            "or internal thread); none otherwise."},
+                                            "or internal thread). Thread: external (on the section) or internal "
+                                            "(in a hole). none otherwise."},
                 "face": {"type": "string", "enum": [*FACES, "none"],
                          "description": "Chamfer: the end face it is on, left or right; none otherwise."},
                 "start": _integer("Boundary where it starts if its length is dimensioned (a THRU bore: 0); else -1."),
@@ -502,7 +503,8 @@ diameter or start_diameter), not a separate cylinder. Add a cylinder only where 
 - Overlays: threads (major diameter, pitch, thread class as tolerance), chamfers (size) and bores lie \
 on a section; give start/end boundaries only if their length is dimensioned. For a chamfer also give \
 where it is: location external (outside diameter) or internal (entrance of a bore or internal thread) \
-and the end face (left/right).
+and the end face (left/right). A thread in a hole (e.g. "M14-7H") has location internal, a thread \
+on a section external.
 - A bore marked THRU (through) runs the full part: record it with start 0 and end the last boundary. \
 That is reading the drawing, not a guess. A bore with neither THRU nor a length dimension gets start \
 and end -1.

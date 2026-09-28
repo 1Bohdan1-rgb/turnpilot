@@ -74,6 +74,9 @@ the end face (left/right); an internal chamfer at a thread entrance takes the th
 - Thread relief: a narrow step (width up to about 5 mm) right next to a thread, with a diameter smaller \
 than the thread's minor diameter, is a groove (thread relief groove), not an od_turn. Record it as a \
 groove with start_diameter = the thread's major diameter.
+- A thread in a hole (internal, e.g. "M14-7H" in a bushing) is recorded as a thread with location \
+internal; a thread on a shaft has location external. The class letter agrees: capital (7H) internal, \
+small (6g) external.
 - A conical section is a taper: start_diameter and diameter are the diameters at its two ends, length \
 its axial length. A radius between two sections (R10) is a fillet with radius = 10.
 - A diameter dimensioned at the end of a taper is the diameter of that end of the taper (the taper's \

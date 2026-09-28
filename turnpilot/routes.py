@@ -147,18 +147,19 @@ def _job_from_form(form):
     return job
 
 
-CHAMFER_POSITIONS = ("external left", "external right", "internal left", "internal right")
+# "Where" of a feature: chamfers "external right" etc., threads "external" / "internal".
+POSITIONS = ("external", "internal", "external left", "external right", "internal left", "internal right")
 
 
-def _chamfer_position(form, prefix, feature_type):
-    """location / face of a chamfer from the combined "chamfer_at" field ("internal right")."""
-    value = (form.get(prefix + "chamfer_at") or "").strip()
-    if feature_type != "chamfer" or not value:
+def _position(form, prefix, feature_type):
+    """location / face from the combined "position" field; only chamfers and threads have one."""
+    value = (form.get(prefix + "position") or "").strip()
+    if feature_type not in ("chamfer", "thread") or not value:
         return {"location": None, "face": None}
-    if value not in CHAMFER_POSITIONS:
-        raise FormError("Unknown chamfer position")
-    location, face = value.split()
-    return {"location": location, "face": face}
+    if value not in POSITIONS:
+        raise FormError("Unknown position")
+    location, *face = value.split()
+    return {"location": location, "face": face[0] if face and feature_type == "chamfer" else None}
 
 
 def _roughness_param(form, prefix=""):
@@ -192,7 +193,7 @@ def _feature_from_form(form, blank_diameter, prefix=""):
         tolerance=normalize_tolerance(form.get(prefix + "tolerance")),
         ra=_number(form, prefix + "ra"),
         ra_param=_roughness_param(form, prefix),
-        **_chamfer_position(form, prefix, feature_type),
+        **_position(form, prefix, feature_type),
         pitch=pitch if feature_type == "thread" else None,
         start_diameter=start_diameter,
         radius=_number(form, prefix + "radius") if feature_type == "fillet" else None,
@@ -219,7 +220,7 @@ def jobs():
 @bp.route("/jobs/<int:job_id>")
 def job_detail(job_id):
     job = db.get_or_404(Job, job_id)
-    return render_template("job_detail.html", job=job, feature_types=FEATURE_TYPES, chamfer_positions=CHAMFER_POSITIONS)
+    return render_template("job_detail.html", job=job, feature_types=FEATURE_TYPES, positions=POSITIONS)
 
 
 @bp.route("/jobs/<int:job_id>/features", methods=["POST"])
@@ -374,7 +375,7 @@ def _flag_derived_lengths(rows, data):
         row["length_derived"] = feature.length is not None and (feature.length_derived or from_model)
         row["length_ambiguous"] = feature.length is not None and feature.length_ambiguous
         row["pitch_assumed"] = feature.pitch_assumed
-        row["chamfer_at"] = f"{feature.location} {feature.face}" if feature.location and feature.face else None
+        row["position"] = " ".join(p for p in (feature.location, feature.face) if p) or None
     return rows
 
 
@@ -452,7 +453,7 @@ def _review_values_from_form(form):
     for i in range(count):
         row = {k: form.get(f"f{i}-{k}") or None for k in REVIEW_FIELDS}
         row["include"] = bool(form.get(f"f{i}-include"))
-        row["chamfer_at"] = form.get(f"f{i}-chamfer_at") or None
+        row["position"] = form.get(f"f{i}-position") or None
         rows.append(_decorate_row(row, threshold))
     _flag_bore_ra(rows)
     material_id = _to_float(form.get("material_id"))
@@ -493,7 +494,7 @@ def _render_review(extraction, values, status=200):
         values=values,
         materials=materials,
         feature_types=FEATURE_TYPES,
-        chamfer_positions=CHAMFER_POSITIONS,
+        positions=POSITIONS,
         grinding_warning=planner.GRINDING_WARNING,
         bore_ra_warning=BORE_RA_WARNING,
         not_turned_banner=NOT_TURNED_BANNER,

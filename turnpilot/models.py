@@ -5,7 +5,10 @@ from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 
 FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet")
-TOOL_TYPES = ("facing", "turning_rough", "turning_finish", "grooving", "threading", "boring", "parting")
+TOOL_TYPES = (
+    "facing", "turning_rough", "turning_finish", "grooving", "threading", "boring", "parting",
+    "drilling", "tapping", "threading_internal",
+)
 ISO_GROUPS = ("P", "M", "N")
 OPERATION_STATUSES = ("proposed", "approved", "edited")
 TURRET_POSITIONS = range(1, 13)  # T1..T12

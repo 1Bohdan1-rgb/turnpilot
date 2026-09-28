@@ -11,6 +11,8 @@ import math
 import re
 from dataclasses import dataclass, field, replace
 
+from .extraction_schema import coarse_pitch
+
 G96_NOTE = "G96 constant surface speed, capped at max RPM"
 G97_THREAD_NOTE = "G97 constant RPM — required for threading"
 CHAMFER_NOTE = "incl. chamfer"
@@ -95,7 +97,7 @@ class FeatureSpec:
     tolerance: str | None = None
     radius: float | None = None  # fillet
     ra_from_rz: float | None = None  # the Rz written on the drawing when ra was converted from it
-    location: str | None = None  # chamfer: "external" / "internal"
+    location: str | None = None  # chamfer / thread: "external" / "internal"
 
 
 @dataclass(frozen=True)
@@ -351,7 +353,8 @@ def geometry_warnings(features, overall_length: float | None) -> list[str]:
             suffix = f" ({missing} section{'s' if missing > 1 else ''} without length)" if missing else ""
             warnings.append(f"section lengths sum to {total:g}, overall length is {overall_length:g}{suffix}")
 
-    for thread in (f for f in features if f.type == "thread" and f.diameter and f.length):
+    for thread in (f for f in features if f.type == "thread" and f.diameter and f.length
+                   and getattr(f, "location", None) != "internal"):
         section = next(
             (f for f in features if f.type == "od_turn" and f.diameter and math.isclose(f.diameter, thread.diameter)),
             None,
@@ -452,6 +455,9 @@ def feature_to_steps(feature: FeatureSpec) -> list[Step]:
     if t == "groove":
         return [Step(feature, "grooving", "finish", "groove")]
     if t == "thread":
+        if feature.location == "internal":
+            # tap drill first, then a tap or an internal threading bar
+            return [Step(feature, "drilling", "finish", "rough"), Step(feature, "internal_threading", "finish", "thread")]
         return [Step(feature, "threading", "finish", "thread")]
     if t == "parting":
         return [Step(feature, "parting", "finish", "parting")]
@@ -489,6 +495,25 @@ def match_chamfers(features: list[FeatureSpec]) -> dict[int, FeatureSpec]:
     return hosts
 
 
+# Tap drill diameters for ISO coarse threads (ISO 2306), mm; other sizes: nominal - pitch.
+TAP_DRILL_MM = {
+    3: 2.5, 4: 3.3, 5: 4.2, 6: 5.0, 8: 6.8, 10: 8.5, 12: 10.2, 14: 12.0, 16: 14.0, 18: 15.5, 20: 17.5,
+    22: 19.5, 24: 21.0, 27: 24.0, 30: 26.5, 33: 29.5, 36: 32.0, 42: 37.5, 48: 43.0,
+}
+INTERNAL_THREAD_DEPTH_FACTOR = 0.541  # H1 of an internal metric thread: 0.541 * pitch
+TAPPING_NOTE = "G84 rigid tapping, feed = pitch"
+NO_INTERNAL_THREAD_TOOL = "manual operation: no tap or internal threading tool in the turret"
+NO_DRILL = "manual operation: no drill in the turret"
+
+
+def tap_drill_diameter(nominal: float, pitch: float) -> float:
+    """Tap drill for an internal metric thread: the ISO 2306 table for coarse threads, else nominal - pitch."""
+    for size, drill in TAP_DRILL_MM.items():
+        if math.isclose(size, nominal) and math.isclose(pitch, coarse_pitch(size) or 0):
+            return drill
+    return round(nominal - pitch, 2)
+
+
 def thread_major_diameter(nominal: float, pitch: float) -> float:
     """Turned diameter under an external thread: slightly below nominal, d - 0.1 * pitch."""
     return round(nominal - THREAD_MAJOR_REDUCTION * pitch, 3)
@@ -496,7 +521,7 @@ def thread_major_diameter(nominal: float, pitch: float) -> float:
 
 def match_thread_diameters(features: list[FeatureSpec]) -> dict[int, float]:
     """Map each od_turn feature (by id()) that carries an external thread to the thread pitch."""
-    threads = [f for f in features if f.type == "thread" and f.diameter and f.pitch]
+    threads = [f for f in features if f.type == "thread" and f.diameter and f.pitch and f.location != "internal"]
     pitches = {}
     for od in (f for f in features if f.type == "od_turn" and f.diameter):
         thread = next((t for t in threads if math.isclose(t.diameter, od.diameter)), None)
@@ -605,6 +630,50 @@ def _plan_parting(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, jo
         op.notes.append(PARTING_CENTER_NOTE)
 
 
+def _plan_internal_thread_step(op, step, job, turret, max_rpm) -> PlannedOperation:
+    """Tap drill, then a tap or an internal threading bar; a manual operation without the tool."""
+    feature = step.feature
+    if not (feature.diameter and feature.pitch):
+        op.warnings.append("Internal thread without diameter or pitch: cannot plan it.")
+        return op
+    if step.tool_type == "drilling":
+        drill = tap_drill_diameter(feature.diameter, feature.pitch)
+        op.notes.append(f"tap drill Ø{drill:g} for M{feature.diameter:g}×{feature.pitch:g}")
+        op.ref_diameter, op.depth = drill, feature.length
+        entry, _ = select_tool("drilling", job.iso_group, turret)
+        if entry is None:
+            op.warnings.append(NO_DRILL)
+            return op
+        op.tool_id, op.tool_name, op.turret_position = entry.tool.id, entry.tool.name, entry.position
+        op.vc, op.f, _ = cutting_data(entry.tool, "finish")
+        op.n, _ = spindle_speed(op.vc, drill, max_rpm)
+        return op
+
+    for tool_type in ("tapping", "threading_internal"):
+        entry, _ = select_tool(tool_type, job.iso_group, turret)
+        if entry:
+            break
+    op.tool_type = tool_type if entry else "tapping"
+    op.f = feature.pitch
+    op.ref_diameter = feature.diameter
+    if entry is None:
+        op.warnings.append(NO_INTERNAL_THREAD_TOOL)
+        return op
+    tool = entry.tool
+    op.tool_id, op.tool_name, op.turret_position = tool.id, tool.name, entry.position
+    op.vc = round((tool.vc_min + tool.vc_max) / 2, 1)
+    op.n, _ = spindle_speed(op.vc, feature.diameter, max_rpm)
+    if tool_type == "tapping":
+        op.notes.append(TAPPING_NOTE)
+    else:
+        op.notes.insert(0, G97_THREAD_NOTE)
+        op.depth = round(INTERNAL_THREAD_DEPTH_FACTOR * feature.pitch, 3)
+        infeed, _method = thread_infeed(op.depth, tool.ap_max, tool.ap_min)
+        op.passes = len(infeed)
+        op.notes.append(f"radial infeed per pass: {', '.join(f'{d:g}' for d in infeed[:-1])} + spring pass")
+    return op
+
+
 def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> PlannedOperation:
     feature = step.feature
     op = PlannedOperation(
@@ -622,6 +691,9 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     if step.tool_type == "manual":
         op.warnings.append(MANUAL_OPERATION_WARNING)
         return op
+
+    if step.tool_type in ("drilling", "internal_threading"):
+        return _plan_internal_thread_step(op, step, job, turret, max_rpm)
 
     entry, warning = select_tool(step.tool_type, job.iso_group, turret)
     if entry is None:
