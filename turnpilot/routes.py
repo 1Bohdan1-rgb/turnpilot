@@ -339,6 +339,7 @@ def _flag_derived_lengths(rows, data):
             abs(feature.diameter - d) < 1e-6 for d in reported
         )
         row["length_derived"] = feature.length is not None and (feature.length_derived or from_model)
+        row["length_ambiguous"] = feature.length is not None and feature.length_ambiguous
     return rows
 
 

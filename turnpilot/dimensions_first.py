@@ -134,6 +134,59 @@ def solve_boundaries(boundary_count: int, dimensions: list[Dimension]) -> Soluti
     return Solution(positions, warnings)
 
 
+AMBIGUOUS_BINDING_PREFIX = "check: dimension"
+
+
+def _quality(boundary_count, dimensions):
+    """(conflicts, sections with zero or negative length) of a dimension system."""
+    solution = solve_boundaries(boundary_count, dimensions)
+    conflicts = sum("conflicts with the others" in w for w in solution.warnings)
+    x = solution.positions
+    bad = sum(1 for a, b in zip(x, x[1:]) if a is not None and b is not None and b - a <= 0)
+    return conflicts, bad
+
+
+def ambiguous_face_bindings(data: DimensionsData) -> list[tuple[str, int]]:
+    """Face dimensions whose binding next to a groove cannot be told apart by the other dimensions.
+
+    Candidate: a length dimension from an end face of the part (boundary 0 or N, a datum) that spans
+    exactly one section, not a groove, whose inner boundary borders a groove. Alternative reading:
+    the same dimension with its inner boundary moved across the groove, so that it covers the groove
+    too. If the alternative gives no more conflicts than the recorded reading and no section of zero
+    or negative length, both readings fit: the machinist has to check the extension lines.
+
+    Only a warning: lengths are never changed. Returns (message, 1-based section number) pairs.
+    """
+    count = len(data.sections) + 1  # boundaries 0..N
+    last = count - 1
+    grooves = {k for k, s in enumerate(data.sections, start=1) if s.type == "groove"}  # section k: k-1..k
+    base = _quality(count, data.dimensions)
+    findings = []
+    for index, d in enumerate(data.dimensions):
+        if d.kind not in LINEAR_KINDS or d.from_ is None or d.to is None:
+            continue
+        a, b = sorted((d.from_, d.to))
+        if b - a != 1 or b in grooves or b > last:  # exactly one section, not the groove itself
+            continue
+        if a == 0 and b + 1 in grooves:  # from the left face; a groove right of the inner boundary
+            alternative = (0, b + 1)
+        elif b == last and a in grooves:  # from the right face; a groove left of the inner boundary
+            alternative = (a - 1, last)
+        else:
+            continue
+        dims = [x.model_copy() for x in data.dimensions]
+        dims[index].from_, dims[index].to = alternative
+        conflicts, bad = _quality(count, dims)
+        if conflicts <= base[0] and bad == 0:
+            findings.append((
+                f"{AMBIGUOUS_BINDING_PREFIX} {d.value:g} (boundaries {a}–{b}) may also span the groove "
+                f"({alternative[0]}–{alternative[1]}); both readings fit the other dimensions, so check its "
+                f"extension lines on the drawing",
+                b,  # the section between boundaries a and b
+            ))
+    return findings
+
+
 def _span(positions, start, end):
     if start is None or end is None or max(start, end) >= len(positions):
         return None
@@ -168,6 +221,10 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
         if d.kind in LINEAR_KINDS and d.from_ is not None and d.to is not None
     }
 
+    ambiguous = ambiguous_face_bindings(data)
+    warnings += [message for message, _ in ambiguous]
+    ambiguous_sections = {number for _, number in ambiguous}
+
     features = []
     section_lengths = []
     section_derived = []
@@ -190,12 +247,14 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
             radius=s.radius if s.type == "fillet" else None,
             confidence=s.confidence,
             length_derived=derived and s.type != "fillet",
+            length_ambiguous=number in ambiguous_sections and length is not None,
         ))
 
     for o in data.overlays:
         section = sections[o.section - 1] if o.section and o.section <= len(sections) else None
         diameter = o.diameter or (section.diameter if section else None)
         derived = False
+        ambiguous_length = False
         if o.type == "chamfer":
             length = o.size
         else:
@@ -205,6 +264,7 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
             if length is None and o.type == "thread" and o.section and o.section <= len(sections):
                 length = section_lengths[o.section - 1]  # thread over the whole section
                 derived = section_derived[o.section - 1]
+                ambiguous_length = o.section in ambiguous_sections and length is not None
         features.append(ExtractedFeature(
             type=o.type,
             diameter=diameter,
@@ -214,6 +274,7 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
             pitch=o.pitch if o.type == "thread" else None,
             confidence=o.confidence,
             length_derived=derived,
+            length_ambiguous=ambiguous_length,
         ))
 
     overall = x[-1]

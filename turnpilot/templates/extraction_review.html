@@ -124,7 +124,9 @@
           {% for key in ("diameter", "start_diameter", "length") %}
           <td>
             <input name="f{{ i }}-{{ key }}" type="number" step="any" min="0" value="{{ row[key] if row[key] is not none else '' }}">
-            {% if key == "length" and row.length_derived %}<span class="badge badge-check"
+            {% if key == "length" and row.length_ambiguous %}<span class="badge badge-check"
+              title="The dimensions allow a second reading of this length (with or without the groove next to it). Check the extension lines on the drawing.">check</span>
+            {% elif key == "length" and row.length_derived %}<span class="badge badge-check"
               title="Not dimensioned directly: computed from other dimensions (e.g. a baseline minus a groove). Check it.">check</span>{% endif %}
           </td>
           {% endfor %}

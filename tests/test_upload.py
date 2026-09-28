@@ -733,3 +733,20 @@ def test_dimensions_first_derived_lengths_get_check_badge(app, client):
     page = client.get("/extractions/1/review").data.decode()
     # Ø80, Ø60, Ø48 and the thread are computed; the taper and the groove are dimensioned directly
     assert page.count(CHECK_BADGE) == 4 + 1  # + the legend above the table
+
+
+def test_ambiguous_binding_gets_check_badge_and_warning(app, client):
+    import copy as _copy
+
+    from test_dimensions_first import REAL_SHAFT, to_wire
+
+    wrong = _copy.deepcopy(REAL_SHAFT)
+    for d in wrong["dimensions"]:
+        if (d["from"], d["to"]) == (4, 6):
+            d["from"], d["kind"] = 5, "chain"
+    app.config["DRAWING_READ_MODE"] = "dimensions_first"
+    _use_model(app, to_wire(wrong)).messages.response.content[0].name = "record_dimensions"
+    _upload(client)
+    page = client.get("/extractions/1/review").data.decode()
+    assert "may also span the groove (4–6)" in page
+    assert page.count("The dimensions allow a second reading of this length") == 2  # Ø48 and its thread

@@ -360,3 +360,80 @@ def test_dimensions_prompt_has_the_general_rules(phrase):
     from turnpilot.dimensions_first import SYSTEM_PROMPT
 
     assert phrase in SYSTEM_PROMPT.replace("\n", " ")
+
+
+# --- ambiguous binding of a face dimension next to a groove ---------------------------------------
+
+from turnpilot.dimensions_first import AMBIGUOUS_BINDING_PREFIX, ambiguous_face_bindings  # noqa: E402
+
+
+def _with_dimension(data, old_span, new_span, kind=None):
+    changed = copy.deepcopy(data)
+    for d in changed["dimensions"]:
+        if (d["from"], d["to"]) == old_span:
+            d["from"], d["to"] = new_span
+            if kind:
+                d["kind"] = kind
+    return changed
+
+
+def _ambiguity_warnings(data):
+    return [w for w in data.warnings if w.startswith(AMBIGUOUS_BINDING_PREFIX)]
+
+
+def test_correct_face_dimension_over_the_groove_is_not_flagged():
+    data = to_drawing_data(DimensionsData.model_validate(REAL_SHAFT))  # 20 from 4 to 6: groove included
+    assert _ambiguity_warnings(data) == []
+    assert not any(f.length_ambiguous for f in data.features)
+
+
+def test_face_dimension_on_the_section_next_to_a_groove_is_flagged():
+    # the typical misreading: 20 bound to the Ø48 section only (5 to 6); the groove width 4 still fits
+    wrong = _with_dimension(REAL_SHAFT, (4, 6), (5, 6), kind="chain")
+    data = to_drawing_data(DimensionsData.model_validate(wrong))
+    (warning,) = _ambiguity_warnings(data)
+    assert "dimension 20 (boundaries 5–6) may also span the groove (4–6)" in warning
+    flagged = [(f.type, f.diameter) for f in data.features if f.length_ambiguous]
+    assert flagged == [("od_turn", 48), ("thread", 48)]
+    # only a warning: the recorded reading is kept
+    assert next(f for f in data.features if f.type == "od_turn" and f.diameter == 48).length == 20
+
+
+def test_left_face_dimension_next_to_a_groove_is_flagged():
+    # a part with the groove near the left face: 10 from the left face may or may not include the groove
+    part = {
+        "part_type": "turned", "material": None, "blank_diameter": None, "blank_length": None,
+        "quantity": None, "general_ra": None,
+        "sections": [section("od_turn", 20), section("groove", 16, start_diameter=20), section("od_turn", 30)],
+        "overlays": [], "warnings": [],
+        "dimensions": [dim(10, "baseline", 0, 1), dim(3, "chain", 1, 2), dim(50, "overall", 0, 3)],
+    }
+    (warning,) = _ambiguity_warnings(to_drawing_data(DimensionsData.model_validate(part)))
+    assert "dimension 10 (boundaries 0–1) may also span the groove (0–2)" in warning
+
+
+def test_holdout_reading_has_no_ambiguity():
+    assert _ambiguity_warnings(to_drawing_data(DimensionsData.model_validate(HOLDOUT))) == []
+
+
+def test_alternative_with_more_conflicts_is_not_flagged():
+    # A part where 20 really is the last section: an extra baseline 120.1 to boundary 5 pins it.
+    # Moving 20 across the groove would contradict that baseline, so the reading is not ambiguous.
+    part = _with_dimension(REAL_SHAFT, (4, 6), (5, 6), kind="chain")
+    part["dimensions"].append(dim(120.1, "baseline", 0, 5))
+    data = DimensionsData.model_validate(part)
+    assert solve_boundaries(7, data.dimensions).warnings == []  # the recorded reading is consistent
+    assert ambiguous_face_bindings(data) == []
+
+
+def test_alternative_that_removes_a_conflict_is_flagged():
+    # The recorded reading conflicts with a baseline to the groove's left boundary; the alternative
+    # (20 including the groove) removes the conflict, so it is at least as plausible.
+    part = _with_dimension(REAL_SHAFT, (4, 6), (5, 6), kind="chain")
+    part["dimensions"].append(dim(120.1, "baseline", 0, 4))
+    assert len(ambiguous_face_bindings(DimensionsData.model_validate(part))) == 1
+
+
+def test_inner_dimension_next_to_a_groove_is_not_flagged():
+    # 30 (taper, boundaries 3-4) touches the groove but not an end face: the drawing is unambiguous
+    assert ambiguous_face_bindings(DimensionsData.model_validate(REAL_SHAFT)) == []

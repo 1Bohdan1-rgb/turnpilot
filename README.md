@@ -132,6 +132,23 @@ a file that is still being read (within 2 minutes) is rejected.
 copy .env.example .env           # Windows (cp on Linux / macOS), then set ANTHROPIC_API_KEY
 ```
 
+### Experimental reading mode: dimensions first
+
+`TURNPILOT_READ_MODE=dimensions_first` (default: `features`). The model only transcribes the profile
+as sections without lengths, overlays (threads, chamfers, bores) and every dimension with the two
+boundaries its extension lines touch; `turnpilot/dimensions_first.py` solves the dimension graph for
+the lengths and converts the result to the usual data, so review, planner and eval are unchanged.
+What it adds on the review screen:
+
+- conflicting dimensions are reported, and lengths no dimension gives directly (e.g. a baseline minus
+  a groove) are marked **check**;
+- **ambiguous face dimensions next to a groove**: a dimension from an end face that spans one section
+  next to a groove is flagged when moving its inner boundary across the groove still fits the other
+  dimensions (both readings are possible, so the extension lines have to be checked). It only warns;
+  lengths are never changed. On the saved eval runs of `06_gost_shaft`, `real_01` and `07_holdout` it
+  caught 9 of 10 wrong lengths next to a groove with no false alarms, **but those are the same runs it
+  was designed on: there is no hold-out validation of this check yet.**
+
 ### Test drawings and accuracy
 
 `tools/generate_drawings.py` (needs `pip install -r requirements-dev.txt`) draws five parts with
