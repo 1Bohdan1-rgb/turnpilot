@@ -141,7 +141,11 @@
             <input name="f{{ i }}-ra" type="number" step="any" min="0" value="{{ row.ra if row.ra is not none else '' }}">
             {% if row.ra_general %}<span class="badge badge-general">general</span>{% endif %}
           </td>
-          <td><input name="f{{ i }}-pitch" type="number" step="any" min="0" value="{{ row.pitch if row.pitch is not none else '' }}"></td>
+          <td>
+            <input name="f{{ i }}-pitch" type="number" step="any" min="0" value="{{ row.pitch if row.pitch is not none else '' }}">
+            {% if row.pitch_assumed %}<span class="badge badge-check"
+              title="No pitch on the drawing: the ISO 261 coarse pitch was filled in. Check it.">check</span>{% endif %}
+          </td>
           <td><input name="f{{ i }}-radius" type="number" step="any" min="0" value="{{ row.radius if row.radius is not none else '' }}"></td>
           <td>
             <input type="hidden" name="f{{ i }}-confidence" value="{{ row.confidence if row.confidence is not none else '' }}">

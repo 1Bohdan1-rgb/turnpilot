@@ -358,6 +358,7 @@ def _flag_derived_lengths(rows, data):
         )
         row["length_derived"] = feature.length is not None and (feature.length_derived or from_model)
         row["length_ambiguous"] = feature.length is not None and feature.length_ambiguous
+        row["pitch_assumed"] = feature.pitch_assumed
     return rows
 
 

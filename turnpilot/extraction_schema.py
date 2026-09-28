@@ -35,6 +35,24 @@ def normalize_tolerance(value: str | None) -> str | None:
 # External threads use e/f/g/h (6g, 4h6h), internal threads G/H (6H, 5H6H).
 THREAD_CLASS = re.compile(r"(?:[3-9][efgh]){1,2}|(?:[3-9][GH]){1,2}")
 
+# ISO 261 coarse pitch of metric threads (mm). A metric thread written without a pitch ("M14-7H")
+# has the coarse pitch.
+COARSE_PITCH_MM = {
+    1: 0.25, 1.2: 0.25, 1.6: 0.35, 2: 0.4, 2.5: 0.45, 3: 0.5, 3.5: 0.6, 4: 0.7, 5: 0.8, 6: 1, 7: 1,
+    8: 1.25, 10: 1.5, 12: 1.75, 14: 2, 16: 2, 18: 2.5, 20: 2.5, 22: 2.5, 24: 3, 27: 3, 30: 3.5,
+    33: 3.5, 36: 4, 39: 4, 42: 4.5, 45: 4.5, 48: 5, 52: 5, 56: 5.5, 60: 5.5, 64: 6,
+}
+
+
+def coarse_pitch(diameter: float | None) -> float | None:
+    """ISO 261 coarse pitch for a nominal metric thread diameter, or None if it is not in the table."""
+    if diameter is None:
+        return None
+    for nominal, pitch in COARSE_PITCH_MM.items():
+        if abs(nominal - diameter) < 1e-6:
+            return pitch
+    return None
+
 
 class ExtractedFeature(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -56,6 +74,8 @@ class ExtractedFeature(BaseModel):
     # Set by the code: the dimensions allow a second reading of this length (a face dimension that
     # may or may not include a neighbouring groove), see dimensions_first.ambiguous_face_bindings().
     length_ambiguous: bool = False
+    # Set by the code: the drawing gives no pitch, so the ISO 261 coarse pitch was filled in.
+    pitch_assumed: bool = False
 
     @field_validator("tolerance")
     @classmethod
@@ -110,6 +130,23 @@ class DrawingData(BaseModel):
             if feature.type == "thread" and feature.tolerance and not THREAD_CLASS.fullmatch(feature.tolerance):
                 self.warnings.append(f"thread class unclear: '{feature.tolerance}'")
                 feature.tolerance = None
+        return self
+
+    @model_validator(mode="after")
+    def _fill_coarse_pitch(self):
+        """A metric thread without a pitch on the drawing has the ISO 261 coarse pitch: fill it, mark it."""
+        for feature in self.features:
+            if feature.type != "thread" or feature.pitch is not None or feature.pitch_assumed:
+                continue
+            pitch = coarse_pitch(feature.diameter)
+            if pitch is None:
+                continue
+            feature.pitch = pitch
+            feature.pitch_assumed = True
+            self.warnings.append(
+                f"thread M{feature.diameter:g}: no pitch on the drawing, coarse pitch {pitch:g} assumed "
+                f"(ISO 261): check"
+            )
         return self
 
 
