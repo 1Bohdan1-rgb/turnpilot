@@ -114,6 +114,8 @@ class Feature(db.Model):
     pitch = db.Column(db.Float)  # mm, threads only
     start_diameter = db.Column(db.Float)  # mm, groove: diameter it is cut from; taper: diameter at its start
     radius = db.Column(db.Float)  # mm, fillets only
+    location = db.Column(db.String(10))  # chamfers: "external" / "internal"
+    face = db.Column(db.String(10))  # chamfers: "left" / "right" end face
     confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 

@@ -16,7 +16,7 @@
   {% for f in job.active_features %}
     <tr>
       <td>{{ loop.index }}</td>
-      <td>{{ f.type }}</td>
+      <td>{{ f.type }}{% if f.location %} <span class="muted small">({{ f.location }}, {{ f.face }})</span>{% endif %}</td>
       <td>{{ f.diameter if f.diameter is not none else "" }}</td>
       <td>{{ f.length if f.length is not none else "" }}</td>
       <td>{{ f.tolerance or "" }}</td>
@@ -55,6 +55,9 @@
   <label>Pitch, mm (thread) <input name="pitch" type="number" step="any" min="0"></label>
   <label>Start Ø, mm (groove / taper) <input name="start_diameter" type="number" step="any" min="0" placeholder="groove: blank Ø if empty"></label>
   <label>Radius, mm (fillet) <input name="radius" type="number" step="any" min="0"></label>
+  <label>Chamfer at
+    <select name="chamfer_at"><option value="">—</option>{% for p in chamfer_positions %}<option>{{ p }}</option>{% endfor %}</select>
+  </label>
   <p class="muted small">Groove: Diameter is the groove bottom, Start Ø is the diameter the groove is cut from, Length is the width.
     Chamfers are machined in the finishing pass of the feature with the same diameter.
     Taper: Start Ø → Ø over Length. Tapers and fillets are shown as manual operations.</p>

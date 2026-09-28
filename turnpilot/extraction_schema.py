@@ -13,6 +13,13 @@ PART_TYPES = ("turned", "not_turned", "unclear")
 # Roughness parameter as written on the drawing: GOST drawings often give Rz instead of Ra.
 ROUGHNESS_PARAMS = ("Ra", "Rz")
 RoughnessParam = Literal["Ra", "Rz"]
+# Where a chamfer is: on an outside diameter or at the entrance of a bore / internal thread, and on
+# which end face. In the tool schema "none" stands for "not a chamfer / not visible" (not nullable,
+# so the strict schema keeps few union types).
+LOCATIONS = ("external", "internal")
+FACES = ("left", "right")
+Location = Literal["external", "internal"]
+Face = Literal["left", "right"]
 PartType = Literal["turned", "not_turned", "unclear"]
 
 TOOL_NAME = "record_part"
@@ -66,6 +73,8 @@ class ExtractedFeature(BaseModel):
     ra_param: RoughnessParam = "Ra"
     pitch: PositiveFloat | None = None
     radius: PositiveFloat | None = None
+    location: Location | None = None  # chamfers only
+    face: Face | None = None  # chamfers only
     # Required in model output (strict tool schema); absent in hand-written expected files.
     confidence: float | None = Field(default=None, ge=0, le=1)
     # Set by the code, not by the model: the length is not dimensioned directly but computed from
@@ -82,10 +91,18 @@ class ExtractedFeature(BaseModel):
     def _normalize_tolerance(cls, value):
         return normalize_tolerance(value)
 
+    @field_validator("location", "face", mode="before")
+    @classmethod
+    def _none_means_none(cls, value):
+        return None if value in ("none", "") else value
+
     @model_validator(mode="after")
     def _check_consistency(self):
         if self.pitch is not None and self.type != "thread":
             raise ValueError(f"pitch is only valid for threads, got it on {self.type}")
+        if (self.location is not None or self.face is not None) and self.type != "chamfer":
+            # only chamfers carry a position; the model may send it for others, it is dropped
+            self.location = self.face = None
         if self.radius is not None and self.type != "fillet":
             raise ValueError(f"radius is only valid for fillets, got it on {self.type}")
         if self.start_diameter is not None:
@@ -200,6 +217,18 @@ _FEATURE_SCHEMA = {
         },
         "pitch": _nullable("number", "mm. thread only: the pitch (1.5 for M20x1.5). null for other types."),
         "radius": _nullable("number", "mm. fillet only: the radius (10 for R10). null for other types."),
+        "location": {
+            "type": "string",
+            "enum": [*LOCATIONS, "none"],
+            "description": "chamfer only: external (on an outside diameter) or internal (at the entrance of a "
+                           "bore or internal thread). none for other types or if not visible.",
+        },
+        "face": {
+            "type": "string",
+            "enum": [*FACES, "none"],
+            "description": "chamfer only: the end face it is on, left or right. none for other types or if "
+                           "not visible.",
+        },
         "confidence": {
             "type": "number",
             "description": "0..1: how sure you are that this feature and its values are read correctly.",
@@ -207,7 +236,7 @@ _FEATURE_SCHEMA = {
     },
     "required": [
         "type", "diameter", "start_diameter", "length", "tolerance", "ra", "ra_param", "pitch", "radius",
-        "confidence",
+        "location", "face", "confidence",
     ],
     "additionalProperties": False,
 }

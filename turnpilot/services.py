@@ -65,6 +65,7 @@ def job_spec(job):
         planner.FeatureSpec(
             id=f.id, type=f.type, diameter=f.diameter, length=f.length,
             ra=_roughness_for_planner(f)[0], ra_from_rz=_roughness_for_planner(f)[1], pitch=f.pitch,
+            location=f.location if f.type == "chamfer" else None,
             # normalized again for features saved before decimal commas were converted
             start_diameter=f.start_diameter, tolerance=normalize_tolerance(f.tolerance), radius=f.radius,
         )

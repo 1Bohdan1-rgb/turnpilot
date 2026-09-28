@@ -95,6 +95,7 @@ class FeatureSpec:
     tolerance: str | None = None
     radius: float | None = None  # fillet
     ra_from_rz: float | None = None  # the Rz written on the drawing when ra was converted from it
+    location: str | None = None  # chamfer: "external" / "internal"
 
 
 @dataclass(frozen=True)
@@ -413,8 +414,10 @@ def feature_to_steps(feature: FeatureSpec) -> list[Step]:
             Step(feature, "boring", "finish", "finish"),
         ]
     if t == "chamfer":
-        # Only used when no finishing pass on the same diameter can take the chamfer.
-        return [Step(feature, "turning_finish", "finish", "finish")]
+        # Only used when no finishing pass on the same diameter can take the chamfer. An internal
+        # chamfer (bore / internal thread entrance) needs a boring tool, not an OD finishing tool.
+        tool = "boring" if feature.location == "internal" else "turning_finish"
+        return [Step(feature, tool, "finish", "finish")]
     if t == "groove":
         return [Step(feature, "grooving", "finish", "groove")]
     if t == "thread":
@@ -438,7 +441,9 @@ def match_chamfers(features: list[FeatureSpec]) -> dict[int, FeatureSpec]:
     """
     hosts = {}
     for chamfer in (f for f in features if f.type == "chamfer" and f.diameter is not None):
-        for host_type in ("od_turn", "bore"):
+        # an internal chamfer belongs to a bore, an external one to an OD; unknown: either
+        host_types = {"internal": ("bore",), "external": ("od_turn",)}.get(chamfer.location, ("od_turn", "bore"))
+        for host_type in host_types:
             host = next(
                 (
                     f

@@ -51,7 +51,9 @@ GROUPS = ("clean", "photo", "real")
 FEATURE_NUMBER_METRICS = ("diameter", "start_diameter", "length", "pitch", "radius")
 FEATURE_METRICS = FEATURE_NUMBER_METRICS + ("tolerance", "ra")
 PART_METRICS = ("material", "overall_length", "general_ra")
-METRICS = FEATURE_METRICS + PART_METRICS
+# Counted once per expected chamfer: location (external/internal) and end face both right.
+CHAMFER_METRICS = ("chamfer_position",)
+METRICS = FEATURE_METRICS + CHAMFER_METRICS + PART_METRICS
 NUMBER_TOLERANCE = 0.01  # mm / µm
 
 # Written into every report; keep it up to date when the prompt or the drawings change.
@@ -167,6 +169,13 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
         result.scores["tolerance"].add(tol_ok)
         if got is not None and not tol_ok:
             result.mismatches.append(f"{label}: tolerance {got.tolerance!r} (expected {exp.tolerance!r})")
+        if exp.type == "chamfer":
+            position_ok = got is not None and (got.location, got.face) == (exp.location, exp.face)
+            result.scores["chamfer_position"].add(position_ok)
+            if got is not None and not position_ok:
+                result.mismatches.append(
+                    f"{label}: chamfer at {got.location} {got.face} (expected {exp.location} {exp.face})"
+                )
         ra_ok = got is not None and _same_number(got.ra, exp.ra) and (exp.ra is None or got.ra_param == exp.ra_param)
         result.scores["ra"].add(ra_ok)
         if got is not None and not ra_ok:
@@ -218,8 +227,9 @@ def _expected(name):
 
 def _fail(result, expected, exc):
     result.error = f"{type(exc).__name__}: {exc}"  # full text: the API explains 4xx errors in detail
+    chamfers = sum(f.type == "chamfer" for f in expected.features)
     for m in METRICS:
-        result.scores[m].total += 1 if m in PART_METRICS else len(expected.features)
+        result.scores[m].total += 1 if m in PART_METRICS else chamfers if m in CHAMFER_METRICS else len(expected.features)
 
 
 def _score_extracted(result, expected, data):

@@ -45,7 +45,9 @@
       "tolerance": null,
       "ra": null,
       "pitch": null,
-      "radius": null
+      "radius": null,
+      "location": "external",
+      "face": "right"
     }
   ],
   "warnings": []

@@ -68,7 +68,9 @@ blank_diameter = 29.
 A threaded section is recorded twice: as an od_turn at the major diameter over the section length, and as \
 a thread (major diameter, pitch, threaded length, thread class as tolerance).
 - A groove is recorded with its bottom diameter, the diameter it is cut from (start_diameter) and its width \
-(length). A chamfer "1x45°" on a diameter is recorded with that diameter and length 1.
+(length). A chamfer "1x45°" on a diameter is recorded with that diameter and length 1, and with where \
+it is: location external (outside diameter) or internal (entrance of a bore or internal thread) and \
+the end face (left/right); an internal chamfer at a thread entrance takes the thread's diameter.
 - Thread relief: a narrow step (width up to about 5 mm) right next to a thread, with a diameter smaller \
 than the thread's minor diameter, is a groove (thread relief groove), not an od_turn. Record it as a \
 groove with start_diameter = the thread's major diameter.

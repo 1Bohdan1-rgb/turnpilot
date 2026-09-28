@@ -109,11 +109,14 @@ PARTS = [
 # --- expected answer -------------------------------------------------------------
 
 def _feature(type_, diameter=None, start_diameter=None, length=None, tolerance=None, ra=None, pitch=None,
-             radius=None):
-    return {
+             radius=None, location=None, face=None):
+    feature = {
         "type": type_, "diameter": diameter, "start_diameter": start_diameter, "length": length,
         "tolerance": tolerance, "ra": ra, "pitch": pitch, "radius": radius,
     }
+    if type_ == "chamfer":  # where the chamfer is; all drawn chamfers are on an outside diameter
+        feature.update(location=location, face=face)
+    return feature
 
 
 def expected_answer(part: dict) -> dict:
@@ -129,7 +132,8 @@ def expected_answer(part: dict) -> dict:
     for g in part.get("grooves", []):
         features.append(_feature("groove", g["bottom_d"], start_diameter=_section_at(part, g["x"])["d"], length=g["width"]))
     for c in part.get("chamfers", []):
-        features.append(_feature("chamfer", sections[c["section"]]["d"], length=c["size"]))
+        features.append(_feature("chamfer", sections[c["section"]]["d"], length=c["size"],
+                                 location="external", face=c["side"]))
     if "thread" in part:
         t = part["thread"]
         features.append(
@@ -456,7 +460,8 @@ def expected_gost(part: dict) -> dict:
     thread_section = part["sections"][part["thread"]["section"]]
     features.append(_feature("thread", thread_section["d"], length=thread_section["l"],
                              tolerance=part["thread"]["cls"], pitch=part["thread"]["pitch"]))
-    features.append(_feature("chamfer", part["sections"][-1]["d"], length=part["chamfer"]["size"]))
+    features.append(_feature("chamfer", part["sections"][-1]["d"], length=part["chamfer"]["size"],
+                             location="external", face="right"))
     return {
         "part_type": "turned",
         "material": part["material"],
