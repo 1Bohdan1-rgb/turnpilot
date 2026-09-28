@@ -540,7 +540,10 @@ def main(argv=None):
         for label, source in args.compare:
             source = Path(source)
             if source.name.endswith(".runs.json"):
-                rows += comparison_rows(label, rescore_saved(source))
+                saved = rescore_saved(source)
+                if args.only:  # the saved file may hold runs of other drawings too
+                    saved = [r for r in saved if r.drawing in args.only]
+                rows += comparison_rows(label, saved)
             else:
                 rows += comparison_rows_from_report(source, label)
         rows += comparison_rows(args.mode, results)

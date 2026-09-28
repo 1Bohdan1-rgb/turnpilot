@@ -235,3 +235,21 @@ def test_eval_keeps_going_after_a_parse_error():
     runs = [("01_stepped_shaft", "png", k) for k in (1, 2)]
     results = eval_extraction.run_all(fake, "m", runs, "features")
     assert len(results) == 2 and all(r.error for r in results)
+
+
+def test_compare_with_saved_runs_keeps_only_the_selected_drawings(tmp_path, monkeypatch):
+    runs = [
+        eval_extraction.run_one(FakeClient(make_response(_answer(name))), "m", name, "png", run=1)
+        for name in ("01_stepped_shaft", "04_fitted_shaft")
+    ]
+    saved = eval_extraction.save_runs(runs, "m", tmp_path / "old.runs.json")
+    monkeypatch.setattr(eval_extraction, "run_all", lambda client, model, planned, mode: [
+        eval_extraction.run_one(FakeClient(make_response(_answer("01_stepped_shaft"))), "m", "01_stepped_shaft",
+                                "png", run=1, mode=mode)
+    ])
+    monkeypatch.setattr(eval_extraction.drawing_reader, "make_client", lambda: None)
+    out = tmp_path / "report.md"
+    eval_extraction.main(["--only", "01_stepped_shaft", "--variants", "png", "--groups", "clean", "--yes",
+                          "--output", str(out), "--compare", "saved", str(saved)])
+    table = out.read_text(encoding="utf-8").split("## Comparison of reading modes")[1]
+    assert table.count("| saved | 1 |") == 1  # 04_fitted_shaft is not mixed in
