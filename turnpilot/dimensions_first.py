@@ -94,6 +94,7 @@ class DimensionsData(BaseModel):
     quantity: PositiveInt | None = None
     general_ra: PositiveFloat | None = None
     general_ra_param: RoughnessParam = "Ra"
+    general_tolerance: str | None = None
     sections: list[Section]
     overlays: list[Overlay] = Field(default_factory=list)
     dimensions: list[Dimension] = Field(default_factory=list)
@@ -309,6 +310,7 @@ def to_drawing_data(data: DimensionsData) -> DrawingData:
         quantity=data.quantity,
         general_ra=data.general_ra,
         general_ra_param=data.general_ra_param,
+        general_tolerance=data.general_tolerance,
         features=features,
         warnings=warnings,
     )
@@ -329,7 +331,7 @@ ZERO_MEANS_NONE = {
     "diameter", "start_diameter", "ra", "radius", "pitch", "size", "section",
 }
 MINUS_ONE_MEANS_NONE = {"from", "to", "start", "end"}
-EMPTY_MEANS_NONE = {"material", "tolerance"}
+EMPTY_MEANS_NONE = {"material", "tolerance", "general_tolerance"}
 NONE_MEANS_NONE = {"location", "face"}
 
 
@@ -404,6 +406,8 @@ RECORD_DIMENSIONS_TOOL = {
         "general_ra": _number("µm. Value of the roughness symbol without a leader in the top-right corner; else 0."),
         "general_ra_param": {"type": "string", "enum": list(ROUGHNESS_PARAMS),
                              "description": "Ra or Rz as written with the general roughness; Ra if none."},
+        "general_tolerance": _text('The general (unspecified) tolerance note as written, e.g. "H14, h14, ±IT14/2"; '
+                                   '"" if none. Do not copy it into sections.'),
         "sections": {
             "type": "array",
             "description": "External profile from the left end face to the right end face. Section k lies "
@@ -509,7 +513,8 @@ symbol without a leader in the top-right corner is general_ra; a section's ra is
 Roughness may be Ra or Rz (GOST drawings often use Rz): record the value with its parameter as written \
 (ra_param / general_ra_param), never convert.
 - Tolerances and Ra belong to the section or overlay they are written on; do not copy a value to \
-another one. A roughness (Ra) symbol on a leader line belongs to the surface the leader's arrow \
+another one. A general tolerance note ("H14, h14, ±IT14/2", "ISO 2768-m") goes into general_tolerance \
+as written. A roughness (Ra) symbol on a leader line belongs to the surface the leader's arrow \
 touches (for example the bore wall), not to the nearest dimension or the side of the part where the \
 symbol is placed.
 - Keep warnings short: one sentence each.

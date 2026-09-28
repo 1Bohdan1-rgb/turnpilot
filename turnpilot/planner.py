@@ -282,6 +282,37 @@ def needs_grinding(tolerance: str | None, diameter: float | None, ra: float | No
     return False
 
 
+# --- general (unspecified) tolerances -------------------------------------------------------------
+#
+# A note such as "H14, h14, ±IT14/2" (GOST 25670 / ISO 2768 style) gives the tolerance of every size
+# without its own: holes H14, shafts h14, everything else ±IT14/2.
+
+HOLE_TYPES = ("bore",)
+SHAFT_TYPES = ("od_turn", "taper", "groove")
+OTHER_TYPES = ("fillet", "chamfer")  # threads have their own class, face/parting no diameter tolerance
+
+
+def general_tolerance_grade(note: str | None) -> int | None:
+    """IT grade of a general tolerance note: "H14, h14, ±IT14/2" -> 14. None if not recognised."""
+    if not note:
+        return None
+    match = re.search(r"IT\s*(\d{1,2})", note) or re.search(r"(?<![A-Za-z])[Hh]\s?(\d{1,2})(?!\d)", note)
+    if not match or not 1 <= int(match.group(1)) <= 18:
+        return None
+    return int(match.group(1))
+
+
+def general_tolerance_for(feature_type: str, grade: int) -> str | None:
+    """The tolerance a general note gives a feature: holes H<grade>, shafts h<grade>, the rest ±IT<grade>/2."""
+    if feature_type in HOLE_TYPES:
+        return f"H{grade}"
+    if feature_type in SHAFT_TYPES:
+        return f"h{grade}"
+    if feature_type in OTHER_TYPES:
+        return f"±IT{grade}/2"
+    return None
+
+
 @dataclass(frozen=True)
 class BlankSuggestion:
     diameter: float | None

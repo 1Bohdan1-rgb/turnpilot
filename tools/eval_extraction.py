@@ -31,7 +31,7 @@ import anthropic  # noqa: E402
 
 from turnpilot import drawing_reader  # noqa: E402
 from turnpilot.extraction_schema import DrawingData  # noqa: E402
-from turnpilot.planner import geometry_warnings  # noqa: E402
+from turnpilot.planner import general_tolerance_grade, geometry_warnings  # noqa: E402
 from turnpilot.services import MATERIAL_ALIASES, match_material  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures" / "drawings"
@@ -50,7 +50,7 @@ GROUPS = ("clean", "photo", "real")
 # Feature metrics are counted once per expected feature, part metrics once per drawing.
 FEATURE_NUMBER_METRICS = ("diameter", "start_diameter", "length", "pitch", "radius")
 FEATURE_METRICS = FEATURE_NUMBER_METRICS + ("tolerance", "ra")
-PART_METRICS = ("material", "overall_length", "general_ra")
+PART_METRICS = ("material", "overall_length", "general_ra", "general_tolerance")
 # Counted once per expected chamfer: location (external/internal) and end face both right.
 CHAMFER_METRICS = ("chamfer_position",)
 METRICS = FEATURE_METRICS + CHAMFER_METRICS + PART_METRICS
@@ -186,6 +186,15 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
     result.scores["material"].add(material_ok)
     if not material_ok:
         result.mismatches.append(f"material {predicted.material!r} (expected {expected.material!r})")
+    # the general tolerance counts when it gives the same IT grade (the wording may differ)
+    want_grade = general_tolerance_grade(expected.general_tolerance)
+    got_grade = general_tolerance_grade(predicted.general_tolerance)
+    tolerance_ok = want_grade == got_grade
+    result.scores["general_tolerance"].add(tolerance_ok)
+    if not tolerance_ok:
+        result.mismatches.append(
+            f"general tolerance {predicted.general_tolerance!r} (expected {expected.general_tolerance!r})"
+        )
     for metric in ("overall_length", "general_ra"):
         want, got = getattr(expected, metric), getattr(predicted, metric)
         ok = _same_number(got, want)

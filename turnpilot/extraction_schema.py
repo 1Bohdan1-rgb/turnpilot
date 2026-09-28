@@ -125,8 +125,15 @@ class DrawingData(BaseModel):
     # Roughness symbol without a leader in the top-right corner: applies to surfaces without their own Ra.
     general_ra: PositiveFloat | None = None
     general_ra_param: RoughnessParam = "Ra"
+    # General (unspecified) tolerance note as written, e.g. "H14, h14, ±IT14/2"; applied by the code.
+    general_tolerance: str | None = None
     features: list[ExtractedFeature]
     warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("general_tolerance")
+    @classmethod
+    def _blank_general_tolerance_is_none(cls, value):
+        return normalize_tolerance(value)
 
     @field_validator("material")
     @classmethod
@@ -279,6 +286,12 @@ RECORD_PART_TOOL = {
                 "enum": list(ROUGHNESS_PARAMS),
                 "description": "Parameter of the general roughness as written: Ra or Rz. Do not convert. Ra if none.",
             },
+            "general_tolerance": {
+                "type": "string",
+                "description": "The general (unspecified) tolerance note exactly as written, e.g. "
+                               "'H14, h14, ±IT14/2' or 'ISO 2768-m'. Empty string if there is none. Do not copy "
+                               "it into the features' tolerance.",
+            },
             "features": {"type": "array", "items": _FEATURE_SCHEMA},
             "warnings": {
                 "type": "array",
@@ -288,7 +301,7 @@ RECORD_PART_TOOL = {
         },
         "required": [
             "part_type", "material", "blank_diameter", "blank_length", "overall_length", "quantity",
-            "general_ra", "general_ra_param", "features", "warnings",
+            "general_ra", "general_ra_param", "general_tolerance", "features", "warnings",
         ],
         "additionalProperties": False,
     },

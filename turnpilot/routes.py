@@ -391,6 +391,20 @@ def _apply_general_ra(rows, general_ra, general_ra_param="Ra"):
     return rows
 
 
+def _apply_general_tolerance(rows, note):
+    """The general tolerance note applies to every size without its own: holes H.., shafts h.., rest ±IT../2."""
+    grade = planner.general_tolerance_grade(note)
+    for row in rows:
+        row["tolerance_general"] = False
+        if grade is None or row.get("tolerance"):
+            continue
+        tolerance = planner.general_tolerance_for(row["type"], grade)
+        if tolerance:
+            row["tolerance"] = tolerance
+            row["tolerance_general"] = True
+    return rows
+
+
 def _review_values_from_extraction(extraction):
     data = services.extraction_data(extraction)
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
@@ -404,6 +418,7 @@ def _review_values_from_extraction(extraction):
     _flag_derived_lengths(rows, data)
     _flag_bore_ra(rows)  # on the marks read from the drawing, before the general Ra fills the gaps
     _apply_general_ra(rows, data.general_ra, data.general_ra_param)
+    _apply_general_tolerance(rows, data.general_tolerance)
     # A blank written in the title block (e.g. "Круг 29") beats a suggestion; the drawing's own
     # blank_diameter beats both.
     title_block_diameter = None if data.blank_diameter else services.blank_from_title_block(data.material)

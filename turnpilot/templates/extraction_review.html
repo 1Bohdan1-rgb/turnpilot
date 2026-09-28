@@ -103,6 +103,10 @@
       Groove: Ø = bottom, Start Ø = diameter it is cut from, Length = width.
       Taper: Start Ø → Ø over Length. Fillet: Radius. Tapers and fillets are not planned automatically.
       Roughness is shown as written (Ra or Rz); for cutting data an Rz is converted to Ra ≈ Rz/4 (GOST 2789).
+      {% if data and data.general_tolerance %}
+      <br><strong>General tolerances on the drawing: {{ data.general_tolerance }}</strong>, applied to sizes without their own
+      (<span class="badge badge-general">general</span>: holes H, shafts h, fillets and chamfers ±IT/2).
+      {% endif %}
       {% if data and data.general_ra %}
       <br><strong>General roughness on the drawing: {{ data.general_ra_param }} {{ data.general_ra }}</strong>, applied to features without their own mark
       (<span class="badge badge-general">general</span>).
@@ -133,7 +137,11 @@
               title="Not dimensioned directly: computed from other dimensions (e.g. a baseline minus a groove). Check it.">check</span>{% endif %}
           </td>
           {% endfor %}
-          <td><input name="f{{ i }}-tolerance" value="{{ row.tolerance or '' }}" size="8"></td>
+          <td>
+            <input name="f{{ i }}-tolerance" value="{{ row.tolerance or '' }}" size="8">
+            {% if row.tolerance_general %}<span class="badge badge-general"
+              title="From the general tolerance note: {{ data.general_tolerance }}">general</span>{% endif %}
+          </td>
           <td class="roughness">
             <select name="f{{ i }}-ra_param">
               {% for p in ("Ra", "Rz") %}<option {% if (row.ra_param or "Ra") == p %}selected{% endif %}>{{ p }}</option>{% endfor %}

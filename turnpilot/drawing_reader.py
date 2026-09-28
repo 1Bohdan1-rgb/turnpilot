@@ -86,7 +86,9 @@ tolerance, and the taper is a separate feature that starts from that diameter (s
 length is the overall length of the part: that is reading the drawing, not a guess. A bore with \
 neither THRU nor a length dimension gets length null.
 - Do not add face or parting features unless the drawing explicitly annotates them.
-- Tolerances and Ra belong to the feature they are written on. Do not copy a value to other features.
+- Tolerances and Ra belong to the feature they are written on. Do not copy a value to other features. \
+A general tolerance note ("Неуказанные предельные отклонения: H14, h14, ±IT14/2", "ISO 2768-m") goes \
+into general_tolerance as written, not into the features.
 - A roughness (Ra) symbol on a leader line belongs to the surface the leader's arrow touches, \
 not to the nearest dimension or the side of the part where the symbol is placed.
 - A roughness symbol without a leader in the top-right corner of the sheet is the general roughness for \
