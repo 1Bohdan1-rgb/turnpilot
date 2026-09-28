@@ -147,6 +147,22 @@ def _material_key(text):
     return found.name if found else (text or "").strip().lower() or None
 
 
+def _compact(text):
+    return re.sub(r"[\s\-_().,/;]+", "", (text or "").lower())
+
+
+def material_matches(expected, predicted):
+    """The expected material grade is found in the model's text (a title block often has more:
+    "Круг Р6М5Ф3 -II-а ГОСТ 19265-73; ..." for Р6М5Ф3); known aliases count too."""
+    if expected is None:
+        return predicted is None
+    if predicted is None:
+        return False
+    if _material_key(predicted) == _material_key(expected):
+        return True
+    return _compact(expected) in _compact(predicted)
+
+
 def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
     pairs, extra = _match_features(expected.features, predicted.features)
     result.extra = len(extra)
@@ -182,7 +198,7 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
             result.mismatches.append(f"{label}: {got.ra_param} {got.ra} (expected {exp.ra_param} {exp.ra})")
     for p in extra:
         result.mismatches.append(f"extra {p.type} Ø{p.diameter}")
-    material_ok = _material_key(predicted.material) == _material_key(expected.material)
+    material_ok = material_matches(expected.material, predicted.material)
     result.scores["material"].add(material_ok)
     if not material_ok:
         result.mismatches.append(f"material {predicted.material!r} (expected {expected.material!r})")

@@ -1,4 +1,5 @@
 """Scoring logic of tools/eval_extraction.py, with a fake client (the real eval is not run in pytest)."""
+import pytest
 
 import importlib.util
 import json
@@ -253,3 +254,17 @@ def test_compare_with_saved_runs_keeps_only_the_selected_drawings(tmp_path, monk
                           "--output", str(out), "--compare", "saved", str(saved)])
     table = out.read_text(encoding="utf-8").split("## Comparison of reading modes")[1]
     assert table.count("| saved | 1 |") == 1  # 04_fitted_shaft is not mixed in
+
+
+@pytest.mark.parametrize("expected, predicted, ok", [
+    ("Р6М5Ф3", "Круг Р6М5Ф3 -II-а ГОСТ 19265-73; 29-В1-ГОСТ 2590-2006", True),  # grade inside the text
+    ("Steel 45 (C45)", "C45", True),  # alias
+    ("Aluminium 6061", "EN AW-6061", True),
+    ("Р6М5Ф3", "Р18", False),
+    ("AISI 304", "AISI 316", False),
+    (None, None, True),
+    (None, "Steel 45", False),
+    ("Steel 45 (C45)", None, False),
+])
+def test_material_matches(expected, predicted, ok):
+    assert eval_extraction.material_matches(expected, predicted) is ok
