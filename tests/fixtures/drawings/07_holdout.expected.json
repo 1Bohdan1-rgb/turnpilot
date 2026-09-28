@@ -1,0 +1,82 @@
+{
+  "part_type": "turned",
+  "material": "Aluminium 6061",
+  "blank_diameter": null,
+  "blank_length": null,
+  "overall_length": 100,
+  "quantity": 25,
+  "general_ra": 3.2,
+  "features": [
+    {
+      "type": "od_turn",
+      "diameter": 36,
+      "start_diameter": null,
+      "length": 25,
+      "tolerance": "0/-0.016",
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "od_turn",
+      "diameter": 45,
+      "start_diameter": null,
+      "length": 30,
+      "tolerance": "±0.1",
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "taper",
+      "diameter": 38,
+      "start_diameter": 45,
+      "length": 20,
+      "tolerance": "±0.2",
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "groove",
+      "diameter": 30,
+      "start_diameter": 34,
+      "length": 3,
+      "tolerance": "±0.3",
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "od_turn",
+      "diameter": 34,
+      "start_diameter": null,
+      "length": 22,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "thread",
+      "diameter": 34,
+      "start_diameter": null,
+      "length": 22,
+      "tolerance": "6g",
+      "ra": null,
+      "pitch": 1.5,
+      "radius": null
+    },
+    {
+      "type": "chamfer",
+      "diameter": 34,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    }
+  ],
+  "warnings": []
+}

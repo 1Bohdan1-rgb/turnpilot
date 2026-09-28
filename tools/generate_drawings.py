@@ -571,6 +571,127 @@ def draw_gost(part: dict):
     return fig
 
 
+# --- hold-out drawing ------------------------------------------------------------------------------
+#
+# A different part, used only to check prompt rules, never to tune them: baseline dimensions from the
+# LEFT end face, a taper whose end diameter is dimensioned at the taper end (no cylinder there), a
+# thread relief groove, a thread and a chamfer. The thread section is not dimensioned directly: its
+# length is the overall length minus the last baseline minus the groove width.
+
+HOLDOUT_PARTS = [
+    {
+        "name": "07_holdout",
+        "title": "Spindle",
+        "number": "TP-007",
+        "material": "Aluminium 6061",
+        "quantity": 25,
+        "general_ra": 3.2,
+        "sections": [
+            {"type": "od_turn", "d": 36, "l": 25, "tol": "0/-0,016"},
+            {"type": "od_turn", "d": 45, "l": 30, "tol": "±0,1"},
+            {"type": "taper", "d0": 45, "d": 38, "l": 20, "tol": "±0,2"},
+            {"type": "groove", "d0": 34, "d": 30, "l": 3, "tol": "±0,3"},
+            {"type": "od_turn", "d": 34, "l": 22},
+        ],
+        "thread": {"section": 4, "pitch": 1.5, "cls": "6g"},
+        "chamfer": {"size": 1},
+        # (text, from boundary, to boundary, side, row): baselines from the left face below, chain above
+        "length_dims": [
+            ("25", 0, 1, "below", 1),
+            ("55", 0, 2, "below", 2),
+            ("75", 0, 3, "below", 3),
+            ("100", 0, 5, "below", 4),
+            ("3±0,1", 3, 4, "above", 1),
+        ],
+    },
+]
+
+
+def draw_holdout(part: dict):
+    global FONT
+    scale = 1.5
+    sections = part["sections"]
+    bounds = [0.0]
+    for s in sections:
+        bounds.append(round(bounds[-1] + s["l"], 3))
+    length = bounds[-1]
+    chamfer = part["chamfer"]["size"]
+
+    fig = plt.figure(figsize=(PAPER_W / 25.4, PAPER_H / 25.4))
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, PAPER_W)
+    ax.set_ylim(0, PAPER_H)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.add_patch(Rectangle((10, 10), PAPER_W - 20, PAPER_H - 20, fill=False, lw=LINE))
+
+    ox, oy = 40.0, 128.0
+
+    def px(x):
+        return ox + x * scale
+
+    def py(r):
+        return oy + r * scale
+
+    def radius_at_start(s):
+        return (s.get("d0") or s["d"]) / 2 if s["type"] == "taper" else s["d"] / 2
+
+    pts = [(0.0, 0.0)]
+    for i, s in enumerate(sections):
+        x0, x1 = bounds[i], bounds[i + 1]
+        if s["type"] == "taper":
+            pts += [(x0, s["d0"] / 2), (x1, s["d"] / 2)]
+        elif i == len(sections) - 1:
+            pts += [(x0, s["d"] / 2), (x1 - chamfer, s["d"] / 2), (x1, s["d"] / 2 - chamfer)]
+        else:
+            pts += [(x0, s["d"] / 2), (x1, s["d"] / 2)]
+    pts.append((length, 0.0))
+    xs = [px(x) for x, _ in pts]
+    ax.plot(xs, [py(r) for _, r in pts], color="k", lw=LINE)
+    ax.plot(xs, [py(-r) for _, r in pts], color="k", lw=LINE)
+
+    for i in range(1, len(sections)):
+        r = max(sections[i - 1]["d"] / 2, radius_at_start(sections[i]))
+        ax.plot([px(bounds[i])] * 2, [py(-r), py(r)], color="k", lw=LINE)
+    r_last = sections[-1]["d"] / 2
+    ax.plot([px(length - chamfer)] * 2, [py(-r_last), py(r_last)], color="k", lw=THIN)
+    ax.plot([px(-6), px(length + 6)], [oy, oy], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
+
+    t = part["thread"]
+    ts = sections[t["section"]]
+    r_minor = ts["d"] / 2 - 0.613 * t["pitch"]
+    for sign in (1, -1):
+        ax.plot([px(bounds[t["section"]]), px(length)], [py(sign * r_minor)] * 2, color="k", lw=THIN)
+
+    old_font, FONT = FONT, GOST_FONT
+    try:
+        s0, s1, taper, groove, thread_section = sections
+        _vdim(ax, px(bounds[0] + 12), py(-s0["d"] / 2), py(s0["d"] / 2), f"Ø{_comma(s0['d'])} {s0['tol']}")
+        _vdim(ax, px(bounds[1] + 15), py(-s1["d"] / 2), py(s1["d"] / 2), f"Ø{_comma(s1['d'])}{s1['tol']}")
+        # the taper's end diameter, dimensioned right at the end of the taper
+        _vdim(ax, px(bounds[3] - 1.5), py(-taper["d"] / 2), py(taper["d"] / 2), f"Ø{_comma(taper['d'])}{taper['tol']}")
+        _vdim(ax, px(bounds[4] + 11), py(-thread_section["d"] / 2), py(thread_section["d"] / 2),
+              f"M{_comma(thread_section['d'])}×{_comma(t['pitch'])}-{t['cls']}")
+        _leader(ax, (px(bounds[3] + 1.5), py(groove["d"] / 2)), (px(bounds[3] - 22), py(27)),
+                f"Ø{_comma(groove['d'])}{groove['tol']}")
+        _leader(ax, (px(length - 0.5), py(r_last - 0.5)), (px(length + 4), py(r_last + 12)), f"{_comma(chamfer)}×45°")
+
+        for text, a, b, side, row in part["length_dims"]:
+            if side == "below":
+                y = py(-s1["d"] / 2) - 8 * row
+                _hdim(ax, px(bounds[a]), px(bounds[b]), y, text, py(-s0["d"] / 2), py(-radius_at_start(sections[b - 1])))
+            else:
+                y = py(s1["d"] / 2) + 8 * row
+                _hdim(ax, px(bounds[a]), px(bounds[b]), y, text, py(taper["d"] / 2), py(thread_section["d"] / 2))
+
+        _roughness(ax, PAPER_W - 38, PAPER_H - 22, part["general_ra"])
+        ax.texts[-1].set_text(f"Ra {_comma(part['general_ra'])}")
+        _title_block(ax, part, scale)
+    finally:
+        FONT = old_font
+    return fig
+
+
 # --- low resolution copies -----------------------------------------------------------------------
 
 LOWRES_LONG_EDGE = 1169  # the long edge of the real drawing photo real_01
@@ -621,8 +742,9 @@ def main():
         expected = OUT_DIR / f"{part['name']}.expected.json"
         expected.write_text(json.dumps(expected_answer(part), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"{part['name']}: png, pdf, photo (rotated {angle:+.1f}°), expected.json")
-    for j, part in enumerate(GOST_PARTS, start=len(PARTS)):
-        fig = draw_gost(part)
+    gost_like = [(p, draw_gost) for p in GOST_PARTS] + [(p, draw_holdout) for p in HOLDOUT_PARTS]
+    for j, (part, draw_part) in enumerate(gost_like, start=len(PARTS)):
+        fig = draw_part(part)
         png = OUT_DIR / f"{part['name']}.png"
         fig.savefig(png, dpi=DPI, facecolor="white")
         fig.savefig(OUT_DIR / f"{part['name']}.pdf", facecolor="white", metadata=PDF_METADATA)
