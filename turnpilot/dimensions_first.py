@@ -477,7 +477,9 @@ on a section; give start/end boundaries only if their length is dimensioned.
 - A bore marked THRU (through) runs the full part: record it with start 0 and end the last boundary. \
 That is reading the drawing, not a guess. A bore with neither THRU nor a length dimension gets start \
 and end -1.
-- material and quantity from the title block; blank size only if the drawing states it. A roughness \
+- material and quantity from the title block; blank size only if the drawing states it. A blank \
+named in the title block counts: "Круг 29 ГОСТ 2590" or "29-В1-ГОСТ 2590-2006" means round bar Ø29 \
+(blank_diameter 29). A roughness \
 symbol without a leader in the top-right corner is general_ra; a section's ra is only its own mark. \
 Roughness may be Ra or Rz (GOST drawings often use Rz): record the value with its parameter as written \
 (ra_param / general_ra_param), never convert.

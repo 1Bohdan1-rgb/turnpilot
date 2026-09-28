@@ -61,7 +61,9 @@ chain dimensions or from baseline dimensions measured from a common datum (e.g. 
 reading the drawing, not a guess. Give such a feature confidence 0.8 at most and add the warning \
 "length derived from chain dimensions" (name the feature, e.g. "Ø60: length derived from chain dimensions").
 - blank_diameter / blank_length: only when the drawing states the blank or stock size \
-(e.g. a note "Blank: bar Ø55 x 50"). Otherwise null.
+(e.g. a note "Blank: bar Ø55 x 50"). Otherwise null. A blank named in the title block counts: \
+"Круг 29 ГОСТ 2590" or the size designation "29-В1-ГОСТ 2590-2006" means round bar Ø29, so \
+blank_diameter = 29.
 - Each external cylindrical section with its own diameter is one od_turn feature (diameter + length). \
 A threaded section is recorded twice: as an od_turn at the major diameter over the section length, and as \
 a thread (major diameter, pitch, threaded length, thread class as tolerance).

@@ -74,6 +74,8 @@
       <label>Quantity <input name="quantity" type="number" min="1" value="{{ values.quantity }}"></label>
       <label>Blank Ø, mm
         {% if values.blank_diameter_suggested %}<span class="badge badge-suggested">suggested</span>{% endif %}
+        {% if values.blank_diameter_from_title_block %}<span class="badge badge-suggested"
+          title="Read from the material / blank text in the title block: {{ data.material }}">title block</span>{% endif %}
         <input name="blank_diameter" type="number" step="any" min="0" value="{{ values.blank_diameter if values.blank_diameter is not none else '' }}" required
                {% if values.blank_diameter_suggested %}class="suggested"{% endif %}>
       </label>

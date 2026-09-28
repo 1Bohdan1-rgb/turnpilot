@@ -186,6 +186,29 @@ def match_material(text, materials):
     return None
 
 
+# Round bar blank in a title block: "Круг 29 ГОСТ 2590-2006", the GOST 2590 size designation
+# "29-В1-ГОСТ 2590-2006" (often after the steel grade, e.g. "Круг Р6М5Ф3 ...; 29-В1-ГОСТ 2590-2006"),
+# "Круг Ø29", "bar Ø55", "round bar 55". A plain "first number after Круг" would pick the 6 of Р6М5Ф3.
+_NUMBER = r"(\d+(?:[.,]\d+)?)"
+BLANK_PATTERNS = (
+    re.compile(_NUMBER + r"\s*-\s*[А-ЯA-Z]\d?\s*-?\s*ГОСТ\s*2590", re.IGNORECASE),
+    re.compile(r"\bкруг\s*[Øø⌀]?\s*" + _NUMBER + r"(?![А-ЯA-Zа-яa-z])", re.IGNORECASE),  # not "6М5..."
+    re.compile(r"\b(?:round\s+)?bar\s*[Øø⌀]?\s*" + _NUMBER, re.IGNORECASE),
+)
+
+
+def blank_from_title_block(text):
+    """Round bar diameter (mm) of a blank named in title-block text, or None."""
+    if not text:
+        return None
+    for pattern in BLANK_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            value = float(match.group(1).replace(",", "."))
+            return value if value > 0 else None
+    return None
+
+
 def parting_width(machine, default):
     """Insert width of the first parting tool in the turret, or the configured default."""
     for slot in machine.slots if machine else []:

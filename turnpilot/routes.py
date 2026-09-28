@@ -387,15 +387,21 @@ def _review_values_from_extraction(extraction):
     _flag_derived_lengths(rows, data)
     _flag_bore_ra(rows)  # on the marks read from the drawing, before the general Ra fills the gaps
     _apply_general_ra(rows, data.general_ra, data.general_ra_param)
+    # A blank written in the title block (e.g. "Круг 29") beats a suggestion; the drawing's own
+    # blank_diameter beats both.
+    title_block_diameter = None if data.blank_diameter else services.blank_from_title_block(data.material)
     blank_missing = data.blank_diameter is None or data.blank_length is None
     return {
         "name": extraction.original_filename.rsplit(".", 1)[0],
         "material_id": material.id if material else None,
         "quantity": data.quantity or 1,
         # A blank written on the drawing wins; otherwise the suggestion, flagged as such.
-        "blank_diameter": data.blank_diameter or suggestion.diameter,
+        "blank_diameter": data.blank_diameter or title_block_diameter or suggestion.diameter,
         "blank_length": data.blank_length or suggestion.length,
-        "blank_diameter_suggested": data.blank_diameter is None and suggestion.diameter is not None,
+        "blank_diameter_from_title_block": title_block_diameter is not None,
+        "blank_diameter_suggested": (
+            data.blank_diameter is None and title_block_diameter is None and suggestion.diameter is not None
+        ),
         "blank_length_suggested": data.blank_length is None and suggestion.length is not None,
         "blank_notes": suggestion.notes if blank_missing else (),
         # Already read from the drawing: the checkbox would only add a duplicate.
