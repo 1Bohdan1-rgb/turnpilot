@@ -80,7 +80,9 @@ small (6g) external.
 - A hexagon (wrench flats: "S17", a hexagon in a section or end view, edge lines across a section in the \
 main view) is one hex feature: across_flats = the size across flats S, diameter = the diameter across \
 corners only if it is dimensioned (else null), length = its axial length. Do not record it as an od_turn \
-as well.
+as well. A Ø on the end view or section of a hex is often on the circle tangent to the flats (the \
+chamfer circle): that Ø is S, so record it as across_flats. Record diameter only when the Ø is \
+explicitly on the corners.
 - A conical section is a taper: start_diameter and diameter are the diameters at its two ends, length \
 its axial length. A radius between two sections (R10) is a fillet with radius = 10.
 - A diameter dimensioned at the end of a taper is the diameter of that end of the taper (the taper's \

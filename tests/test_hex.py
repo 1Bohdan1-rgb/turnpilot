@@ -58,7 +58,10 @@ def test_hex_is_offered_to_the_model():
     assert json.dumps(RECORD_PART_TOOL).count('"anyOf"') == 13
     rule = next(r for r in SYSTEM_PROMPT.split("\n- ") if r.startswith("A hexagon"))
     assert "one hex feature" in rule and "across_flats" in rule
-    assert "chamfer" not in rule  # a chamfer is recorded as drawn; the code binds it to the hex
+    # no rule about a chamfer's diameter: a chamfer is recorded as drawn, the code binds it to the hex
+    assert "chamfer's" not in rule and "chamfer on" not in rule
+    # a Ø on the circle tangent to the flats is S; diameter only when explicitly on the corners
+    assert "tangent to the flats" in rule and "explicitly on the corners" in rule
     assert prompt_version("features") != "b423ae0e1ab7fb64"
 
 
