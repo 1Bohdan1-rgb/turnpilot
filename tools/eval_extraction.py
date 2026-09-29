@@ -14,6 +14,7 @@ Not part of pytest. Usage:
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 import os
@@ -166,19 +167,65 @@ def recess_sections(features):
     return recesses
 
 
+def _chamfer_cost(exp, got):
+    """How badly a predicted chamfer fits an expected one: (diameter differs, position differs, |Δd|).
+    A chamfer without a diameter never fits by diameter: it can only fit by its position."""
+    same_d = got.diameter is not None and _same_number(got.diameter, exp.diameter)
+    same_position = (got.location, got.face) == (exp.location, exp.face)
+    distance = abs(got.diameter - exp.diameter) if got.diameter is not None and exp.diameter is not None else 0
+    return (not same_d) + (not same_position), distance
+
+
+def _match_chamfers(expected, predicted):
+    """Pairs (expected, predicted or None) for the chamfers, chosen together so that as many diameters
+    and positions as possible agree. Pairing each chamfer by the closest diameter gave a chamfer without
+    a diameter (read as 0) to whatever expected chamfer was left, with the wrong position."""
+    if not expected:
+        return [], list(predicted)
+    slots = list(predicted) + [None] * len(expected)  # None: the expected chamfer is missing
+    if len(slots) > 9:  # too many to try every assignment: closest diameter, as for other features
+        unused, pairs = list(predicted), []
+        for exp in expected:
+            best = min(unused, key=lambda p: _chamfer_cost(exp, p), default=None)
+            if best is not None:
+                unused.remove(best)
+            pairs.append((exp, best))
+        return pairs, unused
+    best, best_cost = None, None
+    for choice in itertools.permutations(range(len(slots)), len(expected)):
+        cost = [0, 0.0, 0]
+        for exp, i in zip(expected, choice):
+            if slots[i] is None:
+                cost[0] += 3
+            else:
+                mismatches, distance = _chamfer_cost(exp, slots[i])
+                cost[0] += mismatches
+                cost[1] += distance
+        if best_cost is None or cost < best_cost:
+            best, best_cost = choice, cost
+    pairs = [(exp, slots[i]) for exp, i in zip(expected, best)]
+    used = {id(p) for _, p in pairs if p is not None}
+    return pairs, [p for p in predicted if id(p) not in used]
+
+
 def _match_features(expected, predicted):
     """Pair each expected feature with the unused predicted feature of the same type and closest diameter.
+
+    Chamfers are paired among themselves by diameter and position together (see _match_chamfers).
 
     A section with a shoulder on both sides may be a groove or an od_turn in the model's answer: what
     counts is its diameter, length and position. Such sections are paired last, from what the other
     features left: a predicted section of the same type (closest diameter), or of the other type with
     the same diameter; ties go to the closest length, then the closest position along the part.
     """
-    unused = list(predicted)
+    chamfer_pairs, unused_chamfers = _match_chamfers(
+        [e for e in expected if e.type == "chamfer"], [p for p in predicted if p.type == "chamfer"]
+    )
+    matched = {id(exp): got for exp, got in chamfer_pairs if got is not None}
+    unused = [p for p in predicted if p.type != "chamfer"] + unused_chamfers
     recesses = recess_sections(expected)
     expected_index, predicted_index = _axial_index(expected), _axial_index(predicted)
-    matched = {}
-    for exp in (e for e in expected if id(e) not in recesses):
+    for exp in (e for e in expected if id(e) not in recesses and e.type != "chamfer"):
         candidates = [p for p in unused if p.type == exp.type]
         if candidates:
             best = min(candidates, key=lambda p: abs((p.diameter or 0) - (exp.diameter or 0)))
@@ -198,7 +245,9 @@ def _match_features(expected, predicted):
             ))
             unused.remove(best)
             matched[id(exp)] = best
-    return [(exp, matched.get(id(exp))) for exp in expected], unused
+    unused_ids = {id(p) for p in unused}
+    extra = [p for p in predicted if id(p) in unused_ids]  # in the model's order
+    return [(exp, matched.get(id(exp))) for exp in expected], extra
 
 
 def _material_key(text):

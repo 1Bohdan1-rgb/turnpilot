@@ -366,3 +366,41 @@ def test_report_lists_geometry_warnings(tmp_path):
     eval_extraction.write_markdown([result], "test-model", path=path)
     text = path.read_text(encoding="utf-8")
     assert "## Geometry check" in text and "probably S16 on the chamfer circle" in text
+
+
+# --- chamfers without a diameter are paired by position, not by the closest diameter -------------------
+
+
+def _chamfers(*specs):
+    return _part_with_chamfers([("chamfer", d, 1, loc, face) for d, loc, face in specs])
+
+
+def _part_with_chamfers(rows):
+    keys = ("type", "diameter", "length", "location", "face")
+    return DrawingData(part_type="turned", features=[dict(zip(keys, r)) for r in rows])
+
+
+def test_chamfer_without_diameter_is_paired_by_position():
+    # 08_hex_s_only as read: the hex chamfer (left) has no diameter, the thread chamfer (right) Ø12
+    expected = _chamfers((19.63, "external", "left"), (12, "external", "right"))
+    predicted = _chamfers((None, "external", "left"), (12, "external", "right"))
+    result = _scores(expected, predicted)
+    assert result.scores["chamfer_position"].pct == 100
+    assert result.scores["diameter"].correct == 1  # the missing diameter still counts as wrong
+    assert result.missing == result.extra == 0
+
+
+def test_chamfers_prefer_matching_diameter_and_position_together():
+    expected = _chamfers((12, "external", "left"), (16.17, "external", "left"), (16.17, "external", "right"),
+                         (12, "external", "right"))
+    predicted = _chamfers((12, "external", "left"), (9, "external", "left"), (9, "external", "right"),
+                          (12, "external", "right"))
+    result = _scores(expected, predicted)
+    assert result.scores["chamfer_position"].pct == 100
+    assert result.scores["diameter"].correct == 2  # the hex chamfers read on Ø9 stay wrong
+
+
+def test_fewer_chamfers_than_expected_counts_missing():
+    expected = _chamfers((12, "external", "left"), (12, "external", "right"))
+    result = _scores(expected, _chamfers((12, "external", "right")))
+    assert result.missing == 1 and result.scores["chamfer_position"].correct == 1
