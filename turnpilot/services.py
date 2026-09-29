@@ -68,6 +68,7 @@ def job_spec(job):
             location=f.location if f.type in ("chamfer", "thread") else None,
             # normalized again for features saved before decimal commas were converted
             start_diameter=f.start_diameter, tolerance=normalize_tolerance(f.tolerance), radius=f.radius,
+            across_flats=f.across_flats if f.type == "hex" else None,
         )
         for f in job.active_features
     )
@@ -221,7 +222,7 @@ def parting_width(machine, default):
 def suggest_blank(data: DrawingData, machine, config):
     specs = [
         planner.FeatureSpec(id=None, type=f.type, diameter=f.diameter, length=f.length,
-                            start_diameter=f.start_diameter)
+                            start_diameter=f.start_diameter, across_flats=f.across_flats)
         for f in data.features
     ]
     return planner.suggest_blank(

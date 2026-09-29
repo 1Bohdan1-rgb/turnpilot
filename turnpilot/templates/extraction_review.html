@@ -102,6 +102,7 @@
       other dimensions (e.g. a baseline minus a groove).
       Groove: Ø = bottom, Start Ø = diameter it is cut from, Length = width.
       Taper: Start Ø → Ø over Length. Fillet: Radius. Tapers and fillets are not planned automatically.
+      Hex: Ø = diameter across corners, S = size across flats; the lathe turns Ø, the flats are milled.
       Roughness is shown as written (Ra or Rz); for cutting data an Rz is converted to Ra ≈ Rz/4 (GOST 2789).
       {% if data and data.general_tolerance %}
       <br><strong>General tolerances on the drawing: {{ data.general_tolerance }}</strong>, applied to sizes without their own
@@ -116,7 +117,7 @@
     <div class="table-wrap">
     <table class="card review-table">
       <thead>
-        <tr><th>Use</th><th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Roughness, µm</th><th>Pitch</th><th>Radius</th><th>Where</th><th>Conf.</th></tr>
+        <tr><th>Use</th><th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Roughness, µm</th><th>Pitch</th><th>Radius</th><th>S (hex)</th><th>Where</th><th>Conf.</th></tr>
       </thead>
       <tbody>
       {% for row in values.rows %}
@@ -131,6 +132,8 @@
           {% for key in ("diameter", "start_diameter", "length") %}
           <td>
             <input name="f{{ i }}-{{ key }}" type="number" step="any" min="0" value="{{ row[key] if row[key] is not none else '' }}">
+            {% if key == "diameter" and row.size_derived == "diameter" %}<span class="badge badge-check"
+              title="Not on the drawing: computed from the hex size across flats (D = S / cos 30°). Check it.">check</span>{% endif %}
             {% if key == "length" and row.length_ambiguous %}<span class="badge badge-check"
               title="The dimensions allow a second reading of this length (with or without the groove next to it). Check the extension lines on the drawing.">check</span>
             {% elif key == "length" and row.length_derived %}<span class="badge badge-check"
@@ -156,6 +159,11 @@
           </td>
           <td><input name="f{{ i }}-radius" type="number" step="any" min="0" value="{{ row.radius if row.radius is not none else '' }}"></td>
           <td>
+            <input name="f{{ i }}-across_flats" type="number" step="any" min="0" value="{{ row.across_flats if row.across_flats is not none else '' }}">
+            {% if row.size_derived == "across_flats" %}<span class="badge badge-check"
+              title="Not on the drawing: computed from the diameter across corners (S = D · cos 30°). Check it.">check</span>{% endif %}
+          </td>
+          <td>
             <select name="f{{ i }}-position" title="Chamfers: outside / inside and the end face. Threads: outside / inside.">
               <option value="">—</option>
               {% for p in positions %}<option {% if row.position == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
@@ -167,7 +175,7 @@
           </td>
         </tr>
         {% if row.grinding or row.bore_ra_check %}
-        <tr class="row-warning"><td></td><td colspan="10">
+        <tr class="row-warning"><td></td><td colspan="11">
           {% if row.grinding %}<div class="warning">⚠ {{ grinding_warning }}</div>{% endif %}
           {% if row.bore_ra_check %}<div class="warning">⚠ {{ bore_ra_warning }}</div>{% endif %}
         </td></tr>

@@ -15,7 +15,7 @@ from flask import (
 )
 
 from . import drawing_reader, planner, services
-from .extraction_schema import normalize_tolerance
+from .extraction_schema import hex_across_corners, hex_across_flats, normalize_tolerance
 from .models import (
     FEATURE_TYPES,
     DrawingExtraction,
@@ -180,6 +180,17 @@ def _feature_from_form(form, blank_diameter, prefix=""):
     pitch = _number(form, prefix + "pitch", required=feature_type == "thread")
     if diameter and diameter > blank_diameter and feature_type != "bore":
         raise FormError("Feature diameter is larger than the blank diameter")
+    across_flats = _number(form, prefix + "across_flats") if feature_type == "hex" else None
+    if feature_type == "hex":
+        # a hex needs one of its sizes; the other one is computed (D = S / cos 30°)
+        if diameter is None and across_flats is None:
+            raise FormError("Hex needs its size across flats S or its diameter across corners")
+        if across_flats is None:
+            across_flats = hex_across_flats(diameter)
+        if diameter is None:
+            diameter = hex_across_corners(across_flats)
+        if across_flats >= diameter:
+            raise FormError("Hex size across flats must be smaller than its diameter across corners")
     start_diameter = _number(form, prefix + "start_diameter") if feature_type in ("groove", "taper") else None
     if start_diameter is not None:
         if start_diameter > blank_diameter:
@@ -197,6 +208,7 @@ def _feature_from_form(form, blank_diameter, prefix=""):
         pitch=pitch if feature_type == "thread" else None,
         start_diameter=start_diameter,
         radius=_number(form, prefix + "radius") if feature_type == "fillet" else None,
+        across_flats=across_flats,
     )
 
 
@@ -316,7 +328,8 @@ def edit_operation(op_id):
 # --- drawing upload and review --------------------------------------------------
 
 REVIEW_FIELDS = (
-    "type", "diameter", "start_diameter", "length", "tolerance", "ra", "ra_param", "pitch", "radius", "confidence",
+    "type", "diameter", "start_diameter", "length", "tolerance", "ra", "ra_param", "pitch", "radius", "across_flats",
+    "confidence",
 )
 # In the features mode the model reports a length it computed as "Ø60: length derived from chain dimensions".
 DERIVED_LENGTH_WARNING = re.compile(r"Ø\s*(\d+(?:[.,]\d+)?)\s*:\s*length derived", re.IGNORECASE)
@@ -375,6 +388,7 @@ def _flag_derived_lengths(rows, data):
         row["length_derived"] = feature.length is not None and (feature.length_derived or from_model)
         row["length_ambiguous"] = feature.length is not None and feature.length_ambiguous
         row["pitch_assumed"] = feature.pitch_assumed
+        row["size_derived"] = feature.size_derived
         row["position"] = " ".join(p for p in (feature.location, feature.face) if p) or None
     return rows
 

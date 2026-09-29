@@ -26,7 +26,7 @@
   {% for op in job.current_operations %}
     <tr class="status-{{ op.status }}{% if op.warning %} has-warning{% endif %}">
       <td>{{ op.sequence }}</td>
-      <td>{{ op.feature.type }}{% if op.feature.diameter %} Ø{{ op.feature.diameter }}{% endif %}</td>
+      <td>{{ op.feature.type }}{% if op.feature.diameter %} Ø{{ op.feature.diameter }}{% endif %}{% if op.feature.across_flats %} S{{ op.feature.across_flats }}{% endif %}</td>
       <td>{{ op.tool_type }} <span class="muted">({{ op.rough_finish }})</span></td>
       <td>{{ "T%d"|format(op.turret_position) if op.turret_position else "—" }}</td>
       <td>{{ op.tool.name if op.tool else "—" }}</td>

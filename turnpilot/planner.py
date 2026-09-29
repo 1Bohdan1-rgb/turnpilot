@@ -11,7 +11,7 @@ import math
 import re
 from dataclasses import dataclass, field, replace
 
-from .extraction_schema import coarse_pitch
+from .extraction_schema import coarse_pitch, hex_across_corners
 
 G96_NOTE = "G96 constant surface speed, capped at max RPM"
 G97_THREAD_NOTE = "G97 constant RPM — required for threading"
@@ -31,6 +31,10 @@ def rz_to_ra(rz: float) -> float:
 # Tapers and fillets are recognised on drawings but not planned automatically yet.
 MANUAL_OPERATION_WARNING = "manual operation"
 MANUAL_FEATURE_TYPES = ("taper", "fillet")
+# A hex is turned to its diameter across corners, then its flats are milled with a driven tool.
+HEX_CORNERS_NOTE = "diameter across corners of the hex"
+NO_MILLING_TOOL = "manual operation: no driven tool in the turret, mill the hex on a milling machine"
+MILLING_DATA_NOTE = "cutting data for milling are not calculated: set them for the tool"
 # The OD under an external thread is turned slightly below nominal: d - 0.1 * pitch.
 THREAD_MAJOR_REDUCTION = 0.1
 
@@ -44,8 +48,8 @@ IT5_UM = (
     (120, 15), (180, 18), (250, 20), (315, 23), (400, 25), (500, 27),
 )
 
-# Stage order of the process sheet: face -> rough -> finish -> groove -> thread -> parting.
-STAGE_ORDER = {"face": 0, "rough": 1, "finish": 2, "groove": 3, "thread": 4, "parting": 5}
+# Stage order of the process sheet: face -> rough -> finish -> groove -> thread -> mill -> parting.
+STAGE_ORDER = {"face": 0, "rough": 1, "finish": 2, "groove": 3, "thread": 4, "mill": 5, "parting": 6}
 
 # "Closer to the min/max of the range" is expressed as a position inside the range.
 NEAR_MIN = 0.25
@@ -98,6 +102,14 @@ class FeatureSpec:
     radius: float | None = None  # fillet
     ra_from_rz: float | None = None  # the Rz written on the drawing when ra was converted from it
     location: str | None = None  # chamfer / thread: "external" / "internal"
+    across_flats: float | None = None  # hex: size across flats S; diameter is across corners
+
+
+def hex_corners(feature) -> float | None:
+    """Diameter across corners of a hex feature: as given, or computed from the size across flats."""
+    if feature.diameter is not None:
+        return feature.diameter
+    return hex_across_corners(feature.across_flats) if feature.across_flats else None
 
 
 @dataclass(frozen=True)
@@ -290,7 +302,7 @@ def needs_grinding(tolerance: str | None, diameter: float | None, ra: float | No
 # without its own: holes H14, shafts h14, everything else ±IT14/2.
 
 HOLE_TYPES = ("bore",)
-SHAFT_TYPES = ("od_turn", "taper", "groove")
+SHAFT_TYPES = ("od_turn", "taper", "groove", "hex")  # hex: its size across flats
 OTHER_TYPES = ("fillet", "chamfer")  # threads have their own class, face/parting no diameter tolerance
 
 
@@ -327,7 +339,7 @@ class BlankSuggestion:
 GEOMETRY_TOLERANCE_MM = 0.2
 # Sections that follow each other along the axis. Threads and chamfers lie on top of a section,
 # bores inside the part, so they are not part of the sum.
-AXIAL_SECTION_TYPES = ("od_turn", "taper", "groove", "fillet")
+AXIAL_SECTION_TYPES = ("od_turn", "taper", "groove", "fillet", "hex")
 
 
 def thread_section(thread, features):
@@ -396,6 +408,7 @@ def suggest_blank(
     external = [
         f.diameter for f in features if f.type in ("od_turn", "thread", "chamfer", "parting", "taper") and f.diameter
     ]
+    external += [hex_corners(f) for f in features if f.type == "hex" and hex_corners(f)]
     external += [f.start_diameter for f in features if f.type in ("groove", "taper") and f.start_diameter]
 
     diameter = None
@@ -474,6 +487,13 @@ def feature_to_steps(feature: FeatureSpec) -> list[Step]:
         return [Step(feature, "threading", "finish", "thread")]
     if t == "parting":
         return [Step(feature, "parting", "finish", "parting")]
+    if t == "hex":
+        # turned round to the diameter across corners (see plan_job), then the flats are milled
+        return [
+            Step(feature, "turning_rough", "rough", "rough"),
+            Step(feature, "turning_finish", "finish", "finish"),
+            Step(feature, "milling", "finish", "mill"),
+        ]
     if t in MANUAL_FEATURE_TYPES:
         return [Step(feature, "manual", "finish", "finish")]
     raise ValueError(f"Unknown feature type: {t}")
@@ -484,6 +504,11 @@ def order_steps(steps: list[Step]) -> list[Step]:
     return sorted(steps, key=lambda s: STAGE_ORDER[s.stage])
 
 
+def _host_diameter(feature) -> float | None:
+    """Diameter a chamfer can sit on: a hex is chamfered on its diameter across corners."""
+    return hex_corners(feature) if feature.type == "hex" else feature.diameter
+
+
 def match_chamfers(features: list[FeatureSpec]) -> dict[int, FeatureSpec]:
     """Map each chamfer (by id()) to the OD/bore feature whose finishing pass machines it.
 
@@ -492,13 +517,16 @@ def match_chamfers(features: list[FeatureSpec]) -> dict[int, FeatureSpec]:
     hosts = {}
     for chamfer in (f for f in features if f.type == "chamfer" and f.diameter is not None):
         # an internal chamfer belongs to a bore, an external one to an OD; unknown: either
-        host_types = {"internal": ("bore",), "external": ("od_turn",)}.get(chamfer.location, ("od_turn", "bore"))
+        host_types = {"internal": ("bore",), "external": ("od_turn", "hex")}.get(
+            chamfer.location, ("od_turn", "hex", "bore")
+        )
         for host_type in host_types:
             host = next(
                 (
                     f
                     for f in features
-                    if f.type == host_type and f.diameter is not None and math.isclose(f.diameter, chamfer.diameter)
+                    if f.type == host_type and _host_diameter(f) is not None
+                    and math.isclose(_host_diameter(f), chamfer.diameter)
                 ),
                 None,
             )
@@ -687,6 +715,25 @@ def _plan_internal_thread_step(op, step, job, turret, max_rpm) -> PlannedOperati
     return op
 
 
+def _plan_hex_milling(op: PlannedOperation, feature: FeatureSpec, job: JobSpec, turret) -> PlannedOperation:
+    """Mill the flats of a hex with a driven tool; a manual operation without one."""
+    size = f"S{feature.across_flats:g}" if feature.across_flats else "S not given"
+    length = f", L{feature.length:g}" if feature.length else ""
+    op.notes.append(f"mill hex {size} across flats{length}")
+    op.depth = (
+        round((hex_corners(feature) - feature.across_flats) / 2, 3)
+        if feature.across_flats and hex_corners(feature) else None
+    )
+    entry, _ = select_tool("milling", job.iso_group, turret)
+    if entry is None:
+        op.warnings.append(NO_MILLING_TOOL)
+        return op
+    op.tool_id, op.tool_name, op.turret_position = entry.tool.id, entry.tool.name, entry.position
+    op.notes.append("driven tool, C-axis: 6 flats at 60°")
+    op.notes.append(MILLING_DATA_NOTE)
+    return op
+
+
 def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> PlannedOperation:
     feature = step.feature
     op = PlannedOperation(
@@ -707,6 +754,9 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
 
     if step.tool_type in ("drilling", "internal_threading"):
         return _plan_internal_thread_step(op, step, job, turret, max_rpm)
+
+    if step.tool_type == "milling":
+        return _plan_hex_milling(op, feature, job, turret)
 
     entry, warning = select_tool(step.tool_type, job.iso_group, turret)
     if entry is None:
@@ -760,11 +810,16 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> list[Plan
             # Rough and finish the OD under the thread to the reduced major diameter.
             major = thread_major_diameter(original.diameter, pitch)
             step = replace(step, feature=replace(original, diameter=major))
+        elif original.type == "hex" and step.tool_type != "milling":
+            step = replace(step, feature=replace(original, diameter=hex_corners(original)))
         op = _plan_step(step, job, turret, max_rpm)
         if pitch and step.mode == "finish":
             op.notes.append(f"{THREAD_MAJOR_NOTE}: Ø{major:g} (nominal Ø{original.diameter:g})")
-        if step.mode == "finish" and id(original) in hosts_with_chamfer:
+        if step.mode == "finish" and id(original) in hosts_with_chamfer and step.tool_type != "milling":
             op.notes.append(CHAMFER_NOTE)
+        if original.type == "hex" and step.tool_type == "turning_finish":
+            op.notes.append(f"{HEX_CORNERS_NOTE} S{original.across_flats:g}" if original.across_flats
+                            else HEX_CORNERS_NOTE)
         operations.append(op)
     for i, op in enumerate(operations, start=1):
         op.sequence = i

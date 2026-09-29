@@ -4,10 +4,10 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
-FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet")
+FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex")
 TOOL_TYPES = (
     "facing", "turning_rough", "turning_finish", "grooving", "threading", "boring", "parting",
-    "drilling", "tapping", "threading_internal",
+    "drilling", "tapping", "threading_internal", "milling",  # milling: a driven tool (live tooling)
 )
 ISO_GROUPS = ("P", "M", "N")
 OPERATION_STATUSES = ("proposed", "approved", "edited")
@@ -117,6 +117,7 @@ class Feature(db.Model):
     pitch = db.Column(db.Float)  # mm, threads only
     start_diameter = db.Column(db.Float)  # mm, groove: diameter it is cut from; taper: diameter at its start
     radius = db.Column(db.Float)  # mm, fillets only
+    across_flats = db.Column(db.Float)  # mm, hex only: size across flats S (diameter = across corners)
     location = db.Column(db.String(10))  # chamfers: "external" / "internal"
     face = db.Column(db.String(10))  # chamfers: "left" / "right" end face
     confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing

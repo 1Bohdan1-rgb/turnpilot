@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, field_validator, model_validator
 
-FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet")
-FeatureType = Literal["face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet"]
+FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex")
+FeatureType = Literal["face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex"]
+# Types the model may send. hex is known to the code (review screen, planner, expected answers) but not
+# offered to the model yet: that comes with its own prompt rule and a measurement.
+TOOL_FEATURE_TYPES = tuple(t for t in FEATURE_TYPES if t != "hex")
 PART_TYPES = ("turned", "not_turned", "unclear")
 # Roughness parameter as written on the drawing: GOST drawings often give Rz instead of Ra.
 ROUGHNESS_PARAMS = ("Ra", "Rz")
@@ -51,6 +55,33 @@ COARSE_PITCH_MM = {
 }
 
 
+# --- hexagons --------------------------------------------------------------------------------
+#
+# A hex is given by its size across flats S (the wrench size) and/or its diameter across corners
+# (the circumscribed circle, what the lathe sees): D = S / cos 30°.
+
+HEX_CORNERS_PER_FLATS = 2 / math.sqrt(3)
+# ISO 272 / GOST 13682 wrench sizes, mm.
+WRENCH_SIZES_MM = (
+    3.2, 4, 5, 5.5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 30, 32, 34, 36,
+    41, 46, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100,
+)
+
+
+def hex_across_corners(across_flats: float) -> float:
+    """Diameter across corners of a hex with the given size across flats: D = S / cos 30°."""
+    return round(across_flats * HEX_CORNERS_PER_FLATS, 2)
+
+
+def hex_across_flats(across_corners: float) -> float:
+    """Size across flats of a hex with the given diameter across corners: S = D · cos 30°."""
+    return round(across_corners / HEX_CORNERS_PER_FLATS, 2)
+
+
+def nearest_wrench_size(across_flats: float) -> float:
+    return min(WRENCH_SIZES_MM, key=lambda s: abs(s - across_flats))
+
+
 def coarse_pitch(diameter: float | None) -> float | None:
     """ISO 261 coarse pitch for a nominal metric thread diameter, or None if it is not in the table."""
     if diameter is None:
@@ -73,6 +104,7 @@ class ExtractedFeature(BaseModel):
     ra_param: RoughnessParam = "Ra"
     pitch: PositiveFloat | None = None
     radius: PositiveFloat | None = None
+    across_flats: PositiveFloat | None = None  # hex only: size across flats S; diameter is across corners
     location: Location | None = None  # chamfers and threads: external / internal
     face: Face | None = None  # chamfers only: left / right end face
     # Required in model output (strict tool schema); absent in hand-written expected files.
@@ -85,6 +117,9 @@ class ExtractedFeature(BaseModel):
     length_ambiguous: bool = False
     # Set by the code: the drawing gives no pitch, so the ISO 261 coarse pitch was filled in.
     pitch_assumed: bool = False
+    # Set by the code: a hex has only one of its sizes on the drawing, the other one ("diameter" or
+    # "across_flats") was computed from it.
+    size_derived: Literal["diameter", "across_flats"] | None = None
 
     @field_validator("tolerance")
     @classmethod
@@ -107,6 +142,15 @@ class ExtractedFeature(BaseModel):
             self.face = None
         if self.radius is not None and self.type != "fillet":
             raise ValueError(f"radius is only valid for fillets, got it on {self.type}")
+        if self.across_flats is not None and self.type != "hex":
+            raise ValueError(f"across_flats is only valid for hexes, got it on {self.type}")
+        if self.type == "hex":
+            if self.diameter is None and self.across_flats is not None:
+                self.diameter = hex_across_corners(self.across_flats)
+                self.size_derived = "diameter"
+            elif self.across_flats is None and self.diameter is not None:
+                self.across_flats = hex_across_flats(self.diameter)
+                self.size_derived = "across_flats"
         if self.start_diameter is not None:
             if self.type not in ("groove", "taper"):
                 raise ValueError(f"start_diameter is only valid for grooves and tapers, got it on {self.type}")
@@ -179,6 +223,21 @@ class DrawingData(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _check_wrench_sizes(self):
+        """A hex size across flats that is not a standard wrench size is reported, never changed."""
+        for feature in self.features:
+            if feature.type != "hex" or feature.across_flats is None:
+                continue
+            nearest = nearest_wrench_size(feature.across_flats)
+            if abs(nearest - feature.across_flats) > 0.01:
+                derived = " (computed from the diameter across corners)" if feature.size_derived == "across_flats" else ""
+                self.warnings.append(
+                    f"hex S{feature.across_flats:g}{derived} is not a standard wrench size "
+                    f"(nearest S{nearest:g}): check"
+                )
+        return self
+
+    @model_validator(mode="after")
     def _fill_coarse_pitch(self):
         """A metric thread without a pitch on the drawing has the ISO 261 coarse pitch: fill it, mark it."""
         for feature in self.features:
@@ -205,7 +264,7 @@ _FEATURE_SCHEMA = {
     "properties": {
         "type": {
             "type": "string",
-            "enum": list(FEATURE_TYPES),
+            "enum": list(TOOL_FEATURE_TYPES),
             "description": (
                 "od_turn: an external cylindrical section. groove: a recess cut into an external diameter "
                 "(including a thread relief groove). thread: an external thread. bore: an internal diameter. "

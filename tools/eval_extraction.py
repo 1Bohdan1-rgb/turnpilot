@@ -48,7 +48,7 @@ REAL_PREFIX = "real_"
 REAL_SUFFIXES = {".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".pdf": "pdf"}
 GROUPS = ("clean", "photo", "real")
 # Feature metrics are counted once per expected feature, part metrics once per drawing.
-FEATURE_NUMBER_METRICS = ("diameter", "start_diameter", "length", "pitch", "radius")
+FEATURE_NUMBER_METRICS = ("diameter", "start_diameter", "length", "pitch", "radius", "across_flats")
 FEATURE_METRICS = FEATURE_NUMBER_METRICS + ("tolerance", "ra")
 PART_METRICS = ("material", "overall_length", "general_ra", "general_tolerance")
 # Counted once per expected chamfer: location (external/internal) and end face both right.
