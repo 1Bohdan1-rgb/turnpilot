@@ -209,8 +209,9 @@ def _feature_from_form(form, blank_diameter, prefix=""):
             across_flats = hex_across_flats(diameter)
         if diameter is None:
             diameter = hex_across_corners(across_flats)
-        if across_flats >= diameter:
-            raise FormError("Hex size across flats must be smaller than its diameter across corners")
+        # D need not be S / cos 30° (it may be the diameter turned before milling), but not below S
+        if diameter < across_flats:
+            raise FormError("Hex diameter must not be smaller than its size across flats")
     start_diameter = _number(form, prefix + "start_diameter") if feature_type in ("groove", "taper") else None
     if start_diameter is not None:
         if start_diameter > blank_diameter:
@@ -514,7 +515,7 @@ def _geometry_warnings(rows, overall_length):
     """Checks on the rows as they stand on the review screen (edited values, included rows only)."""
     features = [
         SimpleNamespace(type=r["type"], diameter=_to_float(r.get("diameter")), length=_to_float(r.get("length")),
-                        radius=_to_float(r.get("radius")))
+                        radius=_to_float(r.get("radius")), across_flats=_to_float(r.get("across_flats")))
         for r in rows if r["include"]
     ]
     return planner.geometry_warnings(features, overall_length)

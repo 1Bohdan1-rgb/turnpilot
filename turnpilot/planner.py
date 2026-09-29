@@ -393,7 +393,8 @@ def geometry_warnings(features, overall_length: float | None) -> list[str]:
     """Consistency checks on the features of one part (duck-typed: type, diameter, length, radius).
 
     - the axial sections add up to the overall length (±0.2 mm);
-    - a thread is not longer than the section it is cut on.
+    - a thread is not longer than the section it is cut on;
+    - a hex with both sizes: its diameter is not below its size across flats, nor well below S / cos 30°.
     """
     warnings = []
     sections = [f for f in features if f.type in AXIAL_SECTION_TYPES]
@@ -412,7 +413,29 @@ def geometry_warnings(features, overall_length: float | None) -> list[str]:
             warnings.append(
                 f"thread Ø{thread.diameter:g} is {thread.length:g} long, longer than its section ({section.length:g})"
             )
+    for hex_ in (f for f in features if f.type == "hex"):
+        warnings.extend(hex_size_warnings(hex_.diameter, getattr(hex_, "across_flats", None)))
     return warnings
+
+
+# A hex given with both sizes: D need not be S / cos 30° (it may be the diameter turned before milling,
+# with corners slightly rounded). ISO 4032 allows corners down to about 1.10 x S; below that the
+# corners are visibly cut off.
+HEX_MIN_CORNERS_PER_FLATS = 1.10
+
+
+def hex_size_warnings(diameter: float | None, across_flats: float | None) -> list[str]:
+    """Warnings for a hex with both its diameter and its size across flats on the drawing."""
+    if not diameter or not across_flats:
+        return []
+    if diameter < across_flats:
+        return [f"hex Ø{diameter:g} is smaller than its size across flats S{across_flats:g}: check"]
+    if diameter < HEX_MIN_CORNERS_PER_FLATS * across_flats - 1e-9:
+        return [
+            f"hex Ø{diameter:g} is well below S{across_flats:g} / cos 30° = Ø{hex_across_corners(across_flats):g}: "
+            f"corners cut off, check"
+        ]
+    return []
 
 
 def suggest_blank(

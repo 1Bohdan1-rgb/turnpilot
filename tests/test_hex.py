@@ -255,3 +255,54 @@ def test_review_suggests_the_hex_bar(app, client):
     page = client.get("/extractions/1/review").data.decode()
     assert "<option selected>hex</option>" in page
     assert "Hex bar S11: the flats are not machined." in page
+
+
+# --- a hex with both D and S ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("diameter, across_flats, expected", [
+    (12.7, 11, []),  # D = S / cos 30°
+    (12.2, 11, []),  # corners slightly rounded: 1.109 x S
+    (13, 11, []),  # turned larger before milling: the milling takes the rest
+    (12, 11, ["hex Ø12 is well below S11 / cos 30° = Ø12.7: corners cut off, check"]),  # 1.09 x S
+    (10.5, 11, ["hex Ø10.5 is smaller than its size across flats S11: check"]),
+])
+def test_hex_size_warnings(diameter, across_flats, expected):
+    assert planner.hex_size_warnings(diameter, across_flats) == expected
+    feature_ = FeatureSpec(1, "hex", diameter=diameter, across_flats=across_flats, length=3)
+    assert planner.geometry_warnings([feature_], None) == expected
+
+
+def test_hex_with_both_sizes_is_kept_as_written():
+    data = DrawingData(part_type="turned", features=[{"type": "hex", "diameter": 12.2, "across_flats": 11}])
+    hex_ = data.features[0]
+    assert (hex_.diameter, hex_.across_flats, hex_.size_derived) == (12.2, 11, None)
+
+
+def test_hex_milling_depth_from_the_turned_diameter(turret):
+    ops = _ops(turret, (FeatureSpec(1, "hex", diameter=13, across_flats=11, length=3.5),))
+    finish = next(op for op in ops if op.mode == "finish" and op.tool_type == "turning_finish")
+    mill = next(op for op in ops if op.tool_type == "milling")
+    assert finish.ref_diameter == 13 and mill.depth == 1.0
+
+
+def test_form_accepts_d_below_s_over_cos30_but_not_below_s(app, client):
+    job_id = _job(client)
+    client.post(f"/jobs/{job_id}/features", data={"type": "hex", "diameter": "10.5", "across_flats": "11"})
+    assert not db.session.get(Job, job_id).active_features
+    client.post(f"/jobs/{job_id}/features", data={"type": "hex", "diameter": "12.2", "across_flats": "11"})
+    hex_ = db.session.get(Job, job_id).active_features[0]
+    assert (hex_.diameter, hex_.across_flats) == (12.2, 11)
+
+
+def test_review_warns_about_cut_corners(app, client):
+    app.config["ANTHROPIC_CLIENT"] = FakeClient(make_response(part([feature("hex", 12, length=3.5)])))
+    png = (FIXTURES / "01_stepped_shaft.png").read_bytes()
+    client.post("/jobs/upload", data={"drawing": (io.BytesIO(png), "fitting.png")}, content_type="multipart/form-data")
+    extraction_id = 1
+    # the model cannot send S yet: the reviewer types it in, the check runs on the submitted rows
+    form = {"name": "Fitting", "material_id": "1", "quantity": "1", "blank_diameter": "", "blank_length": "12",
+            "feature_count": "1", "f0-include": "1", "f0-type": "hex", "f0-diameter": "12", "f0-across_flats": "11",
+            "f0-length": "3.5"}
+    page = client.post(f"/extractions/{extraction_id}/confirm", data=form).data.decode()
+    assert "hex Ø12 is well below S11 / cos 30° = Ø12.7: corners cut off, check" in page
