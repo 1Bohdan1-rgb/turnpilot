@@ -330,6 +330,22 @@ GEOMETRY_TOLERANCE_MM = 0.2
 AXIAL_SECTION_TYPES = ("od_turn", "taper", "groove", "fillet")
 
 
+def thread_section(thread, features):
+    """The od_turn section an external thread is cut on: same diameter, and of those the shortest one
+    at least as long as the thread. A part can have several sections of the thread's diameter (a Ø10
+    collar and an M10 thread), so the diameter alone is not enough. If none is long enough, the longest
+    one (the geometry check then reports it)."""
+    same = [f for f in features if f.type == "od_turn" and f.diameter and thread.diameter
+            and math.isclose(f.diameter, thread.diameter)]
+    if not same or thread.length is None:
+        return same[0] if same else None
+    long_enough = [f for f in same if f.length is not None and f.length >= thread.length - GEOMETRY_TOLERANCE_MM]
+    if long_enough:
+        return min(long_enough, key=lambda f: f.length)
+    with_length = [f for f in same if f.length is not None]
+    return max(with_length, key=lambda f: f.length) if with_length else same[0]
+
+
 def axial_length(feature) -> float | None:
     """Length of a section along the axis. A fillet without a length takes its radius."""
     if feature.type == "fillet" and feature.length is None:
@@ -355,10 +371,7 @@ def geometry_warnings(features, overall_length: float | None) -> list[str]:
 
     for thread in (f for f in features if f.type == "thread" and f.diameter and f.length
                    and getattr(f, "location", None) != "internal"):
-        section = next(
-            (f for f in features if f.type == "od_turn" and f.diameter and math.isclose(f.diameter, thread.diameter)),
-            None,
-        )
+        section = thread_section(thread, features)
         if section and section.length and thread.length > section.length + GEOMETRY_TOLERANCE_MM:
             warnings.append(
                 f"thread Ø{thread.diameter:g} is {thread.length:g} long, longer than its section ({section.length:g})"
@@ -523,10 +536,10 @@ def match_thread_diameters(features: list[FeatureSpec]) -> dict[int, float]:
     """Map each od_turn feature (by id()) that carries an external thread to the thread pitch."""
     threads = [f for f in features if f.type == "thread" and f.diameter and f.pitch and f.location != "internal"]
     pitches = {}
-    for od in (f for f in features if f.type == "od_turn" and f.diameter):
-        thread = next((t for t in threads if math.isclose(t.diameter, od.diameter)), None)
-        if thread:
-            pitches[id(od)] = thread.pitch
+    for thread in threads:
+        section = thread_section(thread, features)
+        if section is not None and id(section) not in pitches:
+            pitches[id(section)] = thread.pitch
     return pitches
 
 

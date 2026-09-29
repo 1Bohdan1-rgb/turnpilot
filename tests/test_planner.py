@@ -598,3 +598,48 @@ def test_thread_longer_than_its_section():
 
 def test_no_overall_length_skips_the_sum():
     assert geometry_warnings([FeatureSpec(1, "od_turn", diameter=20, length=5)], None) == []
+
+
+# --- the section a thread is cut on: diameter and length ------------------------------------
+
+from turnpilot.planner import geometry_warnings, thread_section  # noqa: E402
+
+
+def _fitting():
+    """The fitting from real_03: a Ø10 collar L3.5 and an M10×1.5 thread L8 on a Ø10 section L8."""
+    return (
+        FeatureSpec(1, "od_turn", diameter=10, length=3.5),
+        FeatureSpec(2, "groove", diameter=8, length=8, start_diameter=10),
+        FeatureSpec(3, "od_turn", diameter=13, length=3.5),
+        FeatureSpec(4, "groove", diameter=8, length=1.5, start_diameter=10),
+        FeatureSpec(5, "od_turn", diameter=10, length=8),
+        FeatureSpec(6, "thread", diameter=10, length=8, pitch=1.5),
+    )
+
+
+def test_thread_section_uses_length_as_well_as_diameter():
+    features = _fitting()
+    assert thread_section(features[5], features) is features[4]
+
+
+def test_collar_of_thread_diameter_not_reduced(turret):
+    ops = plan_job(JobSpec("P", 16, 30, _fitting()), turret, max_rpm=4000)
+    collar = next(op for op in ops if op.feature_id == 1 and op.mode == "finish")
+    section = next(op for op in ops if op.feature_id == 5 and op.mode == "finish")
+    assert collar.ref_diameter == 10
+    assert not any(THREAD_MAJOR_NOTE in n for n in collar.notes)
+    assert section.ref_diameter == 9.85
+
+
+def test_no_false_thread_length_warning_on_fitting():
+    assert geometry_warnings(_fitting(), 24.5) == []
+
+
+def test_thread_longer_than_every_section_still_warned():
+    features = (
+        FeatureSpec(1, "od_turn", diameter=10, length=3.5),
+        FeatureSpec(2, "od_turn", diameter=10, length=6),
+        FeatureSpec(3, "thread", diameter=10, length=8, pitch=1.5),
+    )
+    assert thread_section(features[2], features) is features[1]
+    assert geometry_warnings(features, None) == ["thread Ø10 is 8 long, longer than its section (6)"]
