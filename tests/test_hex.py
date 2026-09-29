@@ -200,7 +200,7 @@ def test_round_bar_when_a_diameter_is_larger_than_the_hex():
     features = (FeatureSpec(1, "od_turn", diameter=20, length=5), FeatureSpec(2, "hex", across_flats=11, length=3))
     suggestion = _suggest(features)
     assert suggestion.shape == "round"
-    assert "A diameter is larger than the hex: round bar, the hex is milled." in suggestion.notes
+    assert "Ø20 is larger than the hex size across flats S11: round bar, the hex is milled." in suggestion.notes
 
 
 def test_hex_from_hex_bar_is_not_machined(turret):
@@ -306,3 +306,40 @@ def test_review_warns_about_cut_corners(app, client):
             "f0-length": "3.5"}
     page = client.post(f"/extractions/{extraction_id}/confirm", data=form).data.decode()
     assert "hex Ø12 is well below S11 / cos 30° = Ø12.7: corners cut off, check" in page
+
+
+# --- hex bar: other diameters inside S, tolerance on S -------------------------------------------------------
+
+
+def test_hex_bar_needs_every_other_diameter_within_s():
+    # Ø12 fits under the corners (12.7) but not inside the flats (11): a hex bar would leave it unround
+    features = (FeatureSpec(1, "od_turn", diameter=12, length=5), FeatureSpec(2, "hex", across_flats=11, length=3))
+    suggestion = _suggest(features)
+    assert suggestion.shape == "round"
+    assert "Ø12 is larger than the hex size across flats S11: round bar, the hex is milled." in suggestion.notes
+    inside = (FeatureSpec(1, "od_turn", diameter=11, length=5), FeatureSpec(2, "hex", across_flats=11, length=3))
+    assert _suggest(inside).shape == "hex"
+
+
+@pytest.mark.parametrize("tolerance, size, tight", [
+    ("h9", 11, True), ("h10", 11, True), ("h11", 11, False), ("h12", 11, False), (None, 11, False),
+    ("±0.02", 11, True), ("0/-0.11", 11, False), ("0/-0.2", 11, False),
+])
+def test_tighter_than_h11(tolerance, size, tight):
+    assert planner.tighter_than_h11(tolerance, size) is tight
+
+
+def test_hex_bar_with_a_tight_s_tolerance_gets_its_flats_milled(turret):
+    features = (FeatureSpec(1, "od_turn", diameter=10, length=5),
+                FeatureSpec(2, "hex", across_flats=11, length=3.5, tolerance="h9"),
+                FeatureSpec(3, "chamfer", diameter=12.7, length=1, location="external"))
+    suggestion = _suggest(features)
+    assert (suggestion.shape, suggestion.diameter) == ("hex", 11)
+    assert "Hex bar S11: tolerance h9 is tighter than the bar's h11, the flats have to be milled." in suggestion.notes
+
+    ops = planner.plan_job(JobSpec("P", 11, 30, features, blank_shape="hex"), turret, max_rpm=4000)
+    hex_ops = [op for op in ops if op.feature_id == 2]
+    assert [op.tool_type for op in hex_ops] == ["milling"]  # no turning: the bar already has the flats
+    assert hex_ops[0].depth is None
+    assert "flats of the hex bar (h11) milled to h9: skim, depth set by the bar" in hex_ops[0].notes
+    assert any(op.feature_id == 3 for op in ops)  # the chamfer gets its own pass

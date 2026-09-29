@@ -297,6 +297,24 @@ def tolerance_band_mm(tolerance: str | None) -> float | None:
     return round(max(values) - min(values), 6)
 
 
+# ISO 286-1 standard tolerance IT11 in um: (upper bound of the size range in mm, IT11).
+IT11_UM = ((3, 60), (6, 75), (10, 90), (18, 110), (30, 130), (50, 160), (80, 190), (120, 220), (180, 250), (250, 290))
+# Drawn (calibrated) hex bar is made to h11 across flats (GOST 8560 / EN 10278).
+HEX_BAR_TOLERANCE = "h11"
+
+
+def tighter_than_h11(tolerance: str | None, size: float | None) -> bool:
+    """True when a tolerance on a size is tighter than IT11 (h9, ±0.02 on S11, ...)."""
+    grade = iso_fit_grade(tolerance)
+    if grade is not None:
+        return grade < 11
+    band = tolerance_band_mm(tolerance)
+    if band is None or not size:
+        return False
+    it11 = next((um / 1000 for upper, um in IT11_UM if size <= upper), None)
+    return it11 is not None and band < it11 - 1e-9
+
+
 def it5_mm(diameter: float) -> float | None:
     """IT5 tolerance for a nominal diameter (ISO 286-1), in mm. None above 500 mm."""
     for upper, um in IT5_UM:
@@ -480,11 +498,21 @@ def suggest_blank(
             f.diameter for f in features if f.type in ("od_turn", "thread", "parting", "taper") and f.diameter
         ] + [f.start_diameter for f in features if f.type in ("groove", "taper") and f.start_diameter]
         size = hex_flats(largest_hex)
-        if others and max(others) > hex_corners(largest_hex):
-            notes.append("A diameter is larger than the hex: round bar, the hex is milled.")
+        # every other diameter must fit inside the flats: between S and the corners it would stay
+        # partly unturned on a hex bar
+        if others and size and max(others) > size + 1e-9:
+            notes.append(
+                f"Ø{max(others):g} is larger than the hex size across flats S{size:g}: round bar, the hex is milled."
+            )
         elif size and any(math.isclose(size, s, abs_tol=HEX_BAR_MATCH_MM) for s in hex_bar_sizes):
             shape, diameter = "hex", float(size)
-            notes.append(f"Hex bar S{size:g}: the flats are not machined.")
+            if tighter_than_h11(largest_hex.tolerance, size):
+                notes.append(
+                    f"Hex bar S{size:g}: tolerance {largest_hex.tolerance} is tighter than the bar's "
+                    f"{HEX_BAR_TOLERANCE}, the flats have to be milled."
+                )
+            else:
+                notes.append(f"Hex bar S{size:g}: the flats are not machined.")
         else:
             label = f"S{size:g}" if size else "of this size"
             notes.append(f"No hex bar {label} in stock: round bar, the hex is milled.")
@@ -557,6 +585,8 @@ def feature_to_steps(feature: FeatureSpec, hex_bar: float | None = None) -> list
     if t == "hex" and hex_bar and hex_flats(feature) and math.isclose(
         hex_flats(feature), hex_bar, abs_tol=HEX_BAR_MATCH_MM
     ):
+        if tighter_than_h11(feature.tolerance, hex_flats(feature)):
+            return [Step(feature, "milling", "finish", "mill")]  # skim the bar's flats to the tolerance
         return [Step(feature, "hex_bar", "finish", "mill")]
     if t == "hex":
         # turned round to the diameter across corners (see plan_job), then the flats are milled
@@ -792,7 +822,13 @@ def _plan_hex_milling(op: PlannedOperation, feature: FeatureSpec, job: JobSpec, 
     size = f"S{flats:g}" if flats else "S not given"
     length = f", L{feature.length:g}" if feature.length else ""
     op.notes.append(f"mill hex {size} across flats{length}")
-    op.depth = round((hex_corners(feature) - flats) / 2, 3) if flats and hex_corners(feature) else None
+    from_bar = job.blank_shape == "hex" and flats and math.isclose(flats, job.blank_diameter, abs_tol=HEX_BAR_MATCH_MM)
+    if from_bar:
+        op.notes.append(
+            f"flats of the hex bar ({HEX_BAR_TOLERANCE}) milled to {feature.tolerance}: skim, depth set by the bar"
+        )
+    else:
+        op.depth = round((hex_corners(feature) - flats) / 2, 3) if flats and hex_corners(feature) else None
     entry, _ = select_tool("milling", job.iso_group, turret)
     if entry is None:
         op.warnings.append(NO_MILLING_TOOL)
@@ -874,7 +910,7 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> list[Plan
     # a hex left as it comes from a hex bar has no finish pass: its chamfer gets its own
     chamfer_hosts = {
         chamfer: host for chamfer, host in chamfer_hosts.items()
-        if not (host.type == "hex" and feature_to_steps(host, hex_bar)[0].tool_type == "hex_bar")
+        if not (host.type == "hex" and feature_to_steps(host, hex_bar)[0].tool_type in ("hex_bar", "milling"))
     }
     hosts_with_chamfer = {id(host) for host in chamfer_hosts.values()}
 

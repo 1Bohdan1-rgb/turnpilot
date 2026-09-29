@@ -241,7 +241,7 @@ def parting_width(machine, default):
 def suggest_blank(data: DrawingData, machine, config):
     specs = [
         planner.FeatureSpec(id=None, type=f.type, diameter=f.diameter, length=f.length,
-                            start_diameter=f.start_diameter, across_flats=f.across_flats)
+                            start_diameter=f.start_diameter, across_flats=f.across_flats, tolerance=f.tolerance)
         for f in data.features
     ]
     return planner.suggest_blank(
