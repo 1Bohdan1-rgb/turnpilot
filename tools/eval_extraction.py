@@ -79,6 +79,9 @@ KNOWN_LIMITATIONS = """- **Ra on a leader in a sectioned bushing.** On `03_bushi
 - **10_hex_middle is built like real_03.** Both are fittings with a collar, a recess, a hex, a thread
   relief and a thread, and 10 was made after real_03 was read. Results on the two are not independent
   evidence for the hex rule; 08 and 09 are the other layouts.
+- **The chamfer-circle rule was written after reading real_03.** "A Ø on the circle tangent to the
+  flats is S" comes from the real fitting (Ø13 = S13), so real_03 is not an independent check of that
+  rule; 11_hex_chamfer_circle tests the same situation on a synthetic drawing.
 """
 
 
