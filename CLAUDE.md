@@ -31,8 +31,16 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
 - Never auto-correct lengths: warn only. Mark derived/uncertain values with a "check" badge.
 - Label in-sample tuning honestly. Don't change the prompt unless asked.
 
-## Status (2026-09-28)
+## Status (2026-09-29)
 - 445 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
-- real_02 (bushing, Vtulka.pdf), 1 call features after the latest fixes: everything 100% except
-  roughness 3/5 — Rz 20 was put on the bore Ø16 instead of the thread M14×2-7H.
-- Open: eval plan for the taper-end rule in features — option A (6 calls) or B (11 calls), not approved.
+- The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
+  general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
+  - 07 diameters 81→90%;
+  - 06 lengths 50→58%;
+  - no regression on 01–05.
+  Reports: `instance/eval_results_taper_*.md`.
+- Watch: on 03 the model recorded chamfer Ø50 as internal (Ø30). Is the new external/internal field the
+  cause? Check on the next runs.
+- Open problems, to work through on real drawings:
+  - the baseline dimension chained over the groove (06: Ø48/thread 20 instead of 16);
+  - Ra/Rz on a leader goes to the wrong feature (03, 05, real_02).
