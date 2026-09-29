@@ -391,3 +391,49 @@ def test_hex_bar_with_a_tight_s_tolerance_gets_its_flats_milled(turret):
     assert hex_ops[0].depth is None
     assert "flats of the hex bar (h11) milled to h9: skim, depth set by the bar" in hex_ops[0].notes
     assert any(op.feature_id == 3 for op in ops)  # the chamfer gets its own pass
+
+
+# --- the fitting real_03: S13 given as a Ø on the chamfer circle, brass, hex bar S13 in stock -----------------
+
+
+def _fitting_s13():
+    """real_03 as read correctly: Ø10 L3.5 | recess Ø8 L8 | hex S13 L3.5 | relief Ø8 L1.5 | M10 L8, bore Ø5."""
+    return DrawingData(part_type="turned", material="ЛА67-2,5", overall_length=24.5, features=[
+        {"type": "od_turn", "diameter": 10, "length": 3.5},
+        {"type": "chamfer", "diameter": 10, "length": 2.5, "location": "external", "face": "left"},
+        {"type": "groove", "diameter": 8, "start_diameter": 10, "length": 8},
+        {"type": "hex", "across_flats": 13, "length": 3.5},
+        {"type": "chamfer", "diameter": 13, "length": 1, "location": "external", "face": "left"},
+        {"type": "groove", "diameter": 8, "start_diameter": 10, "length": 1.5},
+        {"type": "od_turn", "diameter": 10, "length": 8},
+        {"type": "thread", "diameter": 10, "length": 8, "pitch": 1.5},
+        {"type": "chamfer", "diameter": 10, "length": 1, "location": "external", "face": "right"},
+        {"type": "bore", "diameter": 5, "length": 24.5},
+    ])
+
+
+def test_fitting_s13_gets_a_hex_bar_with_flats_not_machined(app, turret):
+    data = _fitting_s13()
+    hex_ = data.features[3]
+    assert (hex_.diameter, hex_.across_flats, hex_.size_derived) == (15.01, 13, "diameter")
+    assert data.features[4].diameter == 15.01  # the chamfer drawn on S13 goes to the corners
+    assert data.warnings == [] and planner.geometry_warnings(data.features, 24.5) == []
+
+    suggestion = services.suggest_blank(data, None, app.config)  # default HEX_BAR_SIZES include 13
+    assert (suggestion.shape, suggestion.diameter, suggestion.length) == ("hex", 13, 30)
+    assert suggestion.notes == ("Hex bar S13: the flats are not machined.",)
+
+    specs = tuple(
+        FeatureSpec(i, f.type, diameter=f.diameter, length=f.length, start_diameter=f.start_diameter,
+                    pitch=f.pitch, across_flats=f.across_flats, location=f.location)
+        for i, f in enumerate(data.features, start=1)
+    )
+    # ISO group P: the test turret has no roughing tool for N (brass); the hex bar logic is the same
+    ops = planner.plan_job(JobSpec("P", 13, 30, specs, blank_shape="hex"), turret, max_rpm=4000)
+    hex_ops = [op for op in ops if op.feature_id == 4]
+    assert [op.tool_type for op in hex_ops] == ["hex_bar"]
+    assert hex_ops[0].notes == [f"hex S13: {planner.HEX_FROM_BAR_NOTE}"] and not hex_ops[0].warnings
+    assert not any(op.tool_type == "milling" for op in ops)
+    assert any(op.feature_id == 5 for op in ops)  # the hex chamfer gets its own pass
+    rough = next(op for op in ops if op.feature_id == 1 and op.mode == "rough")
+    assert rough.ref_diameter == 15.01  # turned from the hex bar's corners
