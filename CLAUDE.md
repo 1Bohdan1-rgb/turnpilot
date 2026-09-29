@@ -22,6 +22,7 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
   Also `--repeat`, `--compare LABEL SOURCE`, `--rescore` (re-score saved `*.runs.json`, no calls).
 
 ## Rules (from the user)
+- Відповідай українською (answer the user in Ukrainian); code, comments and README stay in English.
 - No paid API calls without the user's explicit "так" and the stated number of calls.
 - Always unset `ANTHROPIC_BASE_URL` for API calls. Never print the API key; `.env` is gitignored.
 - `real_*` drawings and expected answers stay local (gitignored, copyright). Eval reports go to `instance/`.
