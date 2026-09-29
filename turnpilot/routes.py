@@ -17,6 +17,7 @@ from flask import (
 from . import drawing_reader, planner, services
 from .extraction_schema import hex_across_corners, hex_across_flats, normalize_tolerance
 from .models import (
+    BLANK_SHAPES,
     FEATURE_TYPES,
     DrawingExtraction,
     ISO_GROUPS,
@@ -74,6 +75,14 @@ def machine():
                 machine.power_kw = _number(request.form, "power_kw", required=True)
                 machine.max_diameter = _number(request.form, "max_diameter", required=True)
                 flash("Machine profile saved.")
+            elif request.form.get("action") == "stock":
+                text = request.form.get("hex_bar_sizes", "").strip()
+                try:
+                    sizes = services.parse_sizes(text)
+                except ValueError:
+                    raise FormError("Hex bar sizes: numbers across flats in mm, e.g. 8, 10, 11") from None
+                machine.hex_bar_sizes = ", ".join(f"{s:g}" for s in sizes) or None
+                flash("Bar stock saved.")
             elif request.form.get("action") == "turret":
                 for slot in machine.slots:
                     tool_id = request.form.get(f"slot_{slot.position}") or None
@@ -86,8 +95,10 @@ def machine():
         return redirect(url_for("main.machine"))
 
     tools = db.session.execute(db.select(Tool).order_by(Tool.name)).scalars().all()
+    hex_sizes = services.hex_bar_sizes(machine, current_app.config)
     return render_template(
-        "machine.html", machine=machine, tools=tools, tool_types=TOOL_TYPES, iso_groups=ISO_GROUPS
+        "machine.html", machine=machine, tools=tools, tool_types=TOOL_TYPES, iso_groups=ISO_GROUPS,
+        hex_bar_sizes=", ".join(f"{s:g}" for s in hex_sizes),
     )
 
 
@@ -134,17 +145,26 @@ def _job_from_form(form):
     material = db.session.get(Material, _number(form, "material_id", int, required=True))
     if material is None:
         raise FormError("Unknown material")
+    blank_shape = form.get("blank_shape") or "round"
+    if blank_shape not in BLANK_SHAPES:
+        raise FormError("Blank shape must be round or hex")
     job = Job(
         name=name,
         material=material,
         quantity=_number(form, "quantity", int) or 1,
         blank_diameter=_number(form, "blank_diameter", required=True),
         blank_length=_number(form, "blank_length", required=True),
+        blank_shape=blank_shape,
     )
     machine = services.get_machine()
-    if machine and job.blank_diameter > machine.max_diameter:
+    if machine and _stock_diameter(job) > machine.max_diameter:
         raise FormError(f"Blank diameter exceeds machine max diameter ({machine.max_diameter:g} mm)")
     return job
+
+
+def _stock_diameter(job):
+    """The largest diameter of the blank: a hex bar's diameter across corners."""
+    return planner.stock_diameter(job.blank_shape or "round", job.blank_diameter)
 
 
 # "Where" of a feature: chamfers "external right" etc., threads "external" / "internal".
@@ -226,7 +246,7 @@ def jobs():
 
     all_jobs = db.session.execute(db.select(Job).order_by(Job.created_at.desc())).scalars().all()
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
-    return render_template("jobs.html", jobs=all_jobs, materials=materials)
+    return render_template("jobs.html", jobs=all_jobs, materials=materials, blank_shapes=BLANK_SHAPES)
 
 
 @bp.route("/jobs/<int:job_id>")
@@ -239,7 +259,7 @@ def job_detail(job_id):
 def add_feature(job_id):
     job = db.get_or_404(Job, job_id)
     try:
-        job.features.append(_feature_from_form(request.form, job.blank_diameter))
+        job.features.append(_feature_from_form(request.form, _stock_diameter(job)))
         db.session.commit()
     except FormError as e:
         flash(str(e), "error")
@@ -444,6 +464,8 @@ def _review_values_from_extraction(extraction):
         "quantity": data.quantity or 1,
         # A blank written on the drawing wins; otherwise the suggestion, flagged as such.
         "blank_diameter": data.blank_diameter or title_block_diameter or suggestion.diameter,
+        # a hex bar only when the suggestion is used; a blank on the drawing is taken as round bar
+        "blank_shape": suggestion.shape if not (data.blank_diameter or title_block_diameter) else "round",
         "blank_length": data.blank_length or suggestion.length,
         "blank_diameter_from_title_block": title_block_diameter is not None,
         "blank_diameter_suggested": (
@@ -476,6 +498,7 @@ def _review_values_from_form(form):
         "material_id": int(material_id) if material_id else None,
         "quantity": form.get("quantity"),
         "blank_diameter": form.get("blank_diameter"),
+        "blank_shape": form.get("blank_shape") or "round",
         "blank_length": form.get("blank_length"),
         "blank_diameter_suggested": form.get("blank_diameter_suggested") == "1",
         "blank_length_suggested": form.get("blank_length_suggested") == "1",
@@ -509,6 +532,7 @@ def _render_review(extraction, values, status=200):
         materials=materials,
         feature_types=FEATURE_TYPES,
         positions=POSITIONS,
+        blank_shapes=BLANK_SHAPES,
         grinding_warning=planner.GRINDING_WARNING,
         bore_ra_warning=BORE_RA_WARNING,
         not_turned_banner=NOT_TURNED_BANNER,
@@ -581,7 +605,7 @@ def confirm_extraction(extraction_id):
             if not form.get(f"f{i}-include"):
                 continue
             try:
-                feature = _feature_from_form(form, job.blank_diameter, prefix=f"f{i}-")
+                feature = _feature_from_form(form, _stock_diameter(job), prefix=f"f{i}-")
                 feature.confidence = _number(form, f"f{i}-confidence", positive=False)
             except FormError as e:
                 raise FormError(f"Feature {i + 1}: {e}") from None

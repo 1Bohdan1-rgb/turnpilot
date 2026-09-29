@@ -4,7 +4,7 @@
 <h1>{{ job.name }}</h1>
 <p class="muted">
   {{ job.material.name }} (ISO {{ job.material.iso_group }}) · qty {{ job.quantity }} ·
-  blank Ø{{ job.blank_diameter|round(2) }} × {{ job.blank_length|round(2) }} mm
+  blank {{ job.blank_label }} × {{ job.blank_length|round(2) }} mm
   {% if job.extraction %}· created from drawing <a href="{{ url_for('main.extraction_file', extraction_id=job.extraction.id, which='original') }}" target="_blank">{{ job.extraction.original_filename }}</a>{% endif %}
 </p>
 

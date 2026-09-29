@@ -11,7 +11,7 @@ import math
 import re
 from dataclasses import dataclass, field, replace
 
-from .extraction_schema import coarse_pitch, hex_across_corners
+from .extraction_schema import coarse_pitch, hex_across_corners, hex_across_flats
 
 G96_NOTE = "G96 constant surface speed, capped at max RPM"
 G97_THREAD_NOTE = "G97 constant RPM — required for threading"
@@ -112,12 +112,35 @@ def hex_corners(feature) -> float | None:
     return hex_across_corners(feature.across_flats) if feature.across_flats else None
 
 
+def hex_flats(feature) -> float | None:
+    """Size across flats of a hex feature: as given, or computed from the diameter across corners."""
+    if feature.across_flats is not None:
+        return feature.across_flats
+    return hex_across_flats(feature.diameter) if feature.diameter else None
+
+
 @dataclass(frozen=True)
 class JobSpec:
     iso_group: str
-    blank_diameter: float
+    blank_diameter: float  # round bar: Ø; hex bar: size across flats S
     blank_length: float
     features: tuple[FeatureSpec, ...]
+    blank_shape: str = "round"  # "round" or "hex"
+
+    @property
+    def stock_diameter(self) -> float:
+        """Largest diameter of the bar the tools meet: a hex bar's diameter across corners."""
+        return stock_diameter(self.blank_shape, self.blank_diameter)
+
+
+def stock_diameter(blank_shape: str, blank_size: float) -> float:
+    """Diameter the lathe has to turn from: round bar Ø, or the diameter across corners of a hex bar S."""
+    return hex_across_corners(blank_size) if blank_shape == "hex" else blank_size
+
+
+# A hex whose size across flats is the hex bar's size needs no machining: the bar already has the flats.
+HEX_BAR_MATCH_MM = 0.05
+HEX_FROM_BAR_NOTE = "flats from the hex bar: not machined"
 
 
 @dataclass(frozen=True)
@@ -329,9 +352,10 @@ def general_tolerance_for(feature_type: str, grade: int) -> str | None:
 
 @dataclass(frozen=True)
 class BlankSuggestion:
-    diameter: float | None
+    diameter: float | None  # round bar: Ø; hex bar: size across flats S
     length: float | None
     notes: tuple[str, ...] = ()
+    shape: str = "round"
 
 
 # --- geometry checks on data read from a drawing -------------------------------------------
@@ -398,11 +422,14 @@ def suggest_blank(
     diameter_allowance: float,
     facing_allowance: float,
     parting_width: float,
+    hex_bar_sizes: tuple[float, ...] = (),
 ) -> BlankSuggestion:
     """Suggest a bar blank for a part whose drawing does not state one.
 
     Diameter: the largest external diameter + allowance, rounded up to the next bar size.
     Length: overall length + facing allowance + parting tool width.
+    A part whose largest section is a hex takes a hex bar of that size across flats when one is in
+    stock: the flats then need no machining.
     """
     notes = []
     external = [
@@ -422,6 +449,23 @@ def suggest_blank(
     else:
         notes.append("No external diameter to size the blank from.")
 
+    shape = "round"
+    hexes = [f for f in features if f.type == "hex" and hex_corners(f)]
+    if hexes:
+        largest_hex = max(hexes, key=hex_corners)
+        others = [
+            f.diameter for f in features if f.type in ("od_turn", "thread", "parting", "taper") and f.diameter
+        ] + [f.start_diameter for f in features if f.type in ("groove", "taper") and f.start_diameter]
+        size = hex_flats(largest_hex)
+        if others and max(others) > hex_corners(largest_hex):
+            notes.append("A diameter is larger than the hex: round bar, the hex is milled.")
+        elif size and any(math.isclose(size, s, abs_tol=HEX_BAR_MATCH_MM) for s in hex_bar_sizes):
+            shape, diameter = "hex", float(size)
+            notes.append(f"Hex bar S{size:g}: the flats are not machined.")
+        else:
+            label = f"S{size:g}" if size else "of this size"
+            notes.append(f"No hex bar {label} in stock: round bar, the hex is milled.")
+
     base = overall_length
     if base is None:
         sections = [f.length for f in features if f.type == "od_turn" and f.length]
@@ -433,7 +477,7 @@ def suggest_blank(
         length = float(math.ceil(round(base + facing_allowance + parting_width, 6)))
     else:
         notes.append("No length to size the blank from.")
-    return BlankSuggestion(diameter, length, tuple(notes))
+    return BlankSuggestion(diameter, length, tuple(notes), shape)
 
 
 def cutting_data(tool: ToolSpec, mode: str, ra: float | None = None) -> tuple[float, float, float]:
@@ -458,8 +502,8 @@ def cutting_data(tool: ToolSpec, mode: str, ra: float | None = None) -> tuple[fl
     return round(vc, 1), round(f, 3), round(ap, 2)
 
 
-def feature_to_steps(feature: FeatureSpec) -> list[Step]:
-    """Split a part feature into machining steps."""
+def feature_to_steps(feature: FeatureSpec, hex_bar: float | None = None) -> list[Step]:
+    """Split a part feature into machining steps. hex_bar: size across flats of a hex bar blank."""
     t = feature.type
     if t == "face":
         return [Step(feature, "facing", "rough", "face")]
@@ -487,6 +531,10 @@ def feature_to_steps(feature: FeatureSpec) -> list[Step]:
         return [Step(feature, "threading", "finish", "thread")]
     if t == "parting":
         return [Step(feature, "parting", "finish", "parting")]
+    if t == "hex" and hex_bar and hex_flats(feature) and math.isclose(
+        hex_flats(feature), hex_bar, abs_tol=HEX_BAR_MATCH_MM
+    ):
+        return [Step(feature, "hex_bar", "finish", "mill")]
     if t == "hex":
         # turned round to the diameter across corners (see plan_job), then the flats are milled
         return [
@@ -597,21 +645,21 @@ def finish_allowance(iso_group: str, turret: list[TurretEntry]) -> tuple[float, 
 def _reference_diameter(step: Step, job: JobSpec) -> float:
     """Diameter used for the spindle speed calculation."""
     if step.stage == "face":
-        return job.blank_diameter
+        return job.stock_diameter
     if step.stage == "parting":
-        return step.feature.diameter or job.blank_diameter
+        return step.feature.diameter or job.stock_diameter
     if step.tool_type == "turning_rough":
-        # Diameter before the first pass is the blank diameter.
-        return job.blank_diameter
+        # Diameter before the first pass is the blank diameter (a hex bar: across corners).
+        return job.stock_diameter
     if step.tool_type == "grooving":
         # The groove starts on the larger diameter, not at the bottom.
-        return step.feature.start_diameter or job.blank_diameter
-    return step.feature.diameter or job.blank_diameter
+        return step.feature.start_diameter or job.stock_diameter
+    return step.feature.diameter or job.stock_diameter
 
 
 def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec, turret) -> None:
     allowance, is_default = finish_allowance(job.iso_group, turret)
-    op.passes, op.ap = rough_passes(job.blank_diameter, feature.diameter, tool.ap_max, allowance)
+    op.passes, op.ap = rough_passes(job.stock_diameter, feature.diameter, tool.ap_max, allowance)
     if op.passes == 0:
         op.ap = None
         op.warnings.append("No roughing stock: feature diameter plus finishing allowance reaches the blank.")
@@ -627,7 +675,7 @@ def _plan_groove(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job
     if tool.insert_width is None:
         op.warnings.append("Insert width is not set for this grooving tool.")
     if feature.start_diameter is None:
-        op.notes.append(f"start diameter not given: blank Ø{job.blank_diameter:g} used")
+        op.notes.append(f"start diameter not given: blank Ø{job.stock_diameter:g} used")
     if feature.diameter is not None:
         op.depth = round((op.ref_diameter - feature.diameter) / 2, 3)
         if op.depth <= 0:
@@ -717,13 +765,11 @@ def _plan_internal_thread_step(op, step, job, turret, max_rpm) -> PlannedOperati
 
 def _plan_hex_milling(op: PlannedOperation, feature: FeatureSpec, job: JobSpec, turret) -> PlannedOperation:
     """Mill the flats of a hex with a driven tool; a manual operation without one."""
-    size = f"S{feature.across_flats:g}" if feature.across_flats else "S not given"
+    flats = hex_flats(feature)
+    size = f"S{flats:g}" if flats else "S not given"
     length = f", L{feature.length:g}" if feature.length else ""
     op.notes.append(f"mill hex {size} across flats{length}")
-    op.depth = (
-        round((hex_corners(feature) - feature.across_flats) / 2, 3)
-        if feature.across_flats and hex_corners(feature) else None
-    )
+    op.depth = round((hex_corners(feature) - flats) / 2, 3) if flats and hex_corners(feature) else None
     entry, _ = select_tool("milling", job.iso_group, turret)
     if entry is None:
         op.warnings.append(NO_MILLING_TOOL)
@@ -757,6 +803,10 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
 
     if step.tool_type == "milling":
         return _plan_hex_milling(op, feature, job, turret)
+
+    if step.tool_type == "hex_bar":
+        op.notes.append(f"hex S{hex_flats(feature):g}: {HEX_FROM_BAR_NOTE}")
+        return op
 
     entry, warning = select_tool(step.tool_type, job.iso_group, turret)
     if entry is None:
@@ -796,12 +846,18 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
 def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> list[PlannedOperation]:
     """Build the ordered list of proposed operations for a job."""
     features = list(job.features)
+    hex_bar = job.blank_diameter if job.blank_shape == "hex" else None
     chamfer_hosts = match_chamfers(features)
+    # a hex left as it comes from a hex bar has no finish pass: its chamfer gets its own
+    chamfer_hosts = {
+        chamfer: host for chamfer, host in chamfer_hosts.items()
+        if not (host.type == "hex" and feature_to_steps(host, hex_bar)[0].tool_type == "hex_bar")
+    }
     hosts_with_chamfer = {id(host) for host in chamfer_hosts.values()}
 
     thread_pitches = match_thread_diameters(features)
 
-    steps = [s for f in features if id(f) not in chamfer_hosts for s in feature_to_steps(f)]
+    steps = [s for f in features if id(f) not in chamfer_hosts for s in feature_to_steps(f, hex_bar)]
     operations = []
     for step in order_steps(steps):
         original = step.feature
@@ -818,7 +874,7 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> list[Plan
         if step.mode == "finish" and id(original) in hosts_with_chamfer and step.tool_type != "milling":
             op.notes.append(CHAMFER_NOTE)
         if original.type == "hex" and step.tool_type == "turning_finish":
-            op.notes.append(f"{HEX_CORNERS_NOTE} S{original.across_flats:g}" if original.across_flats
+            op.notes.append(f"{HEX_CORNERS_NOTE} S{hex_flats(original):g}" if hex_flats(original)
                             else HEX_CORNERS_NOTE)
         operations.append(op)
     for i, op in enumerate(operations, start=1):

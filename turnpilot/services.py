@@ -77,6 +77,7 @@ def job_spec(job):
         blank_diameter=job.blank_diameter,
         blank_length=job.blank_length,
         features=features,
+        blank_shape=job.blank_shape or "round",
     )
 
 
@@ -211,6 +212,24 @@ def blank_from_title_block(text):
     return None
 
 
+def parse_sizes(text):
+    """Bar sizes from text such as "8, 10, 11" (commas, semicolons or spaces). Raises ValueError."""
+    sizes = sorted({float(p) for p in re.split(r"[,;\s]+", text or "") if p})
+    if any(s <= 0 for s in sizes):
+        raise ValueError("sizes must be greater than zero")
+    return tuple(sizes)
+
+
+def hex_bar_sizes(machine, config):
+    """Hex bar sizes across flats in stock: the machine's list, or the default from the config."""
+    if machine is not None and machine.hex_bar_sizes:
+        try:
+            return parse_sizes(machine.hex_bar_sizes)
+        except ValueError:
+            pass
+    return tuple(float(s) for s in config["HEX_BAR_SIZES"])
+
+
 def parting_width(machine, default):
     """Insert width of the first parting tool in the turret, or the configured default."""
     for slot in machine.slots if machine else []:
@@ -232,6 +251,7 @@ def suggest_blank(data: DrawingData, machine, config):
         diameter_allowance=config["BLANK_DIAMETER_ALLOWANCE_MM"],
         facing_allowance=config["BLANK_FACING_ALLOWANCE_MM"],
         parting_width=parting_width(machine, config["DEFAULT_PARTING_WIDTH_MM"]),
+        hex_bar_sizes=hex_bar_sizes(machine, config),
     )
 
 

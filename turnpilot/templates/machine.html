@@ -11,6 +11,17 @@
   <button type="submit">Save profile</button>
 </form>
 
+<h2>Bar stock</h2>
+<form method="post" class="card grid-form">
+  <input type="hidden" name="action" value="stock">
+  <label>Hex bar sizes across flats S, mm
+    <input name="hex_bar_sizes" value="{{ hex_bar_sizes }}" placeholder="8, 10, 11, 12">
+  </label>
+  <p class="muted small">A part whose largest section is a hex of one of these sizes gets a hex bar as the
+    suggested blank: its flats are not machined. Round bar sizes are set in the configuration.</p>
+  <button type="submit">Save bar stock</button>
+</form>
+
 <h2>Turret</h2>
 <form method="post" class="card">
   <input type="hidden" name="action" value="turret">

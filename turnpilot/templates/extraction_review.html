@@ -72,7 +72,10 @@
         <span class="small">On drawing: {{ data.material if data and data.material else "not found" }}</span>
       </label>
       <label>Quantity <input name="quantity" type="number" min="1" value="{{ values.quantity }}"></label>
-      <label>Blank Ø, mm
+      <label>Blank shape
+    <select name="blank_shape">{% for s in blank_shapes %}<option {% if s == values.blank_shape %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+  </label>
+      <label>Blank Ø (hex bar: S), mm
         {% if values.blank_diameter_suggested %}<span class="badge badge-suggested">suggested</span>{% endif %}
         {% if values.blank_diameter_from_title_block %}<span class="badge badge-suggested"
           title="Read from the material / blank text in the title block: {{ data.material }}">title block</span>{% endif %}

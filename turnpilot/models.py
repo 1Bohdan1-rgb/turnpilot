@@ -10,6 +10,7 @@ TOOL_TYPES = (
     "drilling", "tapping", "threading_internal", "milling",  # milling: a driven tool (live tooling)
 )
 ISO_GROUPS = ("P", "M", "N")
+BLANK_SHAPES = ("round", "hex")
 OPERATION_STATUSES = ("proposed", "approved", "edited")
 TURRET_POSITIONS = range(1, 13)  # T1..T12
 
@@ -24,6 +25,8 @@ class Machine(db.Model):
     max_rpm = db.Column(db.Integer, nullable=False)
     power_kw = db.Column(db.Float, nullable=False)
     max_diameter = db.Column(db.Float, nullable=False)
+    # Hex bar sizes across flats in stock, "8, 10, 11"; empty: HEX_BAR_SIZES from the config.
+    hex_bar_sizes = db.Column(db.String(200))
 
     slots = db.relationship(
         "TurretSlot", back_populates="machine", order_by="TurretSlot.position", cascade="all, delete-orphan"
@@ -74,8 +77,9 @@ class Job(db.Model):
     name = db.Column(db.String(100), nullable=False)
     material_id = db.Column(db.Integer, db.ForeignKey("material.id"), nullable=False)
     quantity = db.Column(db.Integer, nullable=False, default=1)
-    blank_diameter = db.Column(db.Float, nullable=False)
+    blank_diameter = db.Column(db.Float, nullable=False)  # round bar: Ø; hex bar: size across flats S
     blank_length = db.Column(db.Float, nullable=False)
+    blank_shape = db.Column(db.String(10), nullable=False, default="round", server_default="round")
     created_at = db.Column(db.DateTime, default=_now)
 
     material = db.relationship("Material")
@@ -87,6 +91,12 @@ class Job(db.Model):
         order_by=lambda: (Operation.calculation_version.desc(), Operation.sequence),
     )
     extraction = db.relationship("DrawingExtraction", back_populates="job", uselist=False)
+
+    @property
+    def blank_label(self):
+        """"Ø16" for a round bar, "hex S11" for a hex bar."""
+        size = f"{self.blank_diameter:g}"
+        return f"hex S{size}" if self.blank_shape == "hex" else f"Ø{size}"
 
     @property
     def active_features(self):

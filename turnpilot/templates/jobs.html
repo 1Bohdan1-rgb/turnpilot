@@ -13,7 +13,10 @@
     </select>
   </label>
   <label>Quantity <input name="quantity" type="number" min="1" value="1"></label>
-  <label>Blank diameter, mm <input name="blank_diameter" type="number" step="any" min="0" required></label>
+  <label>Blank shape
+    <select name="blank_shape">{% for s in blank_shapes %}<option {% if s == "round" %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+  </label>
+  <label>Blank Ø (hex bar: S across flats), mm <input name="blank_diameter" type="number" step="any" min="0" required></label>
   <label>Blank length, mm <input name="blank_length" type="number" step="any" min="0" required></label>
   <button type="submit">Create job</button>
 </form>
@@ -21,14 +24,14 @@
 <h2>Existing jobs</h2>
 {% if jobs %}
 <table class="card">
-  <thead><tr><th>Name</th><th>Material</th><th>Qty</th><th>Blank Ø × L</th><th>Features</th><th>Operations</th></tr></thead>
+  <thead><tr><th>Name</th><th>Material</th><th>Qty</th><th>Blank × L</th><th>Features</th><th>Operations</th></tr></thead>
   <tbody>
   {% for job in jobs %}
     <tr>
       <td><a href="{{ url_for('main.job_detail', job_id=job.id) }}">{{ job.name }}</a></td>
       <td>{{ job.material.name }}</td>
       <td>{{ job.quantity }}</td>
-      <td>{{ job.blank_diameter|round(2) }} × {{ job.blank_length|round(2) }}</td>
+      <td>{{ job.blank_label }} × {{ job.blank_length|round(2) }}</td>
       <td>{{ job.active_features|length }}</td>
       <td>{% if job.current_operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">{{ job.current_operations|length }}</a>{% else %}—{% endif %}</td>
     </tr>

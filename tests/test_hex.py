@@ -168,3 +168,90 @@ def test_driven_tool_can_be_added_and_used(app, client):
 def _job(client):
     client.post("/jobs", data={"name": "Fitting", "material_id": "1", "blank_diameter": "16", "blank_length": "30"})
     return db.session.execute(db.select(Job)).scalar_one().id
+
+
+# --- hex bar stock -------------------------------------------------------------------------------------------
+
+from turnpilot import services  # noqa: E402
+from turnpilot.models import Machine  # noqa: E402
+
+
+def _suggest(features, sizes=(8, 10, 11, 12, 13, 14, 17)):
+    return planner.suggest_blank(
+        list(features), overall_length=24.5, bar_diameters=(12, 14, 16, 18, 20), diameter_allowance=2,
+        facing_allowance=2, parting_width=3, hex_bar_sizes=sizes,
+    )
+
+
+def test_hex_bar_suggested_when_the_hex_is_largest_and_in_stock():
+    suggestion = _suggest(_fitting())
+    assert (suggestion.shape, suggestion.diameter) == ("hex", 11)
+    assert "Hex bar S11: the flats are not machined." in suggestion.notes
+
+
+def test_round_bar_when_no_hex_bar_of_that_size():
+    features = (FeatureSpec(1, "od_turn", diameter=10, length=5), FeatureSpec(2, "hex", diameter=13, length=3.5))
+    suggestion = _suggest(features)  # S11.26 is not a bar size
+    assert (suggestion.shape, suggestion.diameter) == ("round", 16)
+    assert "No hex bar S11.26 in stock: round bar, the hex is milled." in suggestion.notes
+
+
+def test_round_bar_when_a_diameter_is_larger_than_the_hex():
+    features = (FeatureSpec(1, "od_turn", diameter=20, length=5), FeatureSpec(2, "hex", across_flats=11, length=3))
+    suggestion = _suggest(features)
+    assert suggestion.shape == "round"
+    assert "A diameter is larger than the hex: round bar, the hex is milled." in suggestion.notes
+
+
+def test_hex_from_hex_bar_is_not_machined(turret):
+    job = JobSpec("P", 11, 30, _fitting(), blank_shape="hex")
+    ops = planner.plan_job(job, turret, max_rpm=4000)
+    hex_ops = [op for op in ops if op.feature_id == 3]
+    assert [op.tool_type for op in hex_ops] == ["hex_bar"]
+    assert hex_ops[0].notes == [f"hex S11: {planner.HEX_FROM_BAR_NOTE}"] and not hex_ops[0].warnings
+    # the chamfer on the corners has no finish pass to go with: it gets its own
+    assert any(op.feature_id == 4 for op in ops)
+    # the other sections are turned from the hex bar's diameter across corners
+    rough = next(op for op in ops if op.feature_id == 1 and op.mode == "rough")
+    assert rough.ref_diameter == 12.7
+
+
+def test_parse_sizes():
+    assert services.parse_sizes("8, 10;11  12") == (8, 10, 11, 12)
+    assert services.parse_sizes("") == ()
+    with pytest.raises(ValueError):
+        services.parse_sizes("8, ten")
+
+
+def test_machine_page_edits_hex_bar_sizes(app, client):
+    page = client.get("/machine").data.decode()
+    assert 'value="8, 10, 11, 12, 13, 14, 17, 19, 22, 24, 27, 30, 32, 36, 41"' in page
+    client.post("/machine", data={"action": "stock", "hex_bar_sizes": "13, 11, 17"})
+    machine = db.session.execute(db.select(Machine)).scalars().first()
+    assert machine.hex_bar_sizes == "11, 13, 17"
+    assert services.hex_bar_sizes(machine, app.config) == (11, 13, 17)
+    client.post("/machine", data={"action": "stock", "hex_bar_sizes": "11, x"})
+    assert machine.hex_bar_sizes == "11, 13, 17"
+
+
+def test_job_with_a_hex_bar_blank(app, client):
+    client.post("/jobs", data={"name": "Fitting", "material_id": "1", "blank_shape": "hex", "blank_diameter": "11",
+                               "blank_length": "30"})
+    job = db.session.execute(db.select(Job)).scalar_one()
+    assert (job.blank_shape, job.blank_label) == ("hex", "hex S11")
+    # a feature up to the hex bar's corners (12.7) fits the blank
+    client.post(f"/jobs/{job.id}/features", data={"type": "hex", "across_flats": "11", "length": "3.5"})
+    assert len(job.active_features) == 1
+    page = client.post(f"/jobs/{job.id}/calculate", follow_redirects=True).data.decode()
+    assert planner.HEX_FROM_BAR_NOTE in page
+
+
+def test_review_suggests_the_hex_bar(app, client):
+    app.config["ANTHROPIC_CLIENT"] = FakeClient(make_response(part([
+        feature("od_turn", 10, length=3.5), {**feature("hex", 12.7, length=3.5)},
+    ], overall_length=7)))
+    png = (FIXTURES / "01_stepped_shaft.png").read_bytes()
+    client.post("/jobs/upload", data={"drawing": (io.BytesIO(png), "fitting.png")}, content_type="multipart/form-data")
+    page = client.get("/extractions/1/review").data.decode()
+    assert "<option selected>hex</option>" in page
+    assert "Hex bar S11: the flats are not machined." in page
