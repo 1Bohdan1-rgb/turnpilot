@@ -32,7 +32,7 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
 - Label in-sample tuning honestly. Don't change the prompt unless asked.
 
 ## Status (2026-09-29)
-- 496 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 507 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
@@ -52,8 +52,25 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
   - Hex bar stock: sizes on the Machine page, `Job.blank_shape` round/hex. A hex bar is suggested only
     when the hex is in stock and every other diameter is ≤ S. If S is tighter than h11, the flats are
     milled.
-  - Not offered to the model yet: the tool schema and prompt versions are unchanged (`b423ae0e`,
-    `e91adddb`). The hex prompt rule is the next, measured step (plan shown, not approved).
+  - In the features prompt since f8da656, prompt version `b423ae0e` → `ae696380`:
+    - hex type and `across_flats` (0 = none, converted to None on input);
+    - a rule: one hex feature, not also an od_turn;
+    - a chamfer given with the hex's S or corners is put on the corners by the code.
+  - NOT MEASURED YET. The step-3 eval waits for the user's separate "так", and the user is still
+    confirming the real_03 expected answer. Plan (20 calls):
+    - 08–10 ×3;
+    - real_03 ×3;
+    - 01–07 ×1 and real_02 ×1 regression.
+  - Success criteria:
+    - hex found in ≥8/9 runs on 08–10 and S right;
+    - hex recorded as od_turn 0 times on 08–10;
+    - hex found on real_03;
+    - lengths of 10 and real_03 on their own line in the report;
+    - no regression over one run on 01–07 and real_02.
+  - Synthetic hex drawings: 08_hex_s_only, 09_hex_d_and_s (D 19.4 ≠ S/cos 30°), 10_hex_middle.
+    10 is built like real_03, so they are not independent evidence (noted in the eval report).
+- Known limitation: dimensions_first does not know hex (its tool schema and prompt `e91adddb` have
+  no hex); a hex drawing read in that mode loses the hex.
 - Thread section: an external thread's od_turn is matched by diameter and length (a fitting has a Ø10
   collar and an M10 thread).
 - Eval scorer:
