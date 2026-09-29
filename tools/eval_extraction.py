@@ -31,7 +31,7 @@ import anthropic  # noqa: E402
 
 from turnpilot import drawing_reader  # noqa: E402
 from turnpilot.extraction_schema import DrawingData  # noqa: E402
-from turnpilot.planner import general_tolerance_grade, geometry_warnings  # noqa: E402
+from turnpilot.planner import AXIAL_SECTION_TYPES, general_tolerance_grade, geometry_warnings  # noqa: E402
 from turnpilot.services import MATERIAL_ALIASES, match_material  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures" / "drawings"
@@ -126,19 +126,67 @@ def _norm_tolerance(value):
     return value.replace(" ", "").replace("+/-", "±").replace("−", "-")
 
 
+# A section with a shoulder on both sides can be read as a groove or as an od_turn: both describe it.
+RECESS_TYPES = ("groove", "od_turn")
+
+
+def _section_diameter(feature):
+    """Diameter of an axial section for comparing it with its neighbours: a groove's bottom, a taper's
+    larger end."""
+    if feature.type == "taper":
+        return max((d for d in (feature.diameter, feature.start_diameter) if d is not None), default=None)
+    return feature.diameter
+
+
+def _axial_index(features):
+    """Position of each axial section (by id()) along the part, in the order the features are listed."""
+    return {id(f): i for i, f in enumerate(f for f in features if f.type in AXIAL_SECTION_TYPES)}
+
+
+def recess_sections(features):
+    """ids of the groove / od_turn sections with a larger section on both sides (shoulders both ways)."""
+    sections = [f for f in features if f.type in AXIAL_SECTION_TYPES]
+    recesses = set()
+    for left, section, right in zip(sections, sections[1:], sections[2:]):
+        own, lo, hi = _section_diameter(section), _section_diameter(left), _section_diameter(right)
+        if section.type in RECESS_TYPES and None not in (own, lo, hi) and lo > own and hi > own:
+            recesses.add(id(section))
+    return recesses
+
+
 def _match_features(expected, predicted):
-    """Pair each expected feature with the unused predicted feature of the same type and closest diameter."""
+    """Pair each expected feature with the unused predicted feature of the same type and closest diameter.
+
+    A section with a shoulder on both sides may be a groove or an od_turn in the model's answer: what
+    counts is its diameter, length and position. Such sections are paired last, from what the other
+    features left: a predicted section of the same type (closest diameter), or of the other type with
+    the same diameter; ties go to the closest length, then the closest position along the part.
+    """
     unused = list(predicted)
-    pairs = []
-    for exp in expected:
+    recesses = recess_sections(expected)
+    expected_index, predicted_index = _axial_index(expected), _axial_index(predicted)
+    matched = {}
+    for exp in (e for e in expected if id(e) not in recesses):
         candidates = [p for p in unused if p.type == exp.type]
-        if not candidates:
-            pairs.append((exp, None))
-            continue
-        best = min(candidates, key=lambda p: abs((p.diameter or 0) - (exp.diameter or 0)))
-        unused.remove(best)
-        pairs.append((exp, best))
-    return pairs, unused
+        if candidates:
+            best = min(candidates, key=lambda p: abs((p.diameter or 0) - (exp.diameter or 0)))
+            unused.remove(best)
+            matched[id(exp)] = best
+    for exp in (e for e in expected if id(e) in recesses):
+        candidates = [
+            p for p in unused
+            if p.type == exp.type or (p.type in RECESS_TYPES and _same_number(p.diameter, exp.diameter))
+        ]
+        if candidates:
+            best = min(candidates, key=lambda p: (
+                round(abs((p.diameter or 0) - (exp.diameter or 0)), 6),
+                abs((p.length or 0) - (exp.length or 0)),
+                abs(predicted_index.get(id(p), 0) - expected_index[id(exp)]),
+                p.type != exp.type,
+            ))
+            unused.remove(best)
+            matched[id(exp)] = best
+    return [(exp, matched.get(id(exp))) for exp in expected], unused
 
 
 def _material_key(text):
@@ -178,6 +226,9 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
         for metric in FEATURE_NUMBER_METRICS:
             want = getattr(exp, metric)
             ok = got is not None and _same_number(getattr(got, metric), want)
+            if metric == "start_diameter" and got is not None and got.type != exp.type:
+                # a recess read as an od_turn has no start diameter to give: the type does not matter
+                ok = True
             result.scores[metric].add(ok)
             if got is not None and not ok:
                 result.mismatches.append(f"{label}: {metric} {getattr(got, metric)} (expected {want})")

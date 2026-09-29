@@ -268,3 +268,65 @@ def test_compare_with_saved_runs_keeps_only_the_selected_drawings(tmp_path, monk
 ])
 def test_material_matches(expected, predicted, ok):
     assert eval_extraction.material_matches(expected, predicted) is ok
+
+
+# --- a section with shoulders on both sides: groove or od_turn -------------------------------
+
+from turnpilot.extraction_schema import DrawingData  # noqa: E402
+
+
+def _part(*features):
+    keys = ("type", "diameter", "length", "start_diameter")
+    return DrawingData(part_type="turned", features=[dict(zip(keys, f)) for f in features])
+
+
+def _fitting(recess_type="groove"):
+    """Ø10 L3.5 | recess Ø8 L8 | Ø13 L3.5 | relief Ø8 L1.5 | Ø10 L8 (the fitting from real_03)."""
+    start = 10 if recess_type == "groove" else None
+    return _part(
+        ("od_turn", 10, 3.5), (recess_type, 8, 8, start), ("od_turn", 13, 3.5),
+        (recess_type, 8, 1.5, start), ("od_turn", 10, 8),
+    )
+
+
+def _scores(expected, predicted):
+    result = eval_extraction.RunResult("x", "png", "clean")
+    eval_extraction.score(expected, predicted, result)
+    return result
+
+
+def test_recess_sections_have_shoulders_on_both_sides():
+    part = _fitting()
+    recesses = eval_extraction.recess_sections(part.features)
+    assert recesses == {id(part.features[1]), id(part.features[3])}
+
+
+def test_recess_read_as_od_turn_counts():
+    result = _scores(_fitting("groove"), _fitting("od_turn"))
+    assert result.missing == result.extra == 0
+    for metric in ("diameter", "start_diameter", "length"):
+        assert result.scores[metric].pct == 100, metric
+
+
+def test_od_turn_recess_read_as_groove_counts():
+    result = _scores(_fitting("od_turn"), _fitting("groove"))
+    assert result.missing == result.extra == 0
+    assert result.scores["length"].pct == 100
+
+
+def test_recess_matched_by_length_and_position():
+    # the model swaps the two Ø8 types: each expected recess still gets the section of its own length
+    predicted = _part(
+        ("od_turn", 10, 3.5), ("od_turn", 8, 8), ("od_turn", 13, 3.5), ("groove", 8, 1.5, 10), ("od_turn", 10, 8),
+    )
+    result = _scores(_fitting(), predicted)
+    assert result.scores["length"].pct == 100
+    assert result.missing == result.extra == 0
+
+
+def test_groove_at_the_end_of_a_step_is_not_interchangeable():
+    # a thread relief next to one larger section only: an od_turn is not accepted for it
+    expected = _part(("od_turn", 30, 60), ("od_turn", 20, 27), ("groove", 17, 3, 20))
+    predicted = _part(("od_turn", 30, 60), ("od_turn", 20, 27), ("od_turn", 17, 3))
+    result = _scores(expected, predicted)
+    assert result.missing == 1 and result.extra == 1
