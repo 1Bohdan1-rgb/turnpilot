@@ -330,3 +330,15 @@ def test_groove_at_the_end_of_a_step_is_not_interchangeable():
     predicted = _part(("od_turn", 30, 60), ("od_turn", 20, 27), ("od_turn", 17, 3))
     result = _scores(expected, predicted)
     assert result.missing == 1 and result.extra == 1
+
+
+def test_type_mismatch_is_counted_and_reported(tmp_path):
+    result = _scores(_fitting("groove"), _fitting("od_turn"))
+    assert result.type_mismatch == 2
+    assert "groove Ø8: read as od_turn (type mismatch, counted as a match)" in result.mismatches
+    assert _scores(_fitting(), _fitting()).type_mismatch == 0
+    path = tmp_path / "report.md"
+    eval_extraction.write_markdown([result], "test-model", path=path)
+    text = path.read_text(encoding="utf-8")
+    assert "| Missing | Extra | Type mismatch | Errors |" in text
+    assert "| 0 | 0 | 2 | 0 |" in text

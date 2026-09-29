@@ -101,6 +101,9 @@ class RunResult:
     scores: dict = field(default_factory=lambda: {m: Score() for m in METRICS})
     missing: int = 0
     extra: int = 0
+    # a section with shoulders on both sides paired with the other of groove / od_turn: counted as a
+    # match, but reported so a change in how the model names such sections stays visible
+    type_mismatch: int = 0
     error: str | None = None
     seconds: float = 0.0
     tokens: tuple[int, int] = (0, 0)
@@ -219,6 +222,9 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
         if got is None:
             result.missing += 1
             result.mismatches.append(f"missing {label}")
+        elif got.type != exp.type:
+            result.type_mismatch += 1
+            result.mismatches.append(f"{label}: read as {got.type} (type mismatch, counted as a match)")
         # Every metric is counted for every expected feature. null in the expected answer means the
         # value is not on the drawing: null from the model is then correct, and a number is a guess.
         if got is not None and exp.length is not None and got.length is None:
@@ -425,8 +431,8 @@ def repeat_table(results):
 
 
 def summary_table(results):
-    header = "| Group | " + " | ".join(_label(m) for m in METRICS) + " | Missing | Extra | Errors |"
-    lines = [header, "|" + "---|" * (len(METRICS) + 4)]
+    header = "| Group | " + " | ".join(_label(m) for m in METRICS) + " | Missing | Extra | Type mismatch | Errors |"
+    lines = [header, "|" + "---|" * (len(METRICS) + 5)]
     for group in GROUPS:
         runs = [r for r in results if r.group == group]
         if not runs:
@@ -434,17 +440,20 @@ def summary_table(results):
         totals = aggregate(results, group)
         lines.append(
             f"| {group} ({len(runs)} runs) | " + " | ".join(_pct(totals[m]) for m in METRICS)
-            + f" | {sum(r.missing for r in runs)} | {sum(r.extra for r in runs)} | {sum(bool(r.error) for r in runs)} |"
+            + f" | {sum(r.missing for r in runs)} | {sum(r.extra for r in runs)}"
+            + f" | {sum(r.type_mismatch for r in runs)} | {sum(bool(r.error) for r in runs)} |"
         )
     return "\n".join(lines)
 
 
 def detail_table(results):
-    lines = ["| Drawing | Variant | Run | " + " | ".join(_label(m) for m in METRICS) + " | Time, s | Tokens in/out |",
-             "|" + "---|" * (len(METRICS) + 5)]
+    lines = ["| Drawing | Variant | Run | " + " | ".join(_label(m) for m in METRICS)
+             + " | Type mismatch | Time, s | Tokens in/out |",
+             "|" + "---|" * (len(METRICS) + 6)]
     for r in results:
         cells = " | ".join("—" if r.scores[m].pct is None else f"{r.scores[m].pct:.0f}%" for m in METRICS)
-        lines.append(f"| {r.drawing} | {r.variant} | {r.run} | {cells} | {r.seconds:.1f} | {r.tokens[0]}/{r.tokens[1]} |")
+        lines.append(f"| {r.drawing} | {r.variant} | {r.run} | {cells} | {r.type_mismatch} | {r.seconds:.1f}"
+                     f" | {r.tokens[0]}/{r.tokens[1]} |")
     return "\n".join(lines)
 
 
@@ -550,6 +559,8 @@ downscaled, noisy JPEG, both made by `tools/generate_drawings.py`; *real* = real
 with hand-written expected answers. Real drawings without an expected answer are skipped.
 
 Scoring: expected features are paired with extracted ones of the same type (closest diameter).
+A section with a shoulder on both sides may be read as a groove or as an od_turn: either counts, by
+diameter, length and position; such pairs are listed under "Type mismatch".
 Feature metrics count for every expected feature, part metrics (material, overall length, general
 Ra) once per drawing. `null` in the expected answer means the value is
 not on the drawing: `null` from the model is then correct and any number is counted as a guess
