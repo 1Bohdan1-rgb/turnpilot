@@ -165,6 +165,8 @@
             <input name="f{{ i }}-across_flats" type="number" step="any" min="0" value="{{ row.across_flats if row.across_flats is not none else '' }}">
             {% if row.size_derived == "across_flats" %}<span class="badge badge-check"
               title="Not on the drawing: computed from the diameter across corners (S = D · cos 30°). Check it.">check</span>{% endif %}
+            {% if row.probably_s %}<button type="button" class="js-is-s small" data-row="{{ i }}"
+              title="The Ø is probably the size across flats on the chamfer circle: move it to S (the Ø across corners is then computed on Confirm)">this is S</button>{% endif %}
           </td>
           <td>
             <select name="f{{ i }}-position" title="Chamfers: outside / inside and the end face. Threads: outside / inside.">
@@ -213,6 +215,17 @@
   </form>
 </div>
 <script>
+  // "this is S": the hex's Ø was on the circle tangent to the flats, so it is the size across flats.
+  document.querySelectorAll(".js-is-s").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var i = button.dataset.row;
+      var diameter = document.querySelector('[name="f' + i + '-diameter"]');
+      var flats = document.querySelector('[name="f' + i + '-across_flats"]');
+      flats.value = diameter.value;
+      diameter.value = "";
+      button.remove();
+    });
+  });
   // Block repeated clicks while the drawing is being read (each read is a paid API call).
   document.querySelectorAll(".js-reading").forEach(function (button) {
     button.form.addEventListener("submit", function () {

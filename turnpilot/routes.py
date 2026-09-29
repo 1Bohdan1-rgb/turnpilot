@@ -410,6 +410,7 @@ def _flag_derived_lengths(rows, data):
         row["length_ambiguous"] = feature.length is not None and feature.length_ambiguous
         row["pitch_assumed"] = feature.pitch_assumed
         row["size_derived"] = feature.size_derived
+        row["probably_s"] = feature.type == "hex" and planner.hex_probably_s(feature.diameter, feature.across_flats)
         row["position"] = " ".join(p for p in (feature.location, feature.face) if p) or None
     return rows
 
@@ -491,6 +492,9 @@ def _review_values_from_form(form):
         row = {k: form.get(f"f{i}-{k}") or None for k in REVIEW_FIELDS}
         row["include"] = bool(form.get(f"f{i}-include"))
         row["position"] = form.get(f"f{i}-position") or None
+        row["probably_s"] = row["type"] == "hex" and planner.hex_probably_s(
+            _to_float(row.get("diameter")), _to_float(row.get("across_flats"))
+        )
         rows.append(_decorate_row(row, threshold))
     _flag_bore_ra(rows)
     material_id = _to_float(form.get("material_id"))

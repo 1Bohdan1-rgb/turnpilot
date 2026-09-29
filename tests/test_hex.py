@@ -157,7 +157,7 @@ def test_hex_milled_with_a_driven_tool_from_the_turret(turret):
 
 def test_hex_counts_in_the_section_sum():
     features = (
-        FeatureSpec(1, "od_turn", diameter=10, length=3.5), FeatureSpec(2, "hex", diameter=13, length=3.5),
+        FeatureSpec(1, "od_turn", diameter=10, length=3.5), FeatureSpec(2, "hex", diameter=12.7, length=3.5),
     )
     assert planner.geometry_warnings(features, 7) == []
     assert planner.geometry_warnings(features, 10) == ["section lengths sum to 7, overall length is 10"]
@@ -440,3 +440,48 @@ def test_fitting_s13_gets_a_hex_bar_with_flats_not_machined(app, turret):
     assert any(op.feature_id == 5 for op in ops)  # the hex chamfer gets its own pass
     rough = next(op for op in ops if op.feature_id == 1 and op.mode == "rough")
     assert rough.ref_diameter == 15.01  # turned from the hex bar's corners
+
+
+# --- a Ø that is probably S on the chamfer circle -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("diameter, across_flats, probably_s", [
+    (13, None, True),  # real_03 read with Ø13 across corners: 13 is a wrench size, 11.26 is not
+    (13, 11.26, True),  # the same, with S computed from it
+    (16, 13.86, True),  # 11_hex_chamfer_circle read the same way
+    (19.63, 17, False),  # 08: D computed from S17
+    (19.4, 17, False),  # 09: D and S both on the drawing
+    (16.17, 14, False),  # 10
+    (13, 11, False),  # an S of its own on the drawing
+    (19.63, None, False),  # not a wrench size
+])
+def test_hex_probably_s(diameter, across_flats, probably_s):
+    assert planner.hex_probably_s(diameter, across_flats) is probably_s
+
+
+def test_probably_s_warning_in_the_geometry_check():
+    data = DrawingData(part_type="turned", features=[{"type": "hex", "diameter": 13, "length": 3.5}])
+    assert planner.geometry_warnings(data.features, None) == [
+        "hex Ø13: probably S13 on the chamfer circle (Ø13 is a wrench size, S11.26 computed from it is not): check"
+    ]
+
+
+def test_review_offers_this_is_s(app, client):
+    app.config["ANTHROPIC_CLIENT"] = FakeClient(make_response(part([
+        feature("od_turn", 10, length=3.5), feature("hex", 13, length=3.5),
+    ], overall_length=7)))
+    png = (FIXTURES / "01_stepped_shaft.png").read_bytes()
+    client.post("/jobs/upload", data={"drawing": (io.BytesIO(png), "fitting.png")}, content_type="multipart/form-data")
+    page = client.get("/extractions/1/review").data.decode()
+    assert "probably S13 on the chamfer circle" in page
+    assert page.count('class="js-is-s small" data-row="1"') == 1
+    assert 'class="js-is-s small" data-row="0"' not in page  # not on the od_turn
+    # after "this is S" the form sends S13 and no Ø: the Ø across corners is computed on Confirm
+    form = {"name": "Fitting", "material_id": "1", "quantity": "1", "blank_diameter": "13", "blank_shape": "hex",
+            "blank_length": "30", "feature_count": "2", "f0-include": "1", "f0-type": "od_turn", "f0-diameter": "10",
+            "f0-length": "3.5", "f1-include": "1", "f1-type": "hex", "f1-diameter": "", "f1-across_flats": "13",
+            "f1-length": "3.5"}
+    client.post("/extractions/1/confirm", data=form)
+    job = db.session.execute(db.select(Job)).scalar_one()
+    hex_ = next(f for f in job.features if f.type == "hex")
+    assert (hex_.diameter, hex_.across_flats) == (15.01, 13)

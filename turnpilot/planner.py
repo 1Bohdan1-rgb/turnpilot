@@ -11,7 +11,7 @@ import math
 import re
 from dataclasses import dataclass, field, replace
 
-from .extraction_schema import coarse_pitch, hex_across_corners, hex_across_flats
+from .extraction_schema import WRENCH_SIZES_MM, coarse_pitch, hex_across_corners, hex_across_flats
 
 G96_NOTE = "G96 constant surface speed, capped at max RPM"
 G97_THREAD_NOTE = "G97 constant RPM — required for threading"
@@ -433,7 +433,31 @@ def geometry_warnings(features, overall_length: float | None) -> list[str]:
             )
     for hex_ in (f for f in features if f.type == "hex"):
         warnings.extend(hex_size_warnings(hex_.diameter, getattr(hex_, "across_flats", None)))
+        if hex_probably_s(hex_.diameter, getattr(hex_, "across_flats", None)):
+            warnings.append(
+                f"hex Ø{hex_.diameter:g}: probably S{hex_.diameter:g} on the chamfer circle "
+                f"(Ø{hex_.diameter:g} is a wrench size, S{hex_across_flats(hex_.diameter):g} computed from it "
+                f"is not): check"
+            )
     return warnings
+
+
+def _is_wrench_size(size: float, tolerance: float = 0.01) -> bool:
+    return any(abs(size - s) <= tolerance for s in WRENCH_SIZES_MM)
+
+
+def hex_probably_s(diameter: float | None, across_flats: float | None) -> bool:
+    """True when a hex's Ø looks like its size across flats given on the chamfer circle.
+
+    The Ø is a standard wrench size, the S computed from it (Ø · cos 30°) is not, and the S on record is
+    that computed one (or missing): e.g. Ø13 read as across corners gives S11.26, where S13 is meant.
+    """
+    if not diameter:
+        return False
+    computed = hex_across_flats(diameter)
+    if across_flats is not None and abs(across_flats - computed) > 0.05:
+        return False  # an S of its own on the drawing: the Ø is not the only size
+    return _is_wrench_size(diameter) and not _is_wrench_size(computed, tolerance=0.05)
 
 
 # A hex given with both sizes: D need not be S / cos 30° (it may be the diameter turned before milling,
