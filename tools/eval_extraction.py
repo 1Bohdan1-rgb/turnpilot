@@ -107,6 +107,8 @@ class RunResult:
     # a section with shoulders on both sides paired with the other of groove / od_turn: counted as a
     # match, but reported so a change in how the model names such sections stays visible
     type_mismatch: int = 0
+    # an expected hex recorded (also) as an od_turn of its size across flats or across corners
+    hex_as_od_turn: int = 0
     error: str | None = None
     seconds: float = 0.0
     tokens: tuple[int, int] = (0, 0)
@@ -258,6 +260,12 @@ def score(expected: DrawingData, predicted: DrawingData, result: RunResult):
             result.mismatches.append(f"{label}: {got.ra_param} {got.ra} (expected {exp.ra_param} {exp.ra})")
     for p in extra:
         result.mismatches.append(f"extra {p.type} Ø{p.diameter}")
+    for hex_ in (e for e in expected.features if e.type == "hex"):
+        sizes = [s for s in (hex_.diameter, hex_.across_flats) if s]
+        for p in extra:
+            if p.type == "od_turn" and p.diameter and any(abs(p.diameter - s) < 0.05 for s in sizes):
+                result.hex_as_od_turn += 1
+                result.mismatches.append(f"hex S{hex_.across_flats:g} recorded as od_turn Ø{p.diameter:g}")
     material_ok = material_matches(expected.material, predicted.material)
     result.scores["material"].add(material_ok)
     if not material_ok:
@@ -434,8 +442,9 @@ def repeat_table(results):
 
 
 def summary_table(results):
-    header = "| Group | " + " | ".join(_label(m) for m in METRICS) + " | Missing | Extra | Type mismatch | Errors |"
-    lines = [header, "|" + "---|" * (len(METRICS) + 5)]
+    header = ("| Group | " + " | ".join(_label(m) for m in METRICS)
+              + " | Missing | Extra | Type mismatch | Hex as od_turn | Errors |")
+    lines = [header, "|" + "---|" * (len(METRICS) + 6)]
     for group in GROUPS:
         runs = [r for r in results if r.group == group]
         if not runs:
@@ -444,7 +453,8 @@ def summary_table(results):
         lines.append(
             f"| {group} ({len(runs)} runs) | " + " | ".join(_pct(totals[m]) for m in METRICS)
             + f" | {sum(r.missing for r in runs)} | {sum(r.extra for r in runs)}"
-            + f" | {sum(r.type_mismatch for r in runs)} | {sum(bool(r.error) for r in runs)} |"
+            + f" | {sum(r.type_mismatch for r in runs)} | {sum(r.hex_as_od_turn for r in runs)}"
+            + f" | {sum(bool(r.error) for r in runs)} |"
         )
     return "\n".join(lines)
 

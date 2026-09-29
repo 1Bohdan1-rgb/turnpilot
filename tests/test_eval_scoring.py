@@ -340,5 +340,16 @@ def test_type_mismatch_is_counted_and_reported(tmp_path):
     path = tmp_path / "report.md"
     eval_extraction.write_markdown([result], "test-model", path=path)
     text = path.read_text(encoding="utf-8")
-    assert "| Missing | Extra | Type mismatch | Errors |" in text
-    assert "| 0 | 0 | 2 | 0 |" in text
+    assert "| Missing | Extra | Type mismatch | Hex as od_turn | Errors |" in text
+    assert "| 0 | 0 | 2 | 0 | 0 |" in text
+
+
+def test_hex_recorded_as_od_turn_is_counted():
+    expected = eval_extraction._expected("08_hex_s_only")
+    predicted = expected.model_copy(deep=True)
+    predicted.features[0] = predicted.features[0].model_copy(update={"type": "od_turn", "across_flats": None,
+                                                                     "diameter": 17.0})
+    result = _scores(expected, predicted)
+    assert result.hex_as_od_turn == 1 and result.missing == 1
+    assert "hex S17 recorded as od_turn Ø17" in result.mismatches
+    assert _scores(expected, expected).hex_as_od_turn == 0

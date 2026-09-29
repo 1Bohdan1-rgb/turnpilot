@@ -10,9 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, f
 
 FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex")
 FeatureType = Literal["face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex"]
-# Types the model may send. hex is known to the code (review screen, planner, expected answers) but not
-# offered to the model yet: that comes with its own prompt rule and a measurement.
-TOOL_FEATURE_TYPES = tuple(t for t in FEATURE_TYPES if t != "hex")
+# Types the model may send (all of them; dimensions_first has its own schema and does not know hex).
+TOOL_FEATURE_TYPES = FEATURE_TYPES
 PART_TYPES = ("turned", "not_turned", "unclear")
 # Roughness parameter as written on the drawing: GOST drawings often give Rz instead of Ra.
 ROUGHNESS_PARAMS = ("Ra", "Rz")
@@ -131,6 +130,13 @@ class ExtractedFeature(BaseModel):
     def _none_means_none(cls, value):
         return None if value in ("none", "") else value
 
+    @field_validator("across_flats", mode="before")
+    @classmethod
+    def _zero_means_none(cls, value):
+        """The tool schema sends 0 for "no size across flats" (not nullable, to keep few union types).
+        It becomes None here, so a 0 never reaches the planner, the geometry check or the scorer."""
+        return None if value == 0 else value
+
     @model_validator(mode="after")
     def _check_consistency(self):
         if self.pitch is not None and self.type != "thread":
@@ -223,6 +229,20 @@ class DrawingData(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _bind_chamfers_to_hexes(self):
+        """A chamfer on a hex is machined on its diameter across corners. The model records the chamfer
+        as drawn, with the hex's size it sees (S or the diameter across corners): the code puts it on
+        the diameter across corners."""
+        hexes = [f for f in self.features if f.type == "hex" and f.diameter]
+        for chamfer in (f for f in self.features if f.type == "chamfer" and f.diameter and f.location != "internal"):
+            for hex_ in hexes:
+                sizes = [hex_.diameter] + ([hex_.across_flats] if hex_.across_flats else [])
+                if any(abs(chamfer.diameter - size) < 0.05 for size in sizes):
+                    chamfer.diameter = hex_.diameter
+                    break
+        return self
+
+    @model_validator(mode="after")
     def _check_wrench_sizes(self):
         """A hex size across flats that is not a standard wrench size is reported, never changed."""
         for feature in self.features:
@@ -269,6 +289,7 @@ _FEATURE_SCHEMA = {
                 "od_turn: an external cylindrical section. groove: a recess cut into an external diameter "
                 "(including a thread relief groove). thread: an external thread. bore: an internal diameter. "
                 "chamfer: an edge chamfer. taper: a conical section. fillet: a radius between two sections. "
+                "hex: a hexagon with wrench flats (size across flats S). "
                 "face / parting: only if the drawing explicitly annotates them."
             ),
         },
@@ -276,7 +297,8 @@ _FEATURE_SCHEMA = {
             "number",
             "mm. od_turn/bore: the section diameter. groove: the groove BOTTOM diameter. "
             "thread: the major (nominal) diameter. chamfer: the diameter whose edge is chamfered. "
-            "taper: the diameter at the END of the taper (smaller or larger). fillet: null.",
+            "taper: the diameter at the END of the taper (smaller or larger). fillet: null. "
+            "hex: the diameter across corners only if it is dimensioned, else null.",
         ),
         "start_diameter": _nullable(
             "number",
@@ -305,6 +327,11 @@ _FEATURE_SCHEMA = {
         },
         "pitch": _nullable("number", "mm. thread only: the pitch (1.5 for M20x1.5). null for other types."),
         "radius": _nullable("number", "mm. fillet only: the radius (10 for R10). null for other types."),
+        "across_flats": {
+            "type": "number",
+            "description": "mm. hex only: the size across flats S (17 for S17). 0 for other types or if not "
+                           "on the drawing.",
+        },
         "location": {
             "type": "string",
             "enum": [*LOCATIONS, "none"],
@@ -325,7 +352,7 @@ _FEATURE_SCHEMA = {
     },
     "required": [
         "type", "diameter", "start_diameter", "length", "tolerance", "ra", "ra_param", "pitch", "radius",
-        "location", "face", "confidence",
+        "across_flats", "location", "face", "confidence",
     ],
     "additionalProperties": False,
 }

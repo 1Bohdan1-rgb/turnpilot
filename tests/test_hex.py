@@ -1,12 +1,13 @@
 """Hex sections: sizes across flats / corners, planning (turn Ø across corners, mill the flats), review."""
 import io
+import json
 
 import pytest
 from conftest import FIXTURES, FakeClient, feature, make_response, part
 from test_planner import turret  # noqa: F401  (fixture)
 
 from turnpilot import planner
-from turnpilot.drawing_reader import prompt_version
+from turnpilot.drawing_reader import SYSTEM_PROMPT, parse_response, prompt_version
 from turnpilot.extraction_schema import (
     RECORD_PART_TOOL,
     DrawingData,
@@ -48,12 +49,59 @@ def test_non_standard_wrench_size_is_reported_not_changed():
     assert standard.warnings == []
 
 
-def test_hex_is_not_offered_to_the_model_yet():
-    # the prompt step adds it together with its rule; until then the reading is unchanged
-    enum = RECORD_PART_TOOL["input_schema"]["properties"]["features"]["items"]["properties"]["type"]["enum"]
-    assert "hex" not in enum
-    assert "across_flats" not in RECORD_PART_TOOL["input_schema"]["properties"]["features"]["items"]["properties"]
-    assert prompt_version("features") == "b423ae0e1ab7fb64"
+def test_hex_is_offered_to_the_model():
+    item = RECORD_PART_TOOL["input_schema"]["properties"]["features"]["items"]
+    assert "hex" in item["properties"]["type"]["enum"]
+    # a plain number with 0 as "none": the strict schema keeps its 13 nullable parameters (limit 16)
+    assert item["properties"]["across_flats"]["type"] == "number"
+    assert "across_flats" in item["required"]
+    assert json.dumps(RECORD_PART_TOOL).count('"anyOf"') == 13
+    rule = next(r for r in SYSTEM_PROMPT.split("\n- ") if r.startswith("A hexagon"))
+    assert "one hex feature" in rule and "across_flats" in rule
+    assert "chamfer" not in rule  # a chamfer is recorded as drawn; the code binds it to the hex
+    assert prompt_version("features") != "b423ae0e1ab7fb64"
+
+
+def test_dimensions_first_does_not_know_hex_yet():
+    from turnpilot.dimensions_first import RECORD_DIMENSIONS_TOOL
+    assert "hex" not in json.dumps(RECORD_DIMENSIONS_TOOL)
+    assert prompt_version("dimensions_first") == "e91adddb38cc3854"
+
+
+# --- the 0 marker and chamfers on a hex -------------------------------------------------------------------
+
+
+def test_zero_across_flats_becomes_none():
+    assert ExtractedFeature(type="od_turn", diameter=12, across_flats=0).across_flats is None
+    hex_ = ExtractedFeature(type="hex", diameter=13, across_flats=0)
+    assert (hex_.across_flats, hex_.size_derived) == (11.26, "across_flats")
+
+
+def test_zero_marker_from_the_model_never_reaches_the_planner():
+    features = [dict(feature("od_turn", 12, length=25), across_flats=0),
+                dict(feature("hex", None, length=10), across_flats=17)]
+    data = parse_response(make_response(part(features, overall_length=35)))
+    assert data.features[0].across_flats is None
+    assert (data.features[1].diameter, data.features[1].across_flats) == (19.63, 17)
+    assert planner.geometry_warnings(data.features, 35) == []
+
+
+@pytest.mark.parametrize("chamfer_d, bound", [(17, 19.63), (19.63, 19.63), (12, 12)])
+def test_chamfer_on_a_hex_goes_to_its_corners(chamfer_d, bound):
+    data = DrawingData(part_type="turned", features=[
+        {"type": "hex", "across_flats": 17, "length": 10},
+        {"type": "od_turn", "diameter": 12, "length": 25},
+        {"type": "chamfer", "diameter": chamfer_d, "length": 1, "location": "external", "face": "left"},
+    ])
+    assert data.features[2].diameter == bound
+
+
+def test_internal_chamfer_is_not_moved_to_a_hex():
+    data = DrawingData(part_type="turned", features=[
+        {"type": "hex", "across_flats": 17, "length": 10},
+        {"type": "chamfer", "diameter": 17, "length": 1, "location": "internal", "face": "left"},
+    ])
+    assert data.features[1].diameter == 17
 
 
 # --- planner ---------------------------------------------------------------------------------------------

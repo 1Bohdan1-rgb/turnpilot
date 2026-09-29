@@ -100,6 +100,12 @@ editable form:
   is a thread relief groove;
 - tapers (start Ø, end Ø, length) and fillets (radius) are recognised and shown; the planner
   lists them as "manual operation" without a tool;
+- a hexagon is a `hex` feature: Ø across corners and S across flats (one of them is enough, the
+  other is computed and marked *check*; the model sends S = 0 when there is none, which becomes
+  empty). The planner turns Ø, then mills the flats with a driven tool (`milling`) or as a manual
+  operation. A hex bar from the list on the Machine page is suggested when the hex is the largest
+  section and every other Ø is ≤ S. A chamfer on a hex is put on its Ø across corners. The
+  dimensions_first mode does not know hexes yet;
 - the material is matched to the materials list by name and common aliases;
 - if the drawing has no blank size, one is **suggested** (marked as such): largest external Ø +
   2 mm rounded up to the next bar size from `BAR_STOCK_DIAMETERS` in `turnpilot/config.py`,
