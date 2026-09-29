@@ -507,7 +507,12 @@ def comparison_rows_from_report(path: Path, label: str) -> list[dict]:
             break
         table.append(dict(zip(header, (c.strip() for c in line.strip("|").split("|")))))
     differences = {}
+    section = None
     for line in lines:
+        if line.startswith("## "):
+            section = line[3:].strip()
+        if section != "Differences":  # other sections (Geometry check) list runs the same way
+            continue
         match = re.match(r"- \*\*(.+?) / (.+?) / run (\d+)\*\*: (.*)", line)
         if match:
             differences[int(match.group(3))] = match.group(4).split("; ")
