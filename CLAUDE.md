@@ -32,7 +32,7 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
 - Label in-sample tuning honestly. Don't change the prompt unless asked.
 
 ## Status (2026-09-29)
-- 445 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 496 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
@@ -44,3 +44,22 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
 - Open problems, to work through on real drawings:
   - the baseline dimension chained over the groove (06: Ø48/thread 20 instead of 16);
   - Ra/Rz on a leader goes to the wrong feature (03, 05, real_02).
+- Hex (commits 232e296 … ed561db):
+  - Feature type `hex`: `diameter` across corners, `across_flats` S. If one is missing, the code
+    computes it and marks it "check". With both given, D need not equal S/cos 30°: warn only if D < S
+    or D < 1.10·S (corners cut off).
+  - Planner: turn to D, then mill the flats with a `milling` (driven) tool, or a manual operation.
+  - Hex bar stock: sizes on the Machine page, `Job.blank_shape` round/hex. A hex bar is suggested only
+    when the hex is in stock and every other diameter is ≤ S. If S is tighter than h11, the flats are
+    milled.
+  - Not offered to the model yet: the tool schema and prompt versions are unchanged (`b423ae0e`,
+    `e91adddb`). The hex prompt rule is the next, measured step (plan shown, not approved).
+- Thread section: an external thread's od_turn is matched by diameter and length (a fitting has a Ø10
+  collar and an M10 thread).
+- Eval scorer:
+  - a section with shoulders on both sides may be a groove or an od_turn (diameter, length, position
+    count); such pairs are reported in a "Type mismatch" column;
+  - new metric `across_flats`.
+- real_03 (fitting, shtucer.pdf, extraction 24):
+  - The expected answer has the hex as `hex` Ø13. The user is checking the drawing: don't change it.
+  - Extraction 24 (old prompt): no hex, no relief Ø8 L1.5; the Ø8 recess read with L3.5 instead of 8.
