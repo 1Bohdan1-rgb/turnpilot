@@ -32,7 +32,7 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
 - Label in-sample tuning honestly. Don't change the prompt unless asked.
 
 ## Status (2026-09-29)
-- 507 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 509 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
@@ -52,22 +52,25 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
   - Hex bar stock: sizes on the Machine page, `Job.blank_shape` round/hex. A hex bar is suggested only
     when the hex is in stock and every other diameter is ≤ S. If S is tighter than h11, the flats are
     milled.
-  - In the features prompt since f8da656, prompt version `b423ae0e` → `ae696380`:
+  - In the features prompt since f8da656 (`b423ae0e` → `ae696380`), with the chamfer-circle rule since d3b0b82
+    (→ `dd7fd70a`):
     - hex type and `across_flats` (0 = none, converted to None on input);
     - a rule: one hex feature, not also an od_turn;
-    - a chamfer given with the hex's S or corners is put on the corners by the code.
-  - NOT MEASURED YET. The step-3 eval waits for the user's separate "так", and the user is still
-    confirming the real_03 expected answer. Plan (20 calls):
-    - 08–10 ×3;
+    - a chamfer given with the hex's S or corners is put on the corners by the code;
+    - a Ø on the end view on the circle tangent to the flats is S; diameter only if a Ø is explicitly on
+      the corners.
+  - NOT MEASURED YET. The step-3 eval waits for the user's separate "так". Plan (23 calls):
+    - 08–11 ×3;
     - real_03 ×3;
     - 01–07 ×1 and real_02 ×1 regression.
   - Success criteria:
-    - hex found in ≥8/9 runs on 08–10 and S right;
-    - hex recorded as od_turn 0 times on 08–10;
+    - hex found in ≥11/12 runs on 08–11 and S right;
+    - hex recorded as od_turn 0 times on 08–11;
     - hex found on real_03;
     - lengths of 10 and real_03 on their own line in the report;
     - no regression over one run on 01–07 and real_02.
-  - Synthetic hex drawings: 08_hex_s_only, 09_hex_d_and_s (D 19.4 ≠ S/cos 30°), 10_hex_middle.
+  - Synthetic hex drawings: 08_hex_s_only, 09_hex_d_and_s (D 19.4 ≠ S/cos 30°), 10_hex_middle,
+    11_hex_chamfer_circle (S16 only as Ø16 on the chamfer circle).
     10 is built like real_03, so they are not independent evidence (noted in the eval report).
 - Known limitation: dimensions_first does not know hex (its tool schema and prompt `e91adddb` have
   no hex); a hex drawing read in that mode loses the hex.
@@ -78,5 +81,9 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
     count); such pairs are reported in a "Type mismatch" column;
   - new metric `across_flats`.
 - real_03 (fitting, shtucer.pdf, extraction 24):
-  - The expected answer has the hex as `hex` Ø13. The user is checking the drawing: don't change it.
+  - Expected answer confirmed by the user:
+    - the hex is `hex` across_flats 13, diameter null (Ø13 on the end view is on the circle tangent to
+      the flats, i.e. S13; the code computes D 15.01, marked check);
+    - brass, and S13 is in the bar list, so the expected blank is hex bar S13 with the flats not
+      machined.
   - Extraction 24 (old prompt): no hex, no relief Ø8 L1.5; the Ø8 recess read with L3.5 instead of 8.
