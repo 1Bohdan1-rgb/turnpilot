@@ -353,3 +353,16 @@ def test_hex_recorded_as_od_turn_is_counted():
     assert result.hex_as_od_turn == 1 and result.missing == 1
     assert "hex S17 recorded as od_turn Ø17" in result.mismatches
     assert _scores(expected, expected).hex_as_od_turn == 0
+
+
+def test_report_lists_geometry_warnings(tmp_path):
+    expected = eval_extraction._expected("11_hex_chamfer_circle")
+    predicted = expected.model_copy(deep=True)
+    predicted.features[0] = predicted.features[0].model_copy(update={"diameter": 16.0, "across_flats": 13.86})
+    result = eval_extraction.RunResult("11_hex_chamfer_circle", "png", "clean")
+    eval_extraction._score_extracted(result, expected, predicted)
+    assert result.geometry == 1
+    path = tmp_path / "report.md"
+    eval_extraction.write_markdown([result], "test-model", path=path)
+    text = path.read_text(encoding="utf-8")
+    assert "## Geometry check" in text and "probably S16 on the chamfer circle" in text

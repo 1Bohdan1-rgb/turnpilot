@@ -121,6 +121,7 @@ class RunResult:
     null_lengths: int = 0  # matched features whose length is null although the drawing has it
     conflicts: int | None = None  # conflicting dimensions found by the dimensions_first solver
     geometry: int | None = None  # planner.geometry_warnings() on the extracted part
+    geometry_texts: list[str] = field(default_factory=list)
     raw: dict | None = None  # the full API response, saved so the run can be re-scored later
     status_code: int | None = None  # HTTP status of an API error
 
@@ -331,7 +332,8 @@ def _fail(result, expected, exc):
 def _score_extracted(result, expected, data):
     score(expected, data, result)
     result.conflicts = sum("conflicts with the others" in w for w in data.warnings)
-    result.geometry = len(geometry_warnings(data.features, data.overall_length))
+    result.geometry_texts = geometry_warnings(data.features, data.overall_length)
+    result.geometry = len(result.geometry_texts)
 
 
 def run_one(client, model, name, variant, run=1, mode=drawing_reader.DEFAULT_READ_MODE) -> RunResult:
@@ -562,6 +564,8 @@ def write_markdown(results, model, path=None, mode=drawing_reader.DEFAULT_READ_M
     path = path or RESULTS_MD
     problems = [f"- **{r.drawing} / {r.variant} / run {r.run}**: " + (r.error or "; ".join(r.mismatches))
                 for r in results if r.error or r.mismatches]
+    geometry = [f"- **{r.drawing} / {r.variant} / run {r.run}**: " + "; ".join(r.geometry_texts)
+                for r in results if r.geometry_texts]
     repeats = ""
     if len({r.run for r in results}) > 1:
         repeats = f"\n## Run to run\n\n{repeat_table(results)}\n"
@@ -594,6 +598,10 @@ metric. Numbers match within {NUMBER_TOLERANCE}.
 ## Differences
 
 {chr(10).join(problems) if problems else "None."}
+
+## Geometry check
+
+{chr(10).join(geometry) if geometry else "No warnings."}
 
 ## Known limitations
 
