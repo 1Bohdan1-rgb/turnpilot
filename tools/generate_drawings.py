@@ -218,7 +218,7 @@ def _leader(ax, xy, text_xy, text):
 
 
 def _scale_label(s):
-    return {1: "1:1", 1.5: "3:2", 2: "2:1", 2.5: "5:2", 3: "3:1"}[s]
+    return {1: "1:1", 1.5: "3:2", 2: "2:1", 2.5: "5:2", 3: "3:1", 4: "4:1", 5: "5:1"}[s]
 
 
 def _title_block(ax, part, scale):
@@ -697,6 +697,237 @@ def draw_holdout(part: dict):
     return fig
 
 
+# --- parts with a hexagon (wrench flats) ---------------------------------------------------------
+#
+# A hex is drawn as it is on a real drawing: in the main view the outline is the diameter across
+# corners with the two edge lines at D/4, and its size across flats S is dimensioned on the section
+# A-A through the hex. 08: S only, hex at the left end. 09: S and the turned diameter D (not exactly
+# S / cos 30°), hex at the right end. 10: S only, hex in the middle between a recess and a thread
+# relief. 10 is built like the real fitting real_03 (collar, recess, hex, relief, thread), so results
+# on 10 and on real_03 are not independent evidence.
+#
+# Sections run left to right. "groove" sections are recesses / reliefs with their own length;
+# "start" is the diameter they are cut from in the expected answer.
+
+HEX_PARTS = [
+    {
+        "name": "08_hex_s_only",
+        "title": "Hex screw plug",
+        "number": "TP-008",
+        "material": "Steel 45 (C45)",
+        "quantity": 40,
+        "scale": 4,
+        "sections": [
+            {"type": "hex", "s": 17, "l": 10},
+            {"type": "od_turn", "d": 12, "l": 25},
+        ],
+        "thread": {"section": 1, "pitch": 1.75, "length": 18, "cls": "6g"},
+        "chamfers": [{"section": 0, "side": "left", "size": 1}, {"section": 1, "side": "right", "size": 1}],
+    },
+    {
+        "name": "09_hex_d_and_s",
+        "title": "Adapter",
+        "number": "TP-009",
+        "material": "AISI 304",
+        "quantity": 15,
+        "scale": 4,
+        "sections": [
+            {"type": "od_turn", "d": 16, "l": 20, "tol": "h9"},
+            {"type": "od_turn", "d": 12, "l": 5},
+            {"type": "hex", "s": 17, "d": 19.4, "l": 12},
+        ],
+        "chamfers": [{"section": 0, "side": "left", "size": 1}, {"section": 2, "side": "right", "size": 1}],
+    },
+    {
+        "name": "10_hex_middle",
+        "title": "Fitting",
+        "number": "TP-010",
+        "material": "Brass CuZn39Pb3",
+        "quantity": 100,
+        "scale": 5,
+        "sections": [
+            {"type": "od_turn", "d": 12, "l": 4},
+            {"type": "groove", "d": 9, "l": 6, "start": 12},
+            {"type": "hex", "s": 14, "l": 5},
+            {"type": "groove", "d": 9, "l": 2, "start": 12},
+            {"type": "od_turn", "d": 12, "l": 10},
+        ],
+        "thread": {"section": 4, "pitch": 1.25, "length": 10, "cls": "6g"},
+        "chamfers": [
+            {"section": 0, "side": "left", "size": 1.5},
+            {"section": 2, "side": "left", "size": 1},
+            {"section": 2, "side": "right", "size": 1},
+            {"section": 4, "side": "right", "size": 1},
+        ],
+    },
+]
+
+
+def _hex_corners(s):
+    """Diameter across corners of a hex with the size across flats s (as the app computes it)."""
+    return round(s * 2 / 3 ** 0.5, 2)
+
+
+def _outer_d(section):
+    """Diameter of a section's outline in the main view: a hex shows its diameter across corners."""
+    if section["type"] == "hex":
+        return section.get("d") or _hex_corners(section["s"])
+    return section["d"]
+
+
+def expected_hex(part: dict) -> dict:
+    sections = part["sections"]
+    features = []
+    for s in sections:
+        if s["type"] == "hex":
+            feature = _feature("hex", s.get("d"), length=s["l"], tolerance=s.get("tol"))
+            feature["across_flats"] = s["s"]
+        elif s["type"] == "groove":
+            feature = _feature("groove", s["d"], start_diameter=s["start"], length=s["l"])
+        else:
+            feature = _feature("od_turn", s["d"], length=s["l"], tolerance=s.get("tol"))
+        features.append(feature)
+    for c in part.get("chamfers", []):
+        # a chamfer on a hex is on its diameter across corners (the code binds it there)
+        features.append(_feature("chamfer", _outer_d(sections[c["section"]]), length=c["size"],
+                                 location="external", face=c["side"]))
+    if "thread" in part:
+        t = part["thread"]
+        features.append(_feature("thread", sections[t["section"]]["d"], length=t["length"], tolerance=t["cls"],
+                                 pitch=t["pitch"]))
+    return {
+        "part_type": "turned",
+        "material": part["material"],
+        "blank_diameter": None,
+        "blank_length": None,
+        "overall_length": sum(s["l"] for s in sections),
+        "quantity": part["quantity"],
+        "general_ra": None,
+        "features": features,
+        "warnings": [],
+    }
+
+
+def draw_hex(part: dict):
+    sections = part["sections"]
+    scale = part["scale"]
+    bounds = [0.0]
+    for s in sections:
+        bounds.append(bounds[-1] + s["l"])
+    length = bounds[-1]
+    d_max = max(_outer_d(s) for s in sections)
+    chamfers = {(c["section"], c["side"]): c["size"] for c in part.get("chamfers", [])}
+
+    fig = plt.figure(figsize=(PAPER_W / 25.4, PAPER_H / 25.4))
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, PAPER_W)
+    ax.set_ylim(0, PAPER_H)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.add_patch(Rectangle((10, 10), PAPER_W - 20, PAPER_H - 20, fill=False, lw=LINE))
+
+    ox, oy = 30.0, 120.0
+
+    def px(x):
+        return ox + x * scale
+
+    def py(r):
+        return oy + r * scale
+
+    # outline with chamfers
+    pts = [(0.0, 0.0)]
+    for i, s in enumerate(sections):
+        x0, x1, r = bounds[i], bounds[i + 1], _outer_d(s) / 2
+        left, right = chamfers.get((i, "left"), 0), chamfers.get((i, "right"), 0)
+        pts.append((x0, r - left))
+        if left:
+            pts.append((x0 + left, r))
+        if right:
+            pts += [(x1 - right, r), (x1, r - right)]
+        else:
+            pts.append((x1, r))
+    pts.append((length, 0.0))
+    xs = [px(x) for x, _ in pts]
+    ax.plot(xs, [py(r) for _, r in pts], color="k", lw=LINE)
+    ax.plot(xs, [py(-r) for _, r in pts], color="k", lw=LINE)
+    for i in range(1, len(sections)):
+        r = max(_outer_d(sections[i - 1]), _outer_d(sections[i])) / 2
+        ax.plot([px(bounds[i])] * 2, [py(-r), py(r)], color="k", lw=LINE)
+    for (i, side), size in chamfers.items():
+        x = bounds[i] + size if side == "left" else bounds[i + 1] - size
+        r = _outer_d(sections[i]) / 2
+        ax.plot([px(x)] * 2, [py(-r), py(r)], color="k", lw=THIN)
+    ax.plot([px(-5), px(length + 5)], [oy, oy], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
+
+    hex_index = next(i for i, s in enumerate(sections) if s["type"] == "hex")
+    hex_ = sections[hex_index]
+    d_hex = _outer_d(hex_)
+    for sign in (1, -1):  # the hex's edges seen from the side
+        ax.plot([px(bounds[hex_index]), px(bounds[hex_index + 1])], [py(sign * d_hex / 4)] * 2, color="k", lw=LINE)
+
+    thread = part.get("thread")
+    if thread:
+        s = sections[thread["section"]]
+        x1 = bounds[thread["section"] + 1]
+        r_minor = s["d"] / 2 - 0.613 * thread["pitch"]
+        for sign in (1, -1):
+            ax.plot([px(x1 - thread["length"]), px(x1)], [py(sign * r_minor)] * 2, color="k", lw=THIN)
+
+    # diameters
+    for i, s in enumerate(sections):
+        x0, x1 = bounds[i], bounds[i + 1]
+        if s["type"] == "hex":
+            if s.get("d"):
+                _vdim(ax, px(x0 + s["l"] * 0.7), py(-s["d"] / 2), py(s["d"] / 2), f"Ø{s['d']:g}")
+            continue
+        if s["type"] == "groove" and s["l"] < 4:
+            _leader(ax, (px(x0 + s["l"] / 2), py(s["d"] / 2)), (px(x0) + 6, py(d_max / 2) + 14), f"Ø{s['d']:g}")
+            continue
+        if thread and thread["section"] == i:
+            text = f"M{s['d']:g}x{thread['pitch']:g}-{thread['cls']}"
+        else:
+            text = f"Ø{s['d']:g}" + (f" {s['tol']}" if s.get("tol") else "")
+        _vdim(ax, px(x0 + s["l"] * 0.6), py(-s["d"] / 2), py(s["d"] / 2), text)
+
+    # lengths: chain below, overall further below, threaded length above
+    y_chain = py(-d_max / 2) - 12
+    for i, s in enumerate(sections):
+        _hdim(ax, px(bounds[i]), px(bounds[i + 1]), y_chain, f"{s['l']:g}",
+              py(-_outer_d(s) / 2), py(-_outer_d(s) / 2))
+    _hdim(ax, px(0), px(length), y_chain - 11, f"{length:g}", py(-_outer_d(sections[0]) / 2),
+          py(-_outer_d(sections[-1]) / 2))
+    if thread:
+        s = sections[thread["section"]]
+        x1 = bounds[thread["section"] + 1]
+        _hdim(ax, px(x1 - thread["length"]), px(x1), py(s["d"] / 2) + 10, f"{thread['length']:g}",
+              py(s["d"] / 2), py(s["d"] / 2))
+
+    for (i, side), size in chamfers.items():
+        r = _outer_d(sections[i]) / 2
+        x = bounds[i] + size / 2 if side == "left" else bounds[i + 1] - size / 2
+        dx = -14 if side == "left" else 6
+        _leader(ax, (px(x), py(r - size / 2)), (px(x) + dx, py(d_max / 2) + 24 + 4 * (i % 2)), f"{size:g}x45°")
+
+    # cutting plane A-A through the hex and the section itself
+    xc = px((bounds[hex_index] + bounds[hex_index + 1]) / 2)
+    for y0, y1 in ((py(d_max / 2) + 2, py(d_max / 2) + 5), (py(-d_max / 2) - 5, py(-d_max / 2) - 2)):
+        ax.plot([xc, xc], [y0, y1], color="k", lw=LINE * 1.6)
+        ax.text(xc + 1.5, y0, "A", fontsize=FONT, va="bottom")
+    cx, cy = PAPER_W - 70, oy
+    s_mm = hex_["s"] * scale
+    r_c = s_mm / 3 ** 0.5  # circumradius of the drawn hexagon
+    # flats vertical (left and right), corners up and down, as seen in A-A
+    hexagon = [(cx + r_c * np.cos(np.radians(a)), cy + r_c * np.sin(np.radians(a))) for a in range(30, 390, 60)]
+    ax.add_patch(Polygon(hexagon, closed=True, fill=False, hatch="////", lw=LINE))
+    ax.plot([cx - r_c - 4, cx + r_c + 4], [cy, cy], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
+    ax.plot([cx, cx], [cy - r_c - 4, cy + r_c + 4], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
+    ax.text(cx, cy + r_c + 8, "A-A", ha="center", fontsize=FONT + 1)
+    _hdim(ax, cx - s_mm / 2, cx + s_mm / 2, cy - r_c - 10, f"S{hex_['s']:g}", cy - s_mm / 4, cy - s_mm / 4)
+
+    _title_block(ax, part, scale)
+    return fig
+
+
 # --- low resolution copies -----------------------------------------------------------------------
 
 LOWRES_LONG_EDGE = 1169  # the long edge of the real drawing photo real_01
@@ -757,6 +988,16 @@ def main():
         angle = photo_version(png, OUT_DIR / f"{part['name']}.photo.jpg", seed=1000 + j)
         expected = OUT_DIR / f"{part['name']}.expected.json"
         expected.write_text(json.dumps(expected_gost(part), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"{part['name']}: png, pdf, photo (rotated {angle:+.1f}°), expected.json")
+    for j, part in enumerate(HEX_PARTS, start=len(PARTS) + len(gost_like)):
+        fig = draw_hex(part)
+        png = OUT_DIR / f"{part['name']}.png"
+        fig.savefig(png, dpi=DPI, facecolor="white")
+        fig.savefig(OUT_DIR / f"{part['name']}.pdf", facecolor="white", metadata=PDF_METADATA)
+        plt.close(fig)
+        angle = photo_version(png, OUT_DIR / f"{part['name']}.photo.jpg", seed=1000 + j)
+        expected = OUT_DIR / f"{part['name']}.expected.json"
+        expected.write_text(json.dumps(expected_hex(part), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"{part['name']}: png, pdf, photo (rotated {angle:+.1f}°), expected.json")
     for name in LOWRES_OF:
         width, height = lowres_copy(name)

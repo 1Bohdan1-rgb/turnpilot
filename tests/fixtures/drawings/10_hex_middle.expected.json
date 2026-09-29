@@ -1,0 +1,121 @@
+{
+  "part_type": "turned",
+  "material": "Brass CuZn39Pb3",
+  "blank_diameter": null,
+  "blank_length": null,
+  "overall_length": 27,
+  "quantity": 100,
+  "general_ra": null,
+  "features": [
+    {
+      "type": "od_turn",
+      "diameter": 12,
+      "start_diameter": null,
+      "length": 4,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "groove",
+      "diameter": 9,
+      "start_diameter": 12,
+      "length": 6,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "hex",
+      "diameter": null,
+      "start_diameter": null,
+      "length": 5,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "across_flats": 14
+    },
+    {
+      "type": "groove",
+      "diameter": 9,
+      "start_diameter": 12,
+      "length": 2,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "od_turn",
+      "diameter": 12,
+      "start_diameter": null,
+      "length": 10,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "chamfer",
+      "diameter": 12,
+      "start_diameter": null,
+      "length": 1.5,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "left"
+    },
+    {
+      "type": "chamfer",
+      "diameter": 16.17,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "left"
+    },
+    {
+      "type": "chamfer",
+      "diameter": 16.17,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "right"
+    },
+    {
+      "type": "chamfer",
+      "diameter": 12,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "right"
+    },
+    {
+      "type": "thread",
+      "diameter": 12,
+      "start_diameter": null,
+      "length": 10,
+      "tolerance": "6g",
+      "ra": null,
+      "pitch": 1.25,
+      "radius": null
+    }
+  ],
+  "warnings": []
+}

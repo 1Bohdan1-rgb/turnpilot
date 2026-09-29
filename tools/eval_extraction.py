@@ -76,6 +76,9 @@ KNOWN_LIMITATIONS = """- **Ra on a leader in a sectioned bushing.** On `03_bushi
   leaders) were written while looking at failures on these same drawings, so these numbers are an
   optimistic, in-sample estimate. Real drawings (other CAD styles, hand-drawn notes, scans, multi-view
   sheets, GD&T) need a separate, untouched test set before the accuracy can be trusted.
+- **10_hex_middle is built like real_03.** Both are fittings with a collar, a recess, a hex, a thread
+  relief and a thread, and 10 was made after real_03 was read. Results on the two are not independent
+  evidence for the hex rule; 08 and 09 are the other layouts.
 """
 
 

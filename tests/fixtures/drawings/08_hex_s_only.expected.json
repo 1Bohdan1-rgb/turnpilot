@@ -1,0 +1,67 @@
+{
+  "part_type": "turned",
+  "material": "Steel 45 (C45)",
+  "blank_diameter": null,
+  "blank_length": null,
+  "overall_length": 35,
+  "quantity": 40,
+  "general_ra": null,
+  "features": [
+    {
+      "type": "hex",
+      "diameter": null,
+      "start_diameter": null,
+      "length": 10,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "across_flats": 17
+    },
+    {
+      "type": "od_turn",
+      "diameter": 12,
+      "start_diameter": null,
+      "length": 25,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "chamfer",
+      "diameter": 19.63,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "left"
+    },
+    {
+      "type": "chamfer",
+      "diameter": 12,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "right"
+    },
+    {
+      "type": "thread",
+      "diameter": 12,
+      "start_diameter": null,
+      "length": 18,
+      "tolerance": "6g",
+      "ra": null,
+      "pitch": 1.75,
+      "radius": null
+    }
+  ],
+  "warnings": []
+}

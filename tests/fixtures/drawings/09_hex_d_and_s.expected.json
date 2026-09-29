@@ -1,0 +1,67 @@
+{
+  "part_type": "turned",
+  "material": "AISI 304",
+  "blank_diameter": null,
+  "blank_length": null,
+  "overall_length": 37,
+  "quantity": 15,
+  "general_ra": null,
+  "features": [
+    {
+      "type": "od_turn",
+      "diameter": 16,
+      "start_diameter": null,
+      "length": 20,
+      "tolerance": "h9",
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "od_turn",
+      "diameter": 12,
+      "start_diameter": null,
+      "length": 5,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "hex",
+      "diameter": 19.4,
+      "start_diameter": null,
+      "length": 12,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "across_flats": 17
+    },
+    {
+      "type": "chamfer",
+      "diameter": 16,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "left"
+    },
+    {
+      "type": "chamfer",
+      "diameter": 19.4,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "right"
+    }
+  ],
+  "warnings": []
+}
