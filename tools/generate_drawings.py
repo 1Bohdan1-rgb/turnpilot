@@ -24,7 +24,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-from matplotlib.patches import Polygon, Rectangle  # noqa: E402
+from matplotlib.patches import Circle, Polygon, Rectangle  # noqa: E402
 from PIL import Image, ImageFilter  # noqa: E402
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "drawings"
@@ -704,7 +704,9 @@ def draw_holdout(part: dict):
 # A-A through the hex. 08: S only, hex at the left end. 09: S and the turned diameter D (not exactly
 # S / cos 30°), hex at the right end. 10: S only, hex in the middle between a recess and a thread
 # relief. 10 is built like the real fitting real_03 (collar, recess, hex, relief, thread), so results
-# on 10 and on real_03 are not independent evidence.
+# on 10 and on real_03 are not independent evidence. 11: no S dimension at all; the end view A shows
+# the hex with the circle tangent to its flats (the chamfer circle) dimensioned Ø16, which is S (as on
+# real_03, where Ø13 on that circle is S13).
 #
 # Sections run left to right. "groove" sections are recesses / reliefs with their own length;
 # "start" is the diameter they are cut from in the expected answer.
@@ -759,6 +761,22 @@ HEX_PARTS = [
             {"section": 2, "side": "right", "size": 1},
             {"section": 4, "side": "right", "size": 1},
         ],
+    },
+    {
+        "name": "11_hex_chamfer_circle",
+        "title": "Union nipple",
+        "number": "TP-011",
+        "material": "Steel 20",
+        "quantity": 60,
+        "scale": 4,
+        "end_view": "chamfer_circle",  # the S is given as a Ø on the circle tangent to the flats
+        "sections": [
+            {"type": "hex", "s": 16, "l": 8},
+            {"type": "od_turn", "d": 14, "l": 6},
+            {"type": "od_turn", "d": 10, "l": 16},
+        ],
+        "thread": {"section": 2, "pitch": 1.5, "length": 12, "cls": "6g"},
+        "chamfers": [{"section": 0, "side": "left", "size": 1}, {"section": 2, "side": "right", "size": 1}],
     },
 ]
 
@@ -908,21 +926,41 @@ def draw_hex(part: dict):
         dx = -14 if side == "left" else 6
         _leader(ax, (px(x), py(r - size / 2)), (px(x) + dx, py(d_max / 2) + 24 + 4 * (i % 2)), f"{size:g}x45°")
 
-    # cutting plane A-A through the hex and the section itself
-    xc = px((bounds[hex_index] + bounds[hex_index + 1]) / 2)
-    for y0, y1 in ((py(d_max / 2) + 2, py(d_max / 2) + 5), (py(-d_max / 2) - 5, py(-d_max / 2) - 2)):
-        ax.plot([xc, xc], [y0, y1], color="k", lw=LINE * 1.6)
-        ax.text(xc + 1.5, y0, "A", fontsize=FONT, va="bottom")
     cx, cy = PAPER_W - 70, oy
     s_mm = hex_["s"] * scale
     r_c = s_mm / 3 ** 0.5  # circumradius of the drawn hexagon
-    # flats vertical (left and right), corners up and down, as seen in A-A
+    # flats vertical (left and right), corners up and down
     hexagon = [(cx + r_c * np.cos(np.radians(a)), cy + r_c * np.sin(np.radians(a))) for a in range(30, 390, 60)]
-    ax.add_patch(Polygon(hexagon, closed=True, fill=False, hatch="////", lw=LINE))
-    ax.plot([cx - r_c - 4, cx + r_c + 4], [cy, cy], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
-    ax.plot([cx, cx], [cy - r_c - 4, cy + r_c + 4], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
-    ax.text(cx, cy + r_c + 8, "A-A", ha="center", fontsize=FONT + 1)
-    _hdim(ax, cx - s_mm / 2, cx + s_mm / 2, cy - r_c - 10, f"S{hex_['s']:g}", cy - s_mm / 4, cy - s_mm / 4)
+    if part.get("end_view") == "chamfer_circle":
+        # view A on the hex's end face: the hexagon and the chamfer circle tangent to the flats, dimensioned
+        # with a Ø (that Ø is S); no S dimension anywhere
+        x_face = px(bounds[hex_index])
+        _leader(ax, (x_face - 1, oy + d_hex / 4 * scale), (x_face - 14, oy + d_hex / 4 * scale), "")
+        ax.text(x_face - 14, oy + d_hex / 4 * scale + 1.5, "A", fontsize=FONT + 1)
+        ax.add_patch(Polygon(hexagon, closed=True, fill=False, lw=LINE))
+        ax.add_patch(Circle((cx, cy), s_mm / 2, fill=False, lw=THIN))
+        ax.plot([cx - r_c - 4, cx + r_c + 4], [cy, cy], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
+        ax.plot([cx, cx], [cy - r_c - 4, cy + r_c + 4], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
+        ax.text(cx, cy + r_c + 8, "A", ha="center", fontsize=FONT + 1)
+        angle = np.radians(45)
+        tip = (cx + s_mm / 2 * np.cos(angle), cy + s_mm / 2 * np.sin(angle))
+        tail = (cx - s_mm / 2 * np.cos(angle), cy - s_mm / 2 * np.sin(angle))
+        ax.annotate("", xy=tip, xytext=tail, arrowprops=dict(arrowstyle="<|-|>", lw=THIN, color="k",
+                                                             mutation_scale=7, shrinkA=0, shrinkB=0))
+        shelf = (tip[0] + 10, tip[1] + 10)
+        ax.plot([tip[0], shelf[0], shelf[0] + 12], [tip[1], shelf[1], shelf[1]], color="k", lw=THIN)
+        ax.text(shelf[0] + 1, shelf[1] + 0.8, f"Ø{hex_['s']:g}", fontsize=FONT)
+    else:
+        # cutting plane A-A through the hex and the section itself, with S across the flats
+        xc = px((bounds[hex_index] + bounds[hex_index + 1]) / 2)
+        for y0, y1 in ((py(d_max / 2) + 2, py(d_max / 2) + 5), (py(-d_max / 2) - 5, py(-d_max / 2) - 2)):
+            ax.plot([xc, xc], [y0, y1], color="k", lw=LINE * 1.6)
+            ax.text(xc + 1.5, y0, "A", fontsize=FONT, va="bottom")
+        ax.add_patch(Polygon(hexagon, closed=True, fill=False, hatch="////", lw=LINE))
+        ax.plot([cx - r_c - 4, cx + r_c + 4], [cy, cy], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
+        ax.plot([cx, cx], [cy - r_c - 4, cy + r_c + 4], color="k", lw=THIN, ls=(0, (12, 3, 2, 3)))
+        ax.text(cx, cy + r_c + 8, "A-A", ha="center", fontsize=FONT + 1)
+        _hdim(ax, cx - s_mm / 2, cx + s_mm / 2, cy - r_c - 10, f"S{hex_['s']:g}", cy - s_mm / 4, cy - s_mm / 4)
 
     _title_block(ax, part, scale)
     return fig

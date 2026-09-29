@@ -1,0 +1,77 @@
+{
+  "part_type": "turned",
+  "material": "Steel 20",
+  "blank_diameter": null,
+  "blank_length": null,
+  "overall_length": 30,
+  "quantity": 60,
+  "general_ra": null,
+  "features": [
+    {
+      "type": "hex",
+      "diameter": null,
+      "start_diameter": null,
+      "length": 8,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "across_flats": 16
+    },
+    {
+      "type": "od_turn",
+      "diameter": 14,
+      "start_diameter": null,
+      "length": 6,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "od_turn",
+      "diameter": 10,
+      "start_diameter": null,
+      "length": 16,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null
+    },
+    {
+      "type": "chamfer",
+      "diameter": 18.48,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "left"
+    },
+    {
+      "type": "chamfer",
+      "diameter": 10,
+      "start_diameter": null,
+      "length": 1,
+      "tolerance": null,
+      "ra": null,
+      "pitch": null,
+      "radius": null,
+      "location": "external",
+      "face": "right"
+    },
+    {
+      "type": "thread",
+      "diameter": 10,
+      "start_diameter": null,
+      "length": 12,
+      "tolerance": "6g",
+      "ra": null,
+      "pitch": 1.5,
+      "radius": null
+    }
+  ],
+  "warnings": []
+}
