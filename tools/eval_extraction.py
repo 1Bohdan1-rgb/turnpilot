@@ -33,6 +33,8 @@ import anthropic  # noqa: E402
 from turnpilot import drawing_reader  # noqa: E402
 from turnpilot.extraction_schema import DrawingData  # noqa: E402
 from turnpilot.planner import AXIAL_SECTION_TYPES, general_tolerance_grade, geometry_warnings  # noqa: E402
+from turnpilot.number_check import check_numbers  # noqa: E402
+from turnpilot.pdf_text import read_numbers  # noqa: E402
 from turnpilot.services import MATERIAL_ALIASES, match_material  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures" / "drawings"
@@ -123,6 +125,9 @@ class RunResult:
     conflicts: int | None = None  # conflicting dimensions found by the dimensions_first solver
     geometry: int | None = None  # planner.geometry_warnings() on the extracted part
     geometry_texts: list[str] = field(default_factory=list)
+    # the answer's numbers checked against the vector text of the drawing's PDF (None: no PDF text)
+    number_texts: list[str] | None = None
+    number_computed: dict = field(default_factory=dict)  # feature index -> "44 − 14"
     raw: dict | None = None  # the full API response, saved so the run can be re-scored later
     status_code: int | None = None  # HTTP status of an API error
 
@@ -378,11 +383,26 @@ def _fail(result, expected, exc):
         result.scores[m].total += 1 if m in PART_METRICS else chamfers if m in CHAMFER_METRICS else len(expected.features)
 
 
+def drawing_pdf(name):
+    """The PDF with the drawing's vector text: the real drawing itself, or the PDF of a generated one
+    (the same drawing as its PNG and photo variants). None if there is none."""
+    if name.startswith(REAL_PREFIX):
+        found = real_drawing_file(name)
+        return found[0] if found and found[1] == "pdf" else None
+    path = FIXTURES / f"{name.removesuffix('_lowres')}.pdf"
+    return path if path.exists() else None
+
+
 def _score_extracted(result, expected, data):
     score(expected, data, result)
     result.conflicts = sum("conflicts with the others" in w for w in data.warnings)
     result.geometry_texts = geometry_warnings(data.features, data.overall_length)
     result.geometry = len(result.geometry_texts)
+    pdf = drawing_pdf(result.drawing)
+    numbers = read_numbers(pdf) if pdf else None
+    if numbers:
+        check = check_numbers(data.features, data.overall_length, data.general_ra, numbers)
+        result.number_texts, result.number_computed = check.warnings, check.computed
 
 
 def run_one(client, model, name, variant, run=1, mode=drawing_reader.DEFAULT_READ_MODE) -> RunResult:
@@ -515,12 +535,13 @@ def summary_table(results):
 
 def detail_table(results):
     lines = ["| Drawing | Variant | Run | " + " | ".join(_label(m) for m in METRICS)
-             + " | Type mismatch | Time, s | Tokens in/out |",
-             "|" + "---|" * (len(METRICS) + 6)]
+             + " | Type mismatch | Number check | Time, s | Tokens in/out |",
+             "|" + "---|" * (len(METRICS) + 7)]
     for r in results:
         cells = " | ".join("—" if r.scores[m].pct is None else f"{r.scores[m].pct:.0f}%" for m in METRICS)
-        lines.append(f"| {r.drawing} | {r.variant} | {r.run} | {cells} | {r.type_mismatch} | {r.seconds:.1f}"
-                     f" | {r.tokens[0]}/{r.tokens[1]} |")
+        numbers = "n/a" if r.number_texts is None else len(r.number_texts)
+        lines.append(f"| {r.drawing} | {r.variant} | {r.run} | {cells} | {r.type_mismatch} | {numbers}"
+                     f" | {r.seconds:.1f} | {r.tokens[0]}/{r.tokens[1]} |")
     return "\n".join(lines)
 
 
@@ -620,6 +641,8 @@ def write_markdown(results, model, path=None, mode=drawing_reader.DEFAULT_READ_M
                 for r in results if r.error or r.mismatches]
     geometry = [f"- **{r.drawing} / {r.variant} / run {r.run}**: " + "; ".join(r.geometry_texts)
                 for r in results if r.geometry_texts]
+    numbers = [f"- **{r.drawing} / {r.variant} / run {r.run}**: " + "; ".join(r.number_texts)
+               for r in results if r.number_texts]
     repeats = ""
     if len({r.run for r in results}) > 1:
         repeats = f"\n## Run to run\n\n{repeat_table(results)}\n"
@@ -656,6 +679,13 @@ metric. Numbers match within {NUMBER_TOLERANCE}.
 ## Geometry check
 
 {chr(10).join(geometry) if geometry else "No warnings."}
+
+## Number check
+
+Only for drawings with a PDF whose dimensions are vector text (CAD exports): the answer's numbers
+against the numbers written on the drawing. Which section a number belongs to is not checked.
+
+{chr(10).join(numbers) if numbers else "No warnings."}
 
 ## Known limitations
 

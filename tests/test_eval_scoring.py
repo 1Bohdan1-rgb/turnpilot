@@ -404,3 +404,28 @@ def test_fewer_chamfers_than_expected_counts_missing():
     expected = _chamfers((12, "external", "left"), (12, "external", "right"))
     result = _scores(expected, _chamfers((12, "external", "right")))
     assert result.missing == 1 and result.scores["chamfer_position"].correct == 1
+
+
+def test_number_check_in_the_report(tmp_path):
+    expected = eval_extraction._expected("02_threaded_shaft")
+    wrong = expected.model_copy(deep=True)
+    wrong.features[0] = wrong.features[0].model_copy(update={"length": 66.0})
+    results = []
+    for data in (expected, wrong):
+        result = eval_extraction.RunResult("02_threaded_shaft", "png", "clean")
+        eval_extraction._score_extracted(result, expected, data)  # the PNG run is checked with the PDF's text
+        results.append(result)
+    assert results[0].number_texts == [] and results[0].number_computed == {1: "30 − 3"}
+    assert "od_turn Ø30: length 66 is not on the drawing: check" in results[1].number_texts
+    path = tmp_path / "report.md"
+    eval_extraction.write_markdown(results, "test-model", path=path)
+    text = path.read_text(encoding="utf-8")
+    assert "## Number check" in text and "length 66 is not on the drawing" in text
+
+
+def test_no_pdf_text_no_number_check():
+    assert eval_extraction.drawing_pdf("02_threaded_shaft_lowres").name == "02_threaded_shaft.pdf"
+    result = eval_extraction.RunResult("real_01", "real", "real")
+    expected = eval_extraction._expected("01_stepped_shaft")
+    eval_extraction._score_extracted(result, expected, expected)
+    assert result.number_texts is None  # real_01 is a JPG (or not there at all)
