@@ -31,7 +31,18 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
 - Never auto-correct lengths: warn only. Mark derived/uncertain values with a "check" badge.
 - Label in-sample tuning honestly. Don't change the prompt unless asked.
 
-## Status (2026-09-30)
+## Project goal (set 2026-09-30)
+Read ≥ 90% of the fields in each of 3 runs, on 3–6 part types (shaft, bushing, fitting, flange, screw),
+with 2–3 real drawings per type that the system has not seen (hold-out). Tuning on a drawing makes it
+in-sample: keep the hold-out drawings untouched until they are measured.
+
+## Deferred
+- dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
+  question: does the code's solver remove the end-face confusion? Expectation: probably not. The
+  mirrored reading 16 / 28 / 14 / 30 sums to 44 like the right one, so a consistent wrong binding
+  gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
+  Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
+
 - 523 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
