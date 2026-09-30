@@ -106,6 +106,16 @@ editable form:
   operation. A hex bar from the list on the Machine page is suggested when the hex is the largest
   section and every other Ø is ≤ S. A chamfer on a hex is put on its Ø across corners. The
   dimensions_first mode does not know hexes yet;
+- **number check (CAD PDFs only)**: when the uploaded PDF carries its dimensions as vector text (a CAD
+  export such as KOMPAS-3D; not a scan or a photo), `turnpilot/pdf_text.py` reads every number and
+  `turnpilot/number_check.py` checks the answer both ways: each number is written on the drawing or is
+  the difference or sum of two written lengths (then marked *check*, e.g. "computed as 44 − 14"), and
+  each written number is used. Mismatches are listed with the geometry warnings. What it does **not**
+  do: it does not check which section a number belongs to, so the right numbers on the wrong sections
+  pass (on real_02 the mirrored reading 16 / 28 / 14 / 30 passes, since 28 = 44 − 16 and 30 = 44 − 14);
+  a wrong value that happens to be a difference or sum of two lengths passes as computed; a length
+  that needs three numbers (90 − 30 − 20) is reported although it is right. Binding numbers to sections
+  by the dimension lines' coordinates would be stage 2;
 - the material is matched to the materials list by name and common aliases;
 - if the drawing has no blank size, one is **suggested** (marked as such): largest external Ø +
   2 mm rounded up to the next bar size from `BAR_STOCK_DIAMETERS` in `turnpilot/config.py`,

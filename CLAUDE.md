@@ -36,6 +36,30 @@ Read ≥ 90% of the fields in each of 3 runs, on 3–6 part types (shaft, bushin
 with 2–3 real drawings per type that the system has not seen (hold-out). Tuning on a drawing makes it
 in-sample: keep the hold-out drawings untouched until they are measured.
 
+## Number check, stage 1 (2026-09-30)
+- `pdf_text.py` reads the numbers of a CAD PDF with vector text:
+  - KOMPAS Symbol_A codes are mapped (Ç = Ø, Å = °), × is written as •, and Cyrillic 7Н becomes 7H;
+  - duplicated spans are read once and the title block is skipped;
+  - an image or a scan gives None.
+- `number_check.py` compares the answer with the drawing both ways, shows the result on the review
+  screen (Geometry check, "check: computed as 44 − 14" badges) and in the eval ("Number check" column
+  and section).
+- Works ONLY for CAD PDFs with vector text. It does NOT check which section a number belongs to: that
+  is stage 2 (binding by the dimension lines' coordinates), not started, to be planned after these
+  results.
+- Measured on all saved runs, no calls (report `instance/eval_results_number_check.md`):
+  - real_02: the mirrored reading 16/28/14/30 is not caught (0 of 5 wrong runs), since 28 = 44 − 16
+    and 30 = 44 − 14;
+  - real_03: 8 of 9 wrong runs warned, always indirectly ("11.5 / 8 on the drawing is not used"); no
+    right run exists yet;
+  - no false alarms on right runs. But the right answers themselves warn in two cases: real_03 if the
+    computed lengths are not marked (11.5 unused), and 06 always (40 = 90 − 30 − 20 needs three
+    numbers);
+  - the difference/sum rule lets through 0–27 values per drawing (real_02: 5, real_03: 14). One real
+    coincidence hid an error: 06 Ø60 L60 = 90 − 30 (expected 40), and that run became silent.
+- real_02 and real_03 expected answers mark their computed lengths (length_derived: real_02 L30 and L28,
+  real_03 L8 and L1.5); these files are local only.
+
 ## Deferred
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
   question: does the code's solver remove the end-face confusion? Expectation: probably not. The
@@ -43,7 +67,7 @@ in-sample: keep the hold-out drawings untouched until they are measured.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 523 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 565 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
