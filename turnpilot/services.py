@@ -7,7 +7,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from . import drawing_reader, planner
+from . import drawing_reader, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
 from .models import DrawingExtraction, Edit, Machine, Operation, TurretSlot, db
 
@@ -253,6 +253,13 @@ def suggest_blank(data: DrawingData, machine, config):
         parting_width=parting_width(machine, config["DEFAULT_PARTING_WIDTH_MM"]),
         hex_bar_sizes=hex_bar_sizes(machine, config),
     )
+
+
+def drawing_numbers(extraction, instance_path):
+    """Numbers written as vector text on the uploaded drawing (a CAD PDF), or None (image, scan, no text)."""
+    if extraction is None or extraction.file_type != "pdf":
+        return None
+    return pdf_text.read_numbers(os.path.join(drawings_dir(instance_path), extraction.stored_filename))
 
 
 def drawings_dir(instance_path):

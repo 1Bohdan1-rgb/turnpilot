@@ -14,7 +14,7 @@ from flask import (
     url_for,
 )
 
-from . import drawing_reader, planner, services
+from . import drawing_reader, number_check, planner, services
 from .extraction_schema import hex_across_corners, hex_across_flats, normalize_tolerance
 from .models import (
     BLANK_SHAPES,
@@ -515,14 +515,29 @@ def _review_values_from_form(form):
     }
 
 
-def _geometry_warnings(rows, overall_length):
-    """Checks on the rows as they stand on the review screen (edited values, included rows only)."""
+def _geometry_warnings(rows, overall_length, drawing_numbers=None, general_ra=None):
+    """Checks on the rows as they stand on the review screen (edited values, included rows only).
+
+    With the numbers of a CAD PDF, the rows' numbers are also checked against them (number_check);
+    a length computed from two written ones gets row["length_computed"] = "44 − 14" (a check badge).
+    """
+    included = [r for r in rows if r["include"]]
     features = [
         SimpleNamespace(type=r["type"], diameter=_to_float(r.get("diameter")), length=_to_float(r.get("length")),
-                        radius=_to_float(r.get("radius")), across_flats=_to_float(r.get("across_flats")))
-        for r in rows if r["include"]
+                        radius=_to_float(r.get("radius")), across_flats=_to_float(r.get("across_flats")),
+                        start_diameter=_to_float(r.get("start_diameter")), pitch=_to_float(r.get("pitch")),
+                        ra=_to_float(r.get("ra")), ra_general=bool(r.get("ra_general")),
+                        length_derived=bool(r.get("length_derived")), size_derived=r.get("size_derived"),
+                        pitch_assumed=bool(r.get("pitch_assumed")))
+        for r in included
     ]
-    return planner.geometry_warnings(features, overall_length)
+    warnings = planner.geometry_warnings(features, overall_length)
+    numbers = number_check.check_numbers(features, overall_length, general_ra, drawing_numbers)
+    for row in rows:
+        row["length_computed"] = None
+    for index, formula in numbers.computed.items():
+        included[index]["length_computed"] = formula
+    return warnings + numbers.warnings
 
 
 def _render_review(extraction, values, status=200):
@@ -532,7 +547,10 @@ def _render_review(extraction, values, status=200):
         "extraction_review.html",
         extraction=extraction,
         data=data,
-        geometry_warnings=_geometry_warnings(values["rows"], data.overall_length if data else None),
+        geometry_warnings=_geometry_warnings(
+            values["rows"], data.overall_length if data else None,
+            services.drawing_numbers(extraction, current_app.instance_path), data.general_ra if data else None,
+        ),
         values=values,
         materials=materials,
         feature_types=FEATURE_TYPES,
