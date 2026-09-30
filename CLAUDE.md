@@ -31,8 +31,8 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
 - Never auto-correct lengths: warn only. Mark derived/uncertain values with a "check" badge.
 - Label in-sample tuning honestly. Don't change the prompt unless asked.
 
-## Status (2026-09-29)
-- 509 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+## Status (2026-09-30)
+- 523 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
@@ -43,7 +43,11 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
   cause? Check on the next runs.
 - Open problems, to work through on real drawings:
   - the baseline dimension chained over the groove (06: Ø48/thread 20 instead of 16);
-  - Ra/Rz on a leader goes to the wrong feature (03, 05, real_02).
+  - Ra/Rz on a leader goes to the wrong feature (03, 05, real_02);
+  - real_02: which end face the lengths are measured from. The model switches between the right reading
+    (Ø20 L14, Ø25 L30, bore L16, thread L28) and 16 / 28 / 14 / 30, on every prompt;
+  - real_03: the dimension chain (3.5 / 8 / 3.5 / 1.5 / 8) is not read, and the relief Ø8 L1.5 is
+    missing in 9/9 runs on all prompts.
 - Hex (commits 232e296 … ed561db):
   - Feature type `hex`: `diameter` across corners, `across_flats` S. If one is missing, the code
     computes it and marks it "check". With both given, D need not equal S/cos 30°: warn only if D < S
@@ -52,23 +56,22 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
   - Hex bar stock: sizes on the Machine page, `Job.blank_shape` round/hex. A hex bar is suggested only
     when the hex is in stock and every other diameter is ≤ S. If S is tighter than h11, the flats are
     milled.
-  - In the features prompt since f8da656 (`b423ae0e` → `ae696380`), with the chamfer-circle rule since d3b0b82
-    (→ `dd7fd70a`):
+  - In the features prompt since f8da656, current version `ae696380` (b0b174d):
     - hex type and `across_flats` (0 = none, converted to None on input);
     - a rule: one hex feature, not also an od_turn;
-    - a chamfer given with the hex's S or corners is put on the corners by the code;
-    - a Ø on the end view on the circle tangent to the flats is S; diameter only if a Ø is explicitly on
-      the corners.
-  - NOT MEASURED YET. The step-3 eval waits for the user's separate "так". Plan (23 calls):
-    - 08–11 ×3;
-    - real_03 ×3;
-    - 01–07 ×1 and real_02 ×1 regression.
-  - Success criteria:
-    - hex found in ≥11/12 runs on 08–11 and S right;
-    - hex recorded as od_turn 0 times on 08–11;
-    - hex found on real_03;
-    - lengths of 10 and real_03 on their own line in the report;
-    - no regression over one run on 01–07 and real_02.
+    - a chamfer given with the hex's S or corners is put on the corners by the code.
+  - Measured (reports: `instance/eval_results_hex_*.md`, `instance/eval_results_regr_summary.md`):
+    - hex works: found in 12/12 runs on 08–11 and recorded as od_turn 0 times. 08–10 and the 01–07
+      regression were measured on `dd7fd70a`, which is `ae696380` plus the chamfer-circle sentence;
+    - the chamfer-circle sentence ("a Ø on the circle tangent to the flats is S") did not help: S right
+      on 11 in 1/3 runs with it and 0/3 without; on real_03 0/3 on both. It was removed (b0b174d).
+      real_03 was not an independent check of it anyway (written after reading real_03);
+    - the code check "hex Ø..: probably S.. on the chamfer circle" with the "this is S" button on the
+      review screen flags every misread run (11 and real_03) and no correct one;
+    - no real_02 regression: the old prompt `b423ae0e` also reads the wrong lengths in 2/3 runs. This
+      is an old instability of that drawing, not the hex rule;
+    - output tokens: the answer is 5–13% longer (the across_flats field). Thinking varies from run to
+      run on every prompt; the doubling seen in single runs did not hold up over 3 runs.
   - Synthetic hex drawings: 08_hex_s_only, 09_hex_d_and_s (D 19.4 ≠ S/cos 30°), 10_hex_middle,
     11_hex_chamfer_circle (S16 only as Ø16 on the chamfer circle).
     10 is built like real_03, so they are not independent evidence (noted in the eval report).
