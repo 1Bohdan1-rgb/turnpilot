@@ -298,7 +298,7 @@ _FEATURE_SCHEMA = {
             "mm. od_turn/bore: the section diameter. groove: the groove BOTTOM diameter. "
             "thread: the major (nominal) diameter. chamfer: the diameter whose edge is chamfered. "
             "taper: the diameter at the END of the taper (smaller or larger). fillet: null. "
-            "hex: the diameter across corners only if a Ø is explicitly on the corners, else null.",
+            "hex: the diameter across corners only if it is dimensioned, else null.",
         ),
         "start_diameter": _nullable(
             "number",
@@ -329,8 +329,8 @@ _FEATURE_SCHEMA = {
         "radius": _nullable("number", "mm. fillet only: the radius (10 for R10). null for other types."),
         "across_flats": {
             "type": "number",
-            "description": "mm. hex only: the size across flats S (17 for S17, or a Ø on the circle tangent "
-                           "to the flats). 0 for other types or if not on the drawing.",
+            "description": "mm. hex only: the size across flats S (17 for S17). 0 for other types or if not "
+                           "on the drawing.",
         },
         "location": {
             "type": "string",
