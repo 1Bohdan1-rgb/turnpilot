@@ -109,6 +109,7 @@ THREADED_SHAFT = [  # 02_threaded_shaft as drawn: 60, 30, 90, groove 3 x Ø17, M
 def test_review_of_a_cad_pdf_marks_computed_lengths(app, client):
     page = _review(app, client, "02_threaded_shaft.pdf", THREADED_SHAFT)
     assert "computed as 30 − 3 from its dimensions" in page  # Ø20 L27: 30 minus the groove
+    assert '<span class="formula small">= 30 − 3</span>' in page  # visible next to the badge, not only on hover
     assert "is not on the drawing" not in page and "on the drawing is not used" not in page
 
 

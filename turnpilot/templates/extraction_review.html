@@ -142,6 +142,7 @@
               title="Not on the drawing: computed from the hex size across flats (D = S / cos 30°). Check it.">check</span>{% endif %}
             {% if key == "length" and row.length_computed and not row.length_derived %}<span class="badge badge-check"
               title="Not written on the drawing: computed as {{ row.length_computed }} from its dimensions. Check it.">check</span>{% endif %}
+            {% if key == "length" and row.length_computed %}<span class="formula small">= {{ row.length_computed }}</span>{% endif %}
             {% if key == "length" and row.length_ambiguous %}<span class="badge badge-check"
               title="The dimensions allow a second reading of this length (with or without the groove next to it). Check the extension lines on the drawing.">check</span>
             {% elif key == "length" and row.length_derived %}<span class="badge badge-check"
