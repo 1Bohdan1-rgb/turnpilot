@@ -82,6 +82,18 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
   in-sample. test_01/test_02 were the only independent check, and they failed at the axis. Once the
   general fixes (axis from the centre line / symmetry, outside arrows) are made looking at test_01/02,
   those become in-sample too.
+- Version 3 (`bind_prototype_v3.py`, scratchpad), two general techniques plus two fixes inside them:
+  - the axis comes from the dash-dot centre line (a dash pattern of 4+ numbers spanning the part).
+    Without one (KOMPAS draws it as plain pieces) it comes from the contour's symmetry: midpoints of
+    pairs of thick horizontal lines, with candidates closer than 0.3 pt merged;
+  - a dimension runs between the tips of the two arrow heads on its line (tip = narrow end; touching
+    filled pieces are merged first, since KOMPAS draws a head as two halves). This also finds short
+    dimensions with the arrows outside;
+  - result, with all four drawings now in-sample:
+    - real_02, real_03, test_01: steps 2–4 right (real_02 still 5/5 caught, 0/4 false alarms);
+    - test_02: 10/10 dimensions and 6 of 7 turned sections. Ø38 L50 is split 7 + 36 + 7 by the keyway
+      seen in the upper half of the contour (an envelope of both halves would fix it; not done).
+      Internal features shown with hidden lines are not found.
 - Stop rule (from the user): on new drawings the prototype has not seen, if it breaks on the basic steps
   again (dimension lines, scale, axis, sections), option A is stopped and recorded as a conclusion.
 - Option B (numbers with coordinates in the prompt) was not tried. It would not solve the binding by
