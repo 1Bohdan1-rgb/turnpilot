@@ -98,6 +98,25 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
   again (dimension lines, scale, axis, sections), option A is stopped and recorded as a conclusion.
 - Option B (numbers with coordinates in the prompt) was not tried. It would not solve the binding by
   itself, since the model already reads the numbers right; it needs a prompt change and paid runs.
+- **Option A is STOPPED (2026-10-01) by the stop rule.**
+  - Run: `bind_prototype_v3.py` unchanged (md5 befbc789285eb7e1f1d9071421874848) on new drawings it had
+    not seen. The basic steps broke on 2 of 3 drawings:
+
+    | Drawing | Step 2: dims, scale | Axis | Step 3: sections | Step 4: binding |
+    |---|---|---|---|---|
+    | test_03 bushing | 4/4, 2:1 | centre line | outer right; inner without chamfers | 3/4 (15 not bound) |
+    | test_04 axle | **0/6: open arrows (two lines)** | — | — | — |
+    | test_05 screw | 5/5, 2:1 | symmetry | outer 4/4; **phantom inner Ø7.49 from the hex edge lines** | 3/5 (7 ambiguous, S13 on the other view) |
+
+  - Long tail: each new drawing brought a new kind of failure (open arrows, inner chamfers, hex edge
+    lines, a dimension on another view). Unambiguous binding: 0 of 3.
+  - Caveat: test_03–05 are synthetic (generated in chat), not a hold-out of real drawings.
+- What stays in the product: stage 1 only (`pdf_text.py` + `number_check.py`). The machinist checks the
+  binding on the review screen.
+- Deferred: a narrow mode "warn only when everything is recognised unambiguously". On the new drawings
+  it would have bound 0 of 3, i.e. stayed silent.
+- `bind_prototype_v3.py` and `v3_new.txt` stay in the session scratchpad for reference only. They are
+  not to be moved into the product.
 
 ## Deferred
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
