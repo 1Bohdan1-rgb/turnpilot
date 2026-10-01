@@ -60,6 +60,33 @@ in-sample: keep the hold-out drawings untouched until they are measured.
 - real_02 and real_03 expected answers mark their computed lengths (length_derived: real_02 L30 and L28,
   real_03 L8 and L1.5); these files are local only.
 
+## Number check, stage 2: binding numbers to sections (prototype, 2026-10-01)
+Option A: the code reads the dimension lines and the contour from the PDF geometry and binds each
+number to the section it spans. The prototype is NOT in the repo: it lives in the session scratchpad
+(`bind_prototype.py`, `bind_prototype_v2.py`).
+- What works:
+  - step 2 on all 4 drawings tried: dimension lines (thin horizontal line, arrow at both ends, number
+    above) and the scale (line length / number, spread ≤ 0.07 pt/mm, matches the title block). This
+    also holds on the 2 synthetic drawings by another author (not KOMPAS, other line widths).
+  - real_02: profile and binding right (14 → Ø20, 16 → bore). On the 9 saved runs it catches 5/5
+    wrong runs (incl. the mirrored reading that stage 1 misses) with 0/4 false alarms.
+  - real_03 (after extending v2 while looking at it): 5/5 sections right, incl. the recess L8 and the
+    relief L1.5 that the model never read, and the hex Ø15.01 across corners; 7/7 dimensions bound.
+    Not done: the Ø5 through bore.
+- What does not work (found on test_01/test_02 from another author, before they were looked at):
+  - the axis is taken from the points where KOMPAS splits the end-face lines into two halves. Other CAD
+    systems draw them whole, so there is no axis and the profile is never built;
+  - short dimensions drawn with the arrows outside and the line extended (3, 4, 7 on test_02) are not
+    recognised.
+- In-sample caveat: v1 was written looking at real_02 and v2 at real_03, so their success there is
+  in-sample. test_01/test_02 were the only independent check, and they failed at the axis. Once the
+  general fixes (axis from the centre line / symmetry, outside arrows) are made looking at test_01/02,
+  those become in-sample too.
+- Stop rule (from the user): on new drawings the prototype has not seen, if it breaks on the basic steps
+  again (dimension lines, scale, axis, sections), option A is stopped and recorded as a conclusion.
+- Option B (numbers with coordinates in the prompt) was not tried. It would not solve the binding by
+  itself, since the model already reads the numbers right; it needs a prompt change and paid runs.
+
 ## Deferred
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
   question: does the code's solver remove the end-face confusion? Expectation: probably not. The
