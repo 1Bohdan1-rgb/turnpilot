@@ -118,6 +118,40 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
 - `bind_prototype_v3.py` and `v3_new.txt` stay in the session scratchpad for reference only. They are
   not to be moved into the product.
 
+## Run disagreement as an uncertainty signal (analysis, 2026-10-02)
+- Hypothesis: read each drawing N=3 times and mark a section's length "check" when the runs disagree.
+- Measured on saved runs only, no calls, nothing in the product (script and table in the session
+  scratchpad: `run_disagreement.py`, `run_disagreement.md`).
+  - Data: 24 groups of the same drawing, prompt and mode, with 2–3 runs.
+  - Unit: one expected section with a length, in one run. Flagged when the group's runs give it
+    different lengths (missing counts as its own value).
+- Results:
+
+  | Mode | Section×run | Wrong | Caught | Missed (runs agree) | False alarms | Flag precision |
+  |---|---|---|---|---|---|---|
+  | features | 253 | 102 | 70 (69%) | 32 | 34 (23% of right) | 67% |
+  | dims | 108 | 52 | 43 (83%) | 9 | 14 (25% of right) | 75% |
+
+- It catches unstable errors, i.e. what stage 1 cannot:
+  - real_02's mirrored reading: 8/8 on prompts b423ae0e and dd7fd70a;
+  - no flags where the model is stably right (08–11, real_02 on ae696380).
+- It misses systematic errors, where every run is wrong in the same way (31% of wrong lengths in
+  features):
+  - 06 Ø48/thread L20 instead of 16;
+  - real_03: the relief missing in 9/9 runs; thread L9.5.
+  Agreement is not correctness.
+- A "false alarm" here is a right run flagged because another run differs: the section is genuinely
+  unstable, so "check" is not useless there.
+- Caveats:
+  - few groups and only 2–3 runs, so the rates are rough;
+  - 3 real drawings, and the synthetic ones are simpler;
+  - some real triples are assembled from several runs with the same prompt (real_03 b423ae0e includes
+    extraction 24 from the app).
+- Cost: N=3 is 3× the calls and tokens per drawing (real_03: ~60k output tokens instead of ~20k), and
+  3× the time unless the runs are parallel.
+- Status: a candidate "check" signal, complementary to stage 1 (which catches different errors). Not
+  implemented; the next step (a paid measurement or a product change) needs the user's decision.
+
 ## Deferred
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
   question: does the code's solver remove the end-face confusion? Expectation: probably not. The
