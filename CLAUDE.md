@@ -152,6 +152,25 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
 - Status: a candidate "check" signal, complementary to stage 1 (which catches different errors). Not
   implemented; the next step (a paid measurement or a product change) needs the user's decision.
 
+## Combined "check" signal: stage 1 OR run disagreement (analysis, 2026-10-02)
+- Measured on the same 24 groups of saved runs, no calls, nothing in the product (scratchpad:
+  `combined_signal.py`, `combined_signal.md`).
+  - Stage 1 flag of a section = what the review row shows: "check: computed as a − b" or "length X is not
+    on the drawing".
+- **Criterion (≥ 85% caught, ≤ 30% false alarms) NOT met: 73% caught, 35% false alarms** (CAD PDFs with
+  text: 88 of 120 wrong lengths caught; 72 false alarms on right lengths).
+  - Counting the drawing-level "N on the drawing is not used" as a check on every length of the run gives
+    98% caught, but 44% false alarms: almost every length of an unstable drawing gets flagged.
+- Stage 1 at section level adds nothing to run disagreement: 0 wrong lengths caught by stage 1 alone.
+  Its section flags fire mostly on right computed lengths (by design: computed values are to be checked).
+- Run disagreement is the only working signal: 69% caught in features, 83% in dims.
+- Not caught by any method (32 in CAD PDFs, 9 without text): systematic errors, the same in every run:
+  - a real number of the drawing bound to the wrong section (06 Ø48/thread L20 instead of 16;
+    real_03 thread L9.5 instead of 8);
+  - a section left out (real_03: the relief Ø8 L1.5, the hex length, the bore Ø5 length).
+  This is the stage 2 class (binding), and stage 2 option A is stopped.
+- Decision: no paid measurement of N=3 runs. Nothing changed in the product.
+
 ## Deferred
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
   question: does the code's solver remove the end-face confusion? Expectation: probably not. The
