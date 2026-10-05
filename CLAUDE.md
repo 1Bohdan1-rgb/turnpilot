@@ -217,6 +217,40 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
 - Status: probe only. No prototype of the binding, nothing in the product. The next step needs the
   user's decision.
 
+## DXF binding prototype (scratchpad, 2026-10-05)
+- Goal: build the outer profile (sections: type, Ø, length) from a KOMPAS DXF and bind every DIMENSION to
+  its section(s) by the x of its defpoints. The prototype is `dxf_bind.py` in the session scratchpad. It
+  is not in the product; there are no API calls; nothing from `real_dxf/` is committed.
+- Plan agreed with the user:
+  - Development on `деталь 1` and `НД 012` only.
+  - Control: `Завіса 36`, variant (a). It is PARTLY SEEN: its dimension list and a render were looked at
+    during the DXF probe, so it is not blind. A new DXF that has not been opened becomes the main control.
+  - Expected answers are written by the user by hand in `real_dxf/<name>.etalon.md`, not generated from
+    the DXF.
+  - Scope is the outer profile only. Inner dimensions are listed apart as "not bound (inner)" and are
+    not counted.
+  - Success on Завіса 36: for each of its two parts, ≥ 90% of the dimensions bound to the right section,
+    and every "geometry ≠ text" dimension flagged.
+  - Stop if any basic step breaks on Завіса 36 (axis, splitting the parts, sections, binding).
+  - Arcs get the type "arc".
+  - The script's md5 is fixed before the control run.
+- `деталь 1` (development drawing, so IN-SAMPLE):
+  - 6/6 sections match the expected answer: Ø30 L10, taper Ø30→Ø22 L5, groove Ø20 L2, thread M22 L21 with
+    a 1×45° chamfer on the right, od_turn Ø20 L2, arc R10 L10.
+  - 10/10 dimensions bound right: 50 / 40 / 35 / 2 / 12 to boundaries; Ø30, Ø22, Ø20 and M22 to sections;
+    R10 to the arc. The thread type is set from the M in the dimension text. No "geometry ≠ text" flags.
+- Two general fixes made during development:
+  - contour connectivity also counts T-junctions: a groove bottom meets the steps in their middle;
+  - a dimension belongs to the part whose x range covers its defpoints, and the nearest axis decides
+    between several parts. KOMPAS starts the second extension line of a baseline dimension on the
+    previous dimension line (e.g. y −27.4 on an Ø30 part), so "defpoints within the radius" rejected
+    50 / 40 / 35. Without this fix the score was 7/10.
+- Not exercised yet:
+  - the "nearest axis" rule with several parts (Завіса 36 will be the first);
+  - inner profiles (out of scope);
+  - angular dimensions.
+- Next: the user's expected answer for `НД 012`. Then the control run on Завіса 36.
+
 ## Deferred
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
   question: does the code's solver remove the end-face confusion? Expectation: probably not. The
