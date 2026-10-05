@@ -222,3 +222,5 @@ __marimo__/
 
 # Real drawings and their expected answers stay local (copyright); eval still uses them
 tests/fixtures/drawings/real_*
+# real DXF drawings (copyright): local only, like real_*
+real_dxf/
