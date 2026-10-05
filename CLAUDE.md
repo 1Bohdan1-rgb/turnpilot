@@ -171,6 +171,52 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
   This is the stage 2 class (binding), and stage 2 option A is stopped.
 - Decision: no paid measurement of N=3 runs. Nothing changed in the product.
 
+## DXF instead of PDF (probe, 2026-10-05)
+- Hypothesis: read the dimensions from DXF, where a dimension is a DIMENSION entity with its value and
+  its anchor points (defpoints). The binding to the geometry is then already in the file.
+- Data: 3 real KOMPAS DXF files in `real_dxf/` (gitignored since 0994e80, local only, copyright):
+  `деталь 1`, `Завіса 36`, `НД 012`. They are new parts, not real_02/real_03; there are no expected
+  answers and no model runs for them yet.
+- Tools: `ezdxf` 1.4.4 is installed in the venv for the scratchpad only (not in requirements.txt).
+  Scratchpad: `dxf_probe.py` / `dxf_probe.txt` (read-only probe), `dxf_render.py` (PNG previews saved
+  next to the DXF files, gitignored).
+- Findings:
+  - Format: DXF AC1021, codepage ANSI_1251, mm ($INSUNITS 4). KOMPAS shows in appid `KOMPAS` and the
+    linetypes K5LT_THIN / K5LT_BASIC / K5LT_AXLED. Model space is at 1:1.
+  - Dimensions are kept as DIMENSION entities (not exploded): 10 / 26 / 19, 55 in all.
+    - Lengths are linear dimensions at 0°; diameters are linear at 90° with Ø in the text (no DIAMETER
+      type); there are a few radius dimensions; chamfers ("1×45°") are linear on the leg.
+    - Defpoints are present everywhere: 13/14 in every linear dimension, 10/15 in every radius one.
+  - Field 42 is −1 in every dimension, so the value must be computed from the defpoints: for a linear
+    dimension, the projection of 13→14 on the angle (50); for a radius one, the distance from 10 to 15.
+  - The dimension text is in the `*D…` block, as several TEXT pieces ("Ø" | "30", "М" | "22" | "×" |
+    "1,5-6g") that must be joined. KOMPAS symbol codes:  = Ø,  = ×,  = ±. Threads
+    use a Cyrillic М.
+  - Computed value = text in 54 of 55 dimensions. The one exception: Завіса 36 `Ø22+0,21`, where the
+    geometry is drawn at 21.8. Such a dimension is to be flagged, not trusted.
+  - Centre lines: K5LT_AXLED, horizontal, in all three files (Завіса 36 has two). The contour is
+    symmetric about them: 100% / 100% and 93% / 100% of the K5LT_BASIC lines.
+  - All three are turned parts:
+    - деталь 1: head Ø30 with a cone, Ø22, M22×1.5-6g, a spherical end R10, lengths from the right face;
+    - Завіса 36: TWO different parts on one sheet, not two views: a bushing in section (blind bore
+      Ø22+0,21 × 32, length 80) and a pin (Ø22−0,21, length 112). Dimensions repeat because the parts
+      share diameters. It has to be split by the centre lines;
+    - НД 012: a formed profile with arcs R12.5 (concave), R20.46 (convex), R2.5, and an Ø45 holding stub
+      with no length dimension. The arcs do not fit the simple section types (closest: fillet / taper).
+  - Rendering (ezdxf drawing add-on): the Ø, × and ° glyphs show as boxes, since the font lacks the KOMPAS
+    codes (in the PNG only; the DXF text is right). Three INSERT blocks of Завіса 36 crash ezdxf
+    (zero-length MTEXT direction): the title block, the general roughness 6.3 and the note "H12, h12,
+    ±IT12/2". They are drawn entity by entity and skipped.
+- What this means: the basic steps that broke option A on PDFs (finding arrows, dimension lines, scale,
+  axis) come straight from the file, and binding by the x of defpoints 13/14 looks direct.
+- Not yet shown:
+  - only KOMPAS DXF so far;
+  - no expected answers;
+  - no catch / false-alarm measurement (that needs model runs on these parts, which are paid);
+  - multi-part sheets and formed arcs need handling.
+- Status: probe only. No prototype of the binding, nothing in the product. The next step needs the
+  user's decision.
+
 ## Deferred
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
   question: does the code's solver remove the end-face confusion? Expectation: probably not. The
