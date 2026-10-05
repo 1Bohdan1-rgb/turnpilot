@@ -249,7 +249,44 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
   - the "nearest axis" rule with several parts (Завіса 36 will be the first);
   - inner profiles (out of scope);
   - angular dimensions.
-- Next: the user's expected answer for `НД 012`. Then the control run on Завіса 36.
+- `НД 012` (development drawing, so IN-SAMPLE). The expected answer was corrected by the user after the
+  geometry showed it:
+  - section 0 is a stock Ø50 (not machined, no length) and section 1 is Ø45 L5 with a transition R2.5 on
+    the right;
+  - Ø38,5 (left) is the start of the R12.5 arc.
+  - Result: 18/18 dimensions bound right (Ø45 left out: its row still points at section 0, the stock).
+  - Sections by x: 5 of 6 match. Expected section 4 "arc R20,46" (x 69–89) is drawn as an arc R51.61
+    (69–79) plus a taper Ø35→Ø30 (79–89).
+- `деталь 1` rerun with the final code: still 6/6 sections and 10/10 dimensions.
+- Drawing ≠ dimension (found in НД 012 and flagged by the code; not binding errors):
+  - the point of R20,46 lies on a drawn arc of radius 51.61, followed by a straight taper;
+  - Ø35 stands at x 77, where the contour is Ø36.03.
+- General rules in `dxf_bind.py` (none tuned to a part):
+  1. Contour connectivity counts T-junctions.
+  2. A dimension belongs to the part whose x range covers its defpoints; the nearest axis decides
+     between parts.
+  3. Sections run face/step to face/step:
+     - a 45° diagonal with a leg ≤ 3 mm next to a flat is a chamfer of that flat;
+     - other diagonals are tapers;
+     - a cylinder narrower than both neighbours is a groove.
+  4. A transition arc (tangent to a flat at one end and, at the other, to a real vertical step off the
+     axis) is a fillet R at the boundary, not a section. Other arcs (e.g. a spherical end on the axis)
+     are sections of type "arc".
+  5. Length: the x of both ends; an end inside a section is reported as "inside section k".
+  6. Diameter: the section whose radius at the dimension's x equals the value, arcs included.
+     - On a boundary: the closest radius; if equally close, the constant-diameter section; else
+       ambiguous.
+     - If the defpoints are not on the contour and there is no inner contour there: the outer section at
+       x, flagged "Ø ≠ contour".
+  7. Radius: the arc or fillet its point (defpoint 15) lies on, flagged when the drawn radius differs.
+  8. Chamfer: the chamfer of the section under its defpoints. M in the text makes the section a thread.
+  9. Comparison is by geometry: the expected boundaries are placed in x by the expected lengths;
+     - the stock is left out;
+     - a diameter/radius is right when our section lies within the expected one;
+     - duplicate texts are paired by agreement first.
+- Current script md5: 5a3b83768e9a20a82015999e0ae2fc13 (not frozen yet; it is frozen before the control
+  run).
+- Next: the control run on Завіса 36 (partly seen, see above). Nothing in the product.
 
 ## Deferred
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
