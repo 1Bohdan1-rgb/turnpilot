@@ -403,6 +403,24 @@ Commits b0393ad, 895848e. Plan agreed with the user.
   n·P 2875.5. Without a limit both get the warning; with an illustrative 2000 mm/min both go to 1333.
 - Existing tests did not change.
 
+## Spindle power check of roughing (2026-10-06)
+Commits 7fd8d86, 661b3fb. Plan agreed with the user (all three defaults).
+- Data: `Material.kc1 / mc / kc_source` (Materials section on the Machine page) and
+  `Machine.drive_efficiency` (optional, empty in the seed); migration 09577df41fd1, DB backup
+  `instance/turnpilot.db.bak-2026-10-06-before-power`. The migration also fills the seed materials of an
+  existing DB by name.
+- Seed kc1 / mc (C45 1600 / 0.25, AISI 304 2000 / 0.21, 6061 600 / 0.25) are catalogue-type values written
+  from memory, marked PLACEHOLDER in kc_source and NOT verified against a catalogue. The user is to replace
+  them with the values of the catalogue in use.
+- `planner._check_rough_power` (turning_rough only): Pc = Vc·ap·f·kc/60000, kc = kc1·f^−mc (κr taken as 90°),
+  Vc actual from n. Above power × efficiency: ap reduced (more passes), Vc / f unchanged, note; below the
+  tool's ap_min: warning "reduce f or Vc". No kc / efficiency / power: warning, no change. `plan_job(...,
+  power=None)` (direct planner calls) is not checked, so existing tests did not change.
+- Example (C45 placeholder kc ≈ 2012 at f 0.4, Vc 200, illustrative η 0.8 → 8.8 kW): НД 012 §1 6.17,
+  §2 6.17, §4 8.18, §8 Ø24 9.56 kW → 2 × 3.562 becomes 3 × 2.375 (6.37 kW); Завіса 36 Ø34.8 3.76 kW,
+  pin §6 Ø22 8.32 kW (unchanged). With the seed (no efficiency) every roughing operation gets the warning.
+- Not done: facing, boring, grooving and parting power; the entering angle per tool.
+
 ## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
 - Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
   answers are written by the user by hand before the run.
@@ -422,7 +440,7 @@ Commits b0393ad, 895848e. Plan agreed with the user.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 638 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 653 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

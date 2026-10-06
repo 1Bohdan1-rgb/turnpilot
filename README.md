@@ -40,6 +40,13 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   diameter it is cut to. Grooves, tapers, arcs and fillets are passed over. A section narrower than both
   neighbours is not guessed: it gets **check** and is roughed from the bar. A largest Ø between smaller
   sections gets a note that the part is machined from both sides (re-chucking is not planned).
+- **Spindle power of roughing:** `Pc = Vc * ap * f * kc / 60000` kW, with `kc = kc1 * f^-mc` of the
+  job's material (entering angle taken as 90°) and the actual Vc (after the max RPM cap). It is compared
+  with the machine's power × drive efficiency (Machine page). Above it the passes get thinner (more of
+  them), Vc and f stay; if even the tool's `ap_min` is too much, a warning asks to reduce f or Vc. Within
+  it, a note shows Pc and where kc comes from. kc1 / mc are edited per material on the Machine page; the
+  seed values are catalogue-type **placeholders, not verified**. Without kc, efficiency or power: a
+  warning, no change. Facing, boring, grooving and parting are not checked yet.
 - **Finishing:** Vc near `vc_max`, ap = `ap_min`, feed from the target roughness
   `f = sqrt(Ra * 32 * r_eps / 1000)` (Ra in µm, nose radius r_eps from the insert code),
   clamped to the tool's `f_min..f_max`.
