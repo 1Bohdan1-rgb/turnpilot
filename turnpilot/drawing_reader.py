@@ -11,6 +11,7 @@ import json
 import logging
 import math
 import os
+import re
 from dataclasses import dataclass, field
 
 import anthropic
@@ -167,8 +168,15 @@ class ExtractionResult:
     model: str
 
 
+# A text DXF starts with group code 0 and SECTION, possibly after 999 comment lines; a binary one has a header.
+DXF_TEXT_START = re.compile(rb"\A(?:\s*999\r?\n[^\n]*\n)*\s*0\r?\nSECTION\r?\n")
+DXF_BINARY_START = b"AutoCAD Binary DXF"
+
+
 def detect_file_type(data: bytes) -> str | None:
-    """Identify PNG / JPEG / PDF by their file signature ("magic bytes")."""
+    """Identify PNG / JPEG / PDF / DXF by their file signature ("magic bytes")."""
+    if data.startswith(DXF_BINARY_START) or DXF_TEXT_START.match(data[:4096]):
+        return "dxf"
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "png"
     if data.startswith(b"\xff\xd8\xff"):

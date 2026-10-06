@@ -12,7 +12,7 @@ class DefaultConfig:
 
     # --- drawing upload ---------------------------------------------------
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # bytes; larger uploads get HTTP 413
-    ALLOWED_DRAWING_EXTENSIONS = ("png", "jpg", "jpeg", "pdf")
+    ALLOWED_DRAWING_EXTENSIONS = ("png", "jpg", "jpeg", "pdf", "dxf")  # dxf: KOMPAS-3D, read by the code
 
     # --- Claude vision ----------------------------------------------------
     ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")

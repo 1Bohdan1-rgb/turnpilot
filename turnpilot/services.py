@@ -7,7 +7,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from . import drawing_reader, pdf_text, planner
+from . import drawing_reader, dxf_input, dxf_reader, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
 from .models import DrawingExtraction, Edit, Machine, Operation, TurretSlot, db
 
@@ -18,7 +18,10 @@ MATERIAL_ALIASES = {
     "Aluminium 6061": ("aluminium 6061", "aluminum 6061", "6061", "en aw-6061", "almg1sicu"),
 }
 
-FILE_TYPE_BY_EXTENSION = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "pdf": "pdf"}
+FILE_TYPE_BY_EXTENSION = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "pdf": "pdf", "dxf": "dxf"}
+
+# The code that reads a DXF (reader + its mapping to rows): recorded as the "prompt version" of a DXF reading.
+DXF_SOURCES = (dxf_reader.__file__, dxf_input.__file__)
 
 # A second upload of a file that is still being read within this time is rejected (double submit).
 IN_FLIGHT_SECONDS = 120
@@ -349,6 +352,8 @@ def read_drawing(filename, data, instance_path, config, client=None, force=False
     """
     name, extension, file_type = check_upload(filename, data, config["ALLOWED_DRAWING_EXTENSIONS"])
     sha256 = hashlib.sha256(data).hexdigest()
+    if file_type == "dxf":
+        return read_dxf(name, extension, data, sha256, instance_path)
     model = config["ANTHROPIC_MODEL"]
     mode = config.get("DRAWING_READ_MODE", drawing_reader.DEFAULT_READ_MODE)
     version = drawing_reader.prompt_version(mode)  # differs per mode, so modes never share a cache
@@ -399,6 +404,63 @@ def read_drawing(filename, data, instance_path, config, client=None, force=False
         extraction.parsed = result.data.model_dump_json()
     db.session.commit()
     return extraction
+
+
+def dxf_code_version():
+    """"dxf:" + 12 hex digits of the reader's and the mapping's source: which code read a DXF."""
+    digest = hashlib.sha256()
+    for path in DXF_SOURCES:
+        with open(path, "rb") as f:
+            digest.update(f.read().replace(b"\r\n", b"\n"))  # the same on a CRLF checkout
+    return "dxf:" + digest.hexdigest()[:12]
+
+
+def read_dxf(name, extension, data, sha256, instance_path):
+    """Store an uploaded DXF and read it with the code (no model, no API call).
+
+    One DrawingExtraction per part on the sheet (dxf_part = 1, 2, ...), each with its own DrawingData and
+    binding report; the first one is returned. A file with no readable part gives one "failed" row.
+    """
+    stored = f"{uuid.uuid4().hex}.{extension}"
+    path = os.path.join(drawings_dir(instance_path), stored)
+    with open(path, "wb") as f:
+        f.write(data)
+    common = dict(original_filename=name, stored_filename=stored, file_type="dxf", size_bytes=len(data),
+                  sha256=sha256, prompt_version=dxf_code_version(), read_mode="dxf")
+    try:
+        results = dxf_input.part_results(dxf_reader.read_dxf(path))
+    except dxf_reader.DxfReadError as exc:
+        results, error = None, str(exc)
+    except Exception as exc:  # a malformed file must leave a record, not a 500
+        results, error = None, f"The DXF file cannot be read: {type(exc).__name__}: {exc}"
+    if not results:
+        extraction = DrawingExtraction(**common, status="failed", error=error)
+        db.session.add(extraction)
+        db.session.commit()
+        return extraction
+    extractions = [
+        DrawingExtraction(**common, status="extracted", dxf_part=n, parsed=result.data.model_dump_json(),
+                          binding=json.dumps(result.report, ensure_ascii=False))
+        for n, result in enumerate(results, start=1)
+    ]
+    db.session.add_all(extractions)
+    db.session.commit()
+    return extractions[0]
+
+
+def dxf_parts(extraction):
+    """All extractions of the same uploaded DXF sheet, in part order (the extraction itself if it is alone)."""
+    if not extraction.is_dxf:
+        return [extraction]
+    return db.session.execute(
+        db.select(DrawingExtraction)
+        .filter(DrawingExtraction.stored_filename == extraction.stored_filename, DrawingExtraction.read_mode == "dxf")
+        .order_by(DrawingExtraction.dxf_part)
+    ).scalars().all()
+
+
+def dxf_report(extraction):
+    return json.loads(extraction.binding) if extraction.binding else None
 
 
 def read_again(extraction, instance_path, config, client=None):
