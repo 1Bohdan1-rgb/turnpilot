@@ -81,6 +81,7 @@ class ToolSpec:
     ap_min: float
     ap_max: float
     insert_width: float | None = None  # grooving / parting inserts
+    diameter: float | None = None  # drills: the hole they make
 
 
 @dataclass(frozen=True)

@@ -11,6 +11,7 @@ FEATURE_TYPES = (
 TOOL_TYPES = (
     "facing", "turning_rough", "turning_finish", "grooving", "threading", "boring", "parting",
     "drilling", "tapping", "threading_internal", "milling",  # milling: a driven tool (live tooling)
+    "centre_drilling",  # a centre (spot) drill: starts every drilled hole
 )
 ISO_GROUPS = ("P", "M", "N")
 BLANK_SHAPES = ("round", "hex")
@@ -56,6 +57,7 @@ class Tool(db.Model):
     ap_min = db.Column(db.Float, nullable=False)
     ap_max = db.Column(db.Float, nullable=False)
     insert_width = db.Column(db.Float)  # mm, grooving / parting inserts
+    diameter = db.Column(db.Float)  # mm, drills: the hole they make
 
 
 class TurretSlot(db.Model):

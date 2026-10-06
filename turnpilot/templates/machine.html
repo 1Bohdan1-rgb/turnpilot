@@ -92,7 +92,7 @@
   <table>
     <thead>
       <tr><th>Name</th><th>Type</th><th>Insert</th><th>Grade</th><th>ISO</th>
-          <th>Vc, m/min</th><th>f, mm/rev</th><th>ap, mm</th><th>Width, mm</th></tr>
+          <th>Vc, m/min</th><th>f, mm/rev</th><th>ap, mm</th><th>Width, mm</th><th>Ø, mm</th></tr>
     </thead>
     <tbody>
     {% for tool in tools %}
@@ -102,6 +102,8 @@
         <td>{{ tool.vc_min|round(0)|int }}–{{ tool.vc_max|round(0)|int }}</td>
         <td>{{ tool.f_min }}–{{ tool.f_max }}</td>
         <td>{{ tool.ap_min }}–{{ tool.ap_max }}</td>
+        <td>{{ tool.insert_width if tool.insert_width is not none else "" }}</td>
+        <td>{{ tool.diameter if tool.diameter is not none else "" }}</td>
       </tr>
     {% endfor %}
     </tbody>
@@ -128,6 +130,7 @@
   <label>ap min <input name="ap_min" type="number" step="any" required></label>
   <label>ap max <input name="ap_max" type="number" step="any" required></label>
   <label>Insert width, mm (grooving/parting) <input name="insert_width" type="number" step="any" min="0"></label>
+  <label>Diameter, mm (drills) <input name="diameter" type="number" step="any" min="0"></label>
   <button type="submit">Add tool</button>
 </form>
 {% endblock %}

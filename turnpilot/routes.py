@@ -149,6 +149,7 @@ def add_tool():
                 grade=form.get("grade", "").strip(),
                 iso_group=iso_group,
                 insert_width=_number(form, "insert_width"),
+                diameter=_number(form, "diameter"),
                 **values,
             )
         )
