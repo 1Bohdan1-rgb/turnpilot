@@ -67,7 +67,8 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 
 ## Reading drawings with Claude
 
-**Upload drawing** (`/jobs/upload`) accepts PNG, JPG and PDF up to 10 MB. The file type is checked
+**Upload drawing** (`/jobs/upload`) accepts PNG, JPG and PDF up to 10 MB (and a KOMPAS-3D DXF, which
+is read by the code, not the model: see [Reading a KOMPAS DXF](#reading-a-kompas-dxf-no-model)). The file type is checked
 by extension *and* content, and the name is sanitized. For a PDF the first page is rendered to PNG
 (pymupdf) at the largest size the model reads in full. The model's limits are 2576 px on the long edge
 and 4784 visual tokens (one per 28×28 px patch); an image over either limit is downscaled here, with
@@ -99,7 +100,8 @@ editable form:
   "length derived from chain dimensions"); a narrow step next to a thread below its minor diameter
   is a thread relief groove;
 - tapers (start Ø, end Ø, length) and fillets (radius) are recognised and shown; the planner
-  lists them as "manual operation" without a tool;
+  lists them as "manual operation" without a tool (so does it for `arc`, a formed section that only the
+  DXF reader gives);
 - a hexagon is a `hex` feature: Ø across corners and S across flats (one of them is enough, the
   other is computed and marked *check*; the model sends S = 0 when there is none, which becomes
   empty). The planner turns Ø, then mills the flats with a driven tool (`milling`) or as a manual
@@ -192,10 +194,41 @@ python tools/eval_extraction.py
 pytest never calls the API: `tests/test_drawing_reader.py`, `tests/test_upload.py` and
 `tests/test_eval_scoring.py` use a fake client.
 
+## Reading a KOMPAS DXF (no model)
+
+A DXF keeps what a PDF loses: every dimension is a DIMENSION entity with its anchor points, and the
+contour, thin lines and centre lines have their own linetypes. So the code binds each number to the
+section it belongs to from the geometry of the file, with no API call.
+
+- `turnpilot/dxf_reader.py` (ezdxf, pinned to 1.4.4): finds the parts (one per horizontal centre line,
+  made of the contour symmetric about it), builds the outer profile (cylinders, grooves, tapers, arcs;
+  short 45° diagonals are chamfers, transition arcs are fillets), computes each dimension's value from
+  its anchor points and binds it: lengths by the x of their ends, Ø / R / chamfers to sections. A
+  dimension whose geometry differs from its text, or a Ø that is not on the drawn contour, is flagged.
+- `turnpilot/dxf_input.py`: turns each part into the usual `DrawingData` rows. Ø, tolerance, thread
+  pitch and class, chamfer leg and R come from the bound dimension's text, otherwise from the geometry
+  with a **check** note. Lengths are the distances between section boundaries, never corrected; the ones
+  no single dimension gives are marked **check** with the reason.
+- Upload: one extraction (and later one job) per part on the sheet. The review screen shows the table
+  "Dimensions → sections", the section (§) of each row, the dimensions behind it and the reasons for
+  every **check**, and links to the other parts of the sheet.
+
+What it does **not** do:
+
+- only KOMPAS-3D DXF files are supported (linetypes `K5LT_BASIC` / `K5LT_THIN` / `K5LT_AXLED`);
+  another CAD system's DXF is rejected with a message;
+- the inner profile (bores) is not read: its dimensions are listed as "inner profile: not read";
+- material, quantity, roughness and the blank are not taken from the DXF: the machinist fills them in;
+- a section that is not machined (the bar held in the chuck) is not recognised: untick it.
+
+How far it is measured: on three KOMPAS files only, two of them used to develop the rules (in-sample)
+and the third partly seen before its control run (bushing 9/9, pin 12/13 dimensions bound right). It
+has not yet been checked on DXF files it has never seen.
+
 ## Stack
 
 Python, Flask, SQLAlchemy (Flask-SQLAlchemy), Flask-Migrate (Alembic), SQLite, Jinja2 with plain CSS,
-Anthropic Python SDK, pydantic, pymupdf, python-dotenv, pytest. matplotlib and Pillow for the
+Anthropic Python SDK, pydantic, pymupdf, ezdxf, python-dotenv, pytest. matplotlib and Pillow for the
 test drawing generator only.
 
 ## Run
@@ -245,6 +278,8 @@ turnpilot/
   planner.py       pure planning logic (incl. blank suggestion, grinding check)
   drawing_reader.py  Claude vision: image preparation, request, response validation
   extraction_schema.py  record_part tool schema + pydantic models
+  dxf_reader.py    KOMPAS DXF: parts, outer profile, dimensions bound to sections (no model)
+  dxf_input.py     a DXF part as DrawingData rows + the binding report for the review screen
   config.py        settings: upload limit, model, bar sizes, allowances
   services.py      ORM <-> planner glue, edit logging, drawing upload
   routes.py        pages

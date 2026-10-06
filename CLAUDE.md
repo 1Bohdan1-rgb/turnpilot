@@ -8,6 +8,8 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
   rules), `services.py`, `routes.py`, `templates/`.
 - Drawing reading: `drawing_reader.py` (features mode, default), `dimensions_first.py`
   (`TURNPILOT_READ_MODE=dimensions_first`), `extraction_schema.py` (pydantic + strict tool schema).
+- DXF input (no model): `dxf_reader.py` (profile + binding, ported from the prototype), `dxf_input.py`
+  (rows + binding report). Tests build synthetic KOMPAS-like DXF files with `tests/dxf_drawings.py`.
 - `tools/generate_drawings.py` (synthetic drawings 01–07 + expected answers),
   `tools/eval_extraction.py` (real API eval, not part of pytest).
 - `migrations/` (Flask-Migrate, `render_as_batch=True`; name every FK), `tests/`.
@@ -319,14 +321,46 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
   - the part is parted off at the end of the overall dimension;
   - when turning the first diameter, the parting tool's width (~3 mm) is added to the length.
 
+## DXF input in the product (2026-10-06)
+DXF → sections → review → planner, as a second input next to the model. Commits 4e19eec … 5c1fafb.
+- `dxf_reader.py` is the prototype `dxf_bind.py` (md5 5a3b8376…) steps 1–5 with the same rules and
+  tolerances; SystemExit became `DxfReadError`. Equivalence, field by field against the prototype on
+  the 4 parts (деталь 1, НД 012, Завіса 36 bushing and pin): 100%, no difference (product md5
+  cb7a837c…, scratchpad `equivalence.py` / `equivalence.txt`, not in git).
+- `dxf_input.py`: Ø / tolerance / pitch / class / chamfer / R from the bound dimension's text, else from
+  the geometry with a note. Lengths = distance between section boundaries, never corrected;
+  `length_derived` when no single dimension gives it. A Ø dimensioned once for several sections is taken
+  with a note naming the section. Inner and unbound dimensions become warnings.
+- One `DrawingExtraction` per part (`dxf_part`, `binding` JSON; migration db9bd888d36a; DB backup
+  `instance/turnpilot.db.bak-2026-10-06-before-dxf`). `read_mode` "dxf", `model` empty,
+  `prompt_version` = "dxf:" + hash of the two modules. No API call.
+- Feature type `arc` (formed section: start Ø, end Ø, R, length), a manual operation in the planner.
+  It is NOT in the model's tool schema: the prompt versions stay ae696380 / e91adddb (a test checks it).
+- `ezdxf==1.4.4` pinned in requirements.txt.
+- Measured only in-sample / partly seen (see the prototype sections above). Not yet blind.
+- Seen on the demo server: on real sheets most lengths carry "check" (computed from a chain), since
+  KOMPAS drawings dimension from a base. The not-machined chucked section (НД 012 §1 Ø50) is a row to
+  untick by hand.
+
+## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
+- Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
+  answers are written by the user by hand before the run.
+- Code frozen before the run: md5 of `turnpilot/dxf_reader.py` and `turnpilot/dxf_input.py` recorded;
+  one run, no changes between freezing and the run.
+- Metric: the share of the outer-profile dimensions bound to the right section, summed over all the
+  new parts (inner dimensions are not counted).
+- ≥ 90%: DXF is confirmed as an input. Below 90%: DXF stays a prototype, and the code is NOT patched
+  for these files (they would become in-sample).
+
 ## Deferred
+- SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
   question: does the code's solver remove the end-face confusion? Expectation: probably not. The
   mirrored reading 16 / 28 / 14 / 30 sums to 44 like the right one, so a consistent wrong binding
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 565 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 591 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
