@@ -2,12 +2,40 @@
 {% block title %}Review drawing{% endblock %}
 {% block content %}
 <h1>Check the drawing data</h1>
+{% if extraction.is_dxf %}
+<p class="muted">
+  {{ extraction.original_filename }} · read from the DXF geometry by the code ({{ extraction.prompt_version }}), no model,
+  no API call · nothing is saved as a job until you press <strong>Confirm</strong>.
+</p>
+{% if dxf_parts|length > 1 %}
+<nav class="card dxf-parts" aria-label="Parts on this sheet">
+  <strong>{{ dxf_parts|length }} parts on this sheet</strong>, each becomes its own job:
+  <ul>
+  {% for p, r in dxf_parts %}
+    {% set label = r.label if r else "Part " ~ p.dxf_part %}
+    <li>
+    {% if p.id == extraction.id %}<strong>{{ label }}</strong> (this one)
+    {% elif p.status == "confirmed" and p.job_id %}<a href="{{ url_for('main.job_detail', job_id=p.job_id) }}">{{ label }}</a> (job created)
+    {% else %}<a href="{{ url_for('main.review_extraction', extraction_id=p.id) }}">{{ label }}</a>{% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</nav>
+{% endif %}
+<div class="flash dxf-note">
+  <strong>Read from a KOMPAS DXF:</strong> the outer profile and its dimensions only. Material, quantity, roughness
+  and the blank are not in the DXF: fill them in. Bores and other inner features are not read: add them by hand.
+  Each row shows its section (§) and the dimensions it was taken from; a value not given directly by a dimension
+  is marked <span class="badge badge-check">check</span>, with the reason under the row.
+</div>
+{% else %}
 <p class="muted">
   {{ extraction.original_filename }} · read by {{ extraction.model }}
   {% if extraction.prompt_version %}(prompt {{ extraction.prompt_version[:8] }}){% endif %}
   {% if extraction.read_mode and extraction.read_mode != "features" %}· mode {{ extraction.read_mode }}{% endif %} ·
   nothing is saved as a job until you press <strong>Confirm</strong>.
 </p>
+{% endif %}
 
 {% if extraction.is_cached %}
 <div class="flash cached-note">
@@ -43,12 +71,35 @@
 
 {% if data and data.warnings %}
 <div class="flash flash-error">
-  <strong>Model warnings:</strong>
+  <strong>{{ "DXF warnings" if extraction.is_dxf else "Model warnings" }}:</strong>
   <ul>{% for w in data.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
 </div>
 {% endif %}
 
 <div class="review-layout">
+  {% if extraction.is_dxf %}
+  <section class="card drawing-preview dxf-binding">
+    <h2>Dimensions → sections</h2>
+    <p class="muted small">Every dimension of this part in the DXF and what the code bound it to (by the x of its
+      anchor points; boundary 0 is the left face).
+      <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='original') }}">Original file</a></p>
+    <table class="dxf-dims">
+      <thead><tr><th>Dimension</th><th>Kind</th><th>Bound to</th></tr></thead>
+      <tbody>
+      {% for d in dxf_report.dims %}
+        <tr class="{% if d.inner %}dxf-inner{% elif not d.bound %}dxf-unbound{% endif %}">
+          <td>{{ d.text }}</td>
+          <td>{{ d.kind }}</td>
+          <td>
+            {% if d.inner %}inner profile: not read{% elif not d.bound %}⚠ not bound: {{ d.binding }}{% else %}{{ d.binding }}{% endif %}
+            {% for f in d.flags %}<div class="warning small">⚠ {{ f }}</div>{% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% else %}
   <figure class="card drawing-preview">
     <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='sent') }}" target="_blank">
       <img src="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='sent') }}" alt="Drawing as sent to the model">
@@ -58,6 +109,7 @@
       <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='original') }}" target="_blank">original file</a>
     </figcaption>
   </figure>
+  {% endif %}
 
   <form method="post" action="{{ url_for('main.confirm_extraction', extraction_id=extraction.id) }}" class="review-form">
     <div class="card grid-form">
@@ -123,13 +175,17 @@
     <div class="table-wrap">
     <table class="card review-table">
       <thead>
-        <tr><th>Use</th><th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Roughness, µm</th><th>Pitch</th><th>Radius</th><th>S (hex)</th><th>Where</th><th>Conf.</th></tr>
+        <tr><th>Use</th>{% if extraction.is_dxf %}<th title="Section of the profile, left to right">§</th>{% endif %}<th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Roughness, µm</th><th>Pitch</th><th>Radius</th><th>S (hex)</th><th>Where</th><th>Conf.</th></tr>
       </thead>
       <tbody>
       {% for row in values.rows %}
         {% set i = loop.index0 %}
         <tr class="{% if row.low_confidence %}low-confidence{% endif %}">
           <td><input type="checkbox" name="f{{ i }}-include" value="1" {% if row.include %}checked{% endif %}></td>
+          {% if extraction.is_dxf %}<td class="dxf-section">
+            {{ row.dxf_section if row.dxf_section is not none else "" }}
+            {% if row.dxf_notes %}<span class="badge badge-check" title="{{ row.dxf_notes|join('; ') }}">check</span>{% endif %}
+          </td>{% endif %}
           <td>
             <select name="f{{ i }}-type">
               {% for t in feature_types %}<option {% if t == row.type %}selected{% endif %}>{{ t }}</option>{% endfor %}
@@ -185,8 +241,10 @@
             {{ "%.2f"|format(row.confidence|float) if row.confidence is not none else "—" }}
           </td>
         </tr>
-        {% if row.grinding or row.bore_ra_check %}
-        <tr class="row-warning"><td></td><td colspan="11">
+        {% if row.grinding or row.bore_ra_check or row.dxf_dims or row.dxf_notes %}
+        <tr class="row-warning"><td></td><td colspan="{{ 12 if extraction.is_dxf else 11 }}">
+          {% if row.dxf_dims %}<div class="muted small">from {{ row.dxf_dims|join(", ") }}</div>{% endif %}
+          {% for n in row.dxf_notes or () %}<div class="warning">check: {{ n }}</div>{% endfor %}
           {% if row.grinding %}<div class="warning">⚠ {{ grinding_warning }}</div>{% endif %}
           {% if row.bore_ra_check %}<div class="warning">⚠ {{ bore_ra_warning }}</div>{% endif %}
         </td></tr>

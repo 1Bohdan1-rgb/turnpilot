@@ -31,7 +31,7 @@
     <tr>
       <td>{{ ex.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
       <td><a href="{{ url_for('main.extraction_file', extraction_id=ex.id, which='original') }}">{{ ex.original_filename }}</a></td>
-      <td>{{ ex.model or "" }}</td>
+      <td>{% if ex.is_dxf %}DXF, read by the code{% if ex.dxf_part %} · part {{ ex.dxf_part }}{% endif %}{% else %}{{ ex.model or "" }}{% endif %}</td>
       <td>
         <span class="badge badge-{{ ex.status }}">{{ ex.status }}</span>
         {% if ex.is_cached %}<span class="badge badge-cached">cached</span>{% endif %}

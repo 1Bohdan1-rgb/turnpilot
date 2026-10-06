@@ -466,8 +466,12 @@ def _review_values_from_extraction(extraction):
     # blank_diameter beats both.
     title_block_diameter = None if data.blank_diameter else services.blank_from_title_block(data.material)
     blank_missing = data.blank_diameter is None or data.blank_length is None
+    name = extraction.original_filename.rsplit(".", 1)[0]
+    report = services.dxf_report(extraction)
+    if report and report["parts"] > 1:
+        name += f" (part {report['part']})"
     return {
-        "name": extraction.original_filename.rsplit(".", 1)[0],
+        "name": name,
         "material_id": material.id if material else None,
         "quantity": data.quantity or 1,
         # A blank written on the drawing wins; otherwise the suggestion, flagged as such.
@@ -546,9 +550,21 @@ def _geometry_warnings(rows, overall_length, drawing_numbers=None, general_ra=No
     return warnings + numbers.warnings
 
 
+def _attach_dxf_rows(rows, report):
+    """The section, dimensions and notes of each DXF row (by position, as long as the rows are the read ones)."""
+    if not report or len(report["rows"]) != len(rows):
+        return
+    for row, binding in zip(rows, report["rows"]):
+        row["dxf_section"] = binding["section"]
+        row["dxf_dims"] = binding["dims"]
+        row["dxf_notes"] = binding["notes"]
+
+
 def _render_review(extraction, values, status=200):
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
     data = services.extraction_data(extraction)
+    report = services.dxf_report(extraction)
+    _attach_dxf_rows(values["rows"], report)
     page = render_template(
         "extraction_review.html",
         extraction=extraction,
@@ -558,6 +574,8 @@ def _render_review(extraction, values, status=200):
             services.drawing_numbers(extraction, current_app.instance_path), data.general_ra if data else None,
         ),
         values=values,
+        dxf_report=report,
+        dxf_parts=[(p, services.dxf_report(p)) for p in services.dxf_parts(extraction)] if extraction.is_dxf else [],
         materials=materials,
         feature_types=FEATURE_TYPES,
         positions=POSITIONS,

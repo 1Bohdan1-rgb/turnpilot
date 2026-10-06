@@ -75,3 +75,53 @@ def test_upload_png_named_dxf(client, no_api):
     _upload(client, (FIXTURES / "02_threaded_shaft.png").read_bytes(), "shaft.dxf")
     assert _extractions() == []
     assert "not a valid .dxf file" in client.get("/jobs/upload").get_data(as_text=True)
+
+
+def _confirm_form(extraction, **overrides):
+    """What the review page posts for a DXF part: its rows as read, a material and the suggested blank."""
+    data = json.loads(extraction.parsed)
+    form = {"name": "Pin", "material_id": "1", "quantity": "1", "blank_diameter": "45", "blank_length": "80",
+            "blank_shape": "round", "feature_count": str(len(data["features"])), "add_face": "1", "add_parting": "1"}
+    for i, f in enumerate(data["features"]):
+        form[f"f{i}-include"] = "1"
+        form[f"f{i}-type"] = f["type"]
+        for key in ("diameter", "start_diameter", "length", "tolerance", "pitch", "radius"):
+            if f.get(key) is not None:
+                form[f"f{i}-{key}"] = str(f[key])
+        form[f"f{i}-position"] = " ".join(p for p in (f.get("location"), f.get("face")) if p)
+    form.update(overrides)
+    return form
+
+
+def test_review_page_of_a_dxf_part(client, no_api, tmp_path):
+    _upload(client, _dxf_bytes(tmp_path, dd.draw_shaft, dd.draw_pin))
+    first, second = _extractions()
+    page = client.get(f"/extractions/{first.id}/review").get_data(as_text=True)
+    assert "read from the DXF geometry by the code" in page and "Image sent to the model" not in page
+    assert "2 parts on this sheet" in page and f"/extractions/{second.id}/review" in page
+    assert "Dimensions → sections" in page and "inner profile: not read" in page
+    assert "geometry 30 ≠ text 30.2" in page  # in the binding table and under the groove row
+    assert "from Ø40h12" in page and 'value="Завіса (part 1)"' in page
+    assert "DXF warnings" in page and "Ø10H11 is on the inner profile" in page
+    assert "Read again" not in page
+
+
+def test_confirm_each_part_as_its_own_job(client, no_api, tmp_path):
+    from turnpilot.models import Feature, Job, Operation
+    _upload(client, _dxf_bytes(tmp_path, dd.draw_shaft, dd.draw_pin))
+    shaft, pin = _extractions()
+    response = client.post(f"/extractions/{pin.id}/confirm", data=_confirm_form(pin))
+    job = db.session.execute(db.select(Job)).scalar_one()
+    assert response.location.endswith(f"/jobs/{job.id}") and pin.job_id == job.id and pin.status == "confirmed"
+    types = [f.type for f in job.active_features]
+    assert types == ["face", "od_turn", "taper", "od_turn", "od_turn", "fillet", "od_turn", "arc", "parting"]
+    arc = db.session.execute(db.select(Feature).filter_by(type="arc")).scalar_one()
+    assert (arc.start_diameter, arc.radius, arc.length, arc.diameter) == (18, 9, 9, None)
+    client.post(f"/jobs/{job.id}/calculate")
+    manual = db.session.execute(db.select(Operation).filter_by(tool_type="manual")).scalars().all()
+    assert {op.feature.type for op in manual} == {"taper", "fillet", "arc"}
+
+    # the other part is still to be reviewed, and its page links to the job of this one
+    page = client.get(f"/extractions/{shaft.id}/review").get_data(as_text=True)
+    assert f"/jobs/{job.id}" in page and "(job created)" in page
+    assert shaft.status == "extracted"
