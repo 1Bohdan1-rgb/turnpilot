@@ -80,6 +80,7 @@ def machine():
                 machine.max_rpm = _number(request.form, "max_rpm", int, required=True)
                 machine.power_kw = _number(request.form, "power_kw", required=True)
                 machine.max_diameter = _number(request.form, "max_diameter", required=True)
+                machine.max_thread_feed = _number(request.form, "max_thread_feed")  # empty: not known
                 flash("Machine profile saved.")
             elif request.form.get("action") == "stock":
                 text = request.form.get("hex_bar_sizes", "").strip()

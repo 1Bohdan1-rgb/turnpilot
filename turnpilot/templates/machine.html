@@ -8,6 +8,13 @@
   <label>Max RPM <input name="max_rpm" type="number" min="1" value="{{ machine.max_rpm }}" required></label>
   <label>Power, kW <input name="power_kw" type="number" step="0.1" min="0.1" value="{{ machine.power_kw }}" required></label>
   <label>Max diameter, mm <input name="max_diameter" type="number" step="0.1" min="1" value="{{ machine.max_diameter }}" required></label>
+  <label>Max Z feed when threading (n·P), mm/min
+    <input name="max_thread_feed" type="number" step="any" min="0" value="{{ machine.max_thread_feed if machine.max_thread_feed is not none else '' }}"
+           placeholder="not set">
+  </label>
+  <p class="muted small">When threading the feed is the pitch, so the Z axis moves at n·P mm/min. With a limit
+    here the speed of thread operations is reduced to stay within it; without one every thread operation asks
+    you to check n·P for this machine.</p>
   <button type="submit">Save profile</button>
 </form>
 

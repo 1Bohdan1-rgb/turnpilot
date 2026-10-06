@@ -28,6 +28,9 @@ class Machine(db.Model):
     max_rpm = db.Column(db.Integer, nullable=False)
     power_kw = db.Column(db.Float, nullable=False)
     max_diameter = db.Column(db.Float, nullable=False)
+    # Z feed the machine allows when threading (feed = pitch, so n·P), mm/min. Empty: not known, and every
+    # thread operation asks the machinist to check n·P (no number is guessed).
+    max_thread_feed = db.Column(db.Float)
     # Hex bar sizes across flats in stock, "8, 10, 11"; empty: HEX_BAR_SIZES from the config.
     hex_bar_sizes = db.Column(db.String(200))
 
