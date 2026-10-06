@@ -219,11 +219,32 @@ What it does **not** do:
   another CAD system's DXF is rejected with a message;
 - the inner profile (bores) is not read: its dimensions are listed as "inner profile: not read";
 - material, quantity, roughness and the blank are not taken from the DXF: the machinist fills them in;
-- a section that is not machined (the bar held in the chuck) is not recognised: untick it.
+- a section that is not machined (the bar held in the chuck) is not recognised: untick it;
+- on real files most lengths carry **check**: KOMPAS drawings dimension from a base, so a section's
+  length usually comes from a chain of dimensions, not from one. The risk is that the machinist gets
+  used to the badge and stops reading it. (An idea for later, not implemented: two levels of warning,
+  "length from a chain of dimensions" and "length from the geometry only, no dimension".)
 
-How far it is measured: on three KOMPAS files only, two of them used to develop the rules (in-sample)
-and the third partly seen before its control run (bushing 9/9, pin 12/13 dimensions bound right). It
-has not yet been checked on DXF files it has never seen.
+How far it is measured, two different things:
+
+1. **Binding accuracy against a hand-written expected answer** (outer-profile dimensions bound to the
+   right section), measured with the scratchpad prototype:
+
+   | Part | Bound right | Status |
+   |---|---|---|
+   | деталь 1 | 10/10 | in-sample (the rules were developed on it) |
+   | НД 012 | 19/19 | in-sample (the rules were developed on it) |
+   | Завіса 36, bushing | 9/9 | control run, the sheet was partly seen before |
+   | Завіса 36, pin | 12/13 | control run, the sheet was partly seen before |
+
+   The one miss on the pin is in the comparison, not the binding: Ø22−0,21 is bound to the right
+   section, but the expected answer writes the minus as "−" (U+2212) and the DXF as "-", so the texts
+   did not pair.
+2. **Equivalence of the product with the prototype**: `turnpilot/dxf_reader.py` gives the same output as
+   the prototype, field by field (sections, every dimension's binding and flags), on all four parts:
+   100%. This shows the port is faithful, not that the binding is right.
+
+It has not yet been checked on DXF files it has never seen.
 
 ## Stack
 

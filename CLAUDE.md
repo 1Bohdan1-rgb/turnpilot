@@ -256,7 +256,8 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
   - section 0 is a stock Ø50 (not machined, no length) and section 1 is Ø45 L5 with a transition R2.5 on
     the right;
   - Ø38,5 (left) is the start of the R12.5 arc.
-  - Result: 18/18 dimensions bound right (Ø45 left out: its row still points at section 0, the stock).
+  - Result: 19/19 dimensions bound right in the final run (scratchpad `dxf_bind_nd012.txt`). An earlier
+    run gave 18/18, with Ø45 left out while its expected row still pointed at section 0 (the stock).
   - Sections by x: 5 of 6 match. Expected section 4 "arc R20,46" (x 69–89) is drawn as an arc R51.61
     (69–79) plus a taper Ø35→Ø30 (79–89).
 - `деталь 1` rerun with the final code: still 6/6 sections and 10/10 dimensions.
@@ -338,9 +339,16 @@ DXF → sections → review → planner, as a second input next to the model. Co
   It is NOT in the model's tool schema: the prompt versions stay ae696380 / e91adddb (a test checks it).
 - `ezdxf==1.4.4` pinned in requirements.txt.
 - Measured only in-sample / partly seen (see the prototype sections above). Not yet blind.
+- Two metrics, kept apart (also in the README):
+  - binding accuracy against the expected answers (outer profile): деталь 1 10/10 and НД 012 19/19
+    (both in-sample), Завіса 36 bushing 9/9 and pin 12/13 (control, partly seen; the miss is the "−" vs
+    "-" in the expected answer, the binding itself is right);
+  - equivalence product = prototype: all dimensions, 100%.
 - Seen on the demo server: on real sheets most lengths carry "check" (computed from a chain), since
-  KOMPAS drawings dimension from a base. The not-machined chucked section (НД 012 §1 Ø50) is a row to
-  untick by hand.
+  KOMPAS drawings dimension from a base. Risk: the machinist gets used to the badge and ignores it.
+  Idea for later, NOT to implement now: two levels of warning, "length from a chain of dimensions" and
+  "length from the geometry only, no dimension".
+- The not-machined chucked section (НД 012 §1 Ø50) is a row to untick by hand.
 
 ## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
 - Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
