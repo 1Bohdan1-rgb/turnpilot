@@ -373,6 +373,24 @@ Commits ab942d5, f80f261, b7b0c7d. Plan agreed with the user (all three defaults
 - Not done: the chuck end is inferred from the largest Ø (no fixture data); re-chucking for a part
   machined from both sides; a wide groove (wider than the insert) is still one plunge.
 
+## Wide grooves (2026-10-06)
+Commits 1ee88c5, c757e24. Plan agreed with the user (all three defaults).
+- Before: one plunge whatever the width; the insert by turret position only. A groove narrower than the
+  insert was cut wider without a warning (деталь 1: 2 mm with the 3 mm insert).
+- `select_grooving_tool`: the widest insert not wider than the groove; narrower than all: no tool, warning.
+- `groove_plunges`: 1 + ceil((W − w) / (0.8·w)), first and last at the walls; step ≤ 0.8·w
+  (`GROOVE_STEP_FACTOR`, placeholder constant: overlap ≥ 20% of the insert). W = w (±0.01): one plunge.
+- Ra ≤ 1.6 (`GROOVE_FINISH_RA`, placeholder): plunges leave 0.2 mm (`GROOVE_FINISH_ALLOWANCE_MM`) on the
+  walls and the bottom, then a finishing operation (same insert, finishing data). No room for it: plunges
+  in full, warning "finishing needs a narrower insert".
+- Real files: НД 012 and Завіса 36 grooves are 3 mm = the insert: unchanged. деталь 1 groove 2 mm: now a
+  warning. The real_03 fitting (in tests): recess W8 → 4 plunges (3 with Ra 0.8 + finishing), relief 1.5 →
+  warning.
+- Existing tests did not change.
+- Deferred: a width tolerance as a finishing trigger. The groove's `tolerance` is the bottom diameter's,
+  and the general tolerance fills it; it needs its own field (DXF could read it from the width dimension
+  text; for the model it is a prompt change).
+
 ## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
 - Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
   answers are written by the user by hand before the run.
@@ -392,7 +410,7 @@ Commits ab942d5, f80f261, b7b0c7d. Plan agreed with the user (all three defaults
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 605 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 624 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

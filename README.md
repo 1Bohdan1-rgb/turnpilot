@@ -48,7 +48,17 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   gets its own finishing pass.
 - **Grooves:** n is calculated on the start (larger) diameter, not the groove bottom. The table
   shows insert width and groove depth per side instead of ap. Feature fields: Diameter = bottom,
-  Start Ø = diameter the groove is cut from (blank diameter if empty).
+  Start Ø = diameter the groove is cut from (blank diameter if empty), Length = width.
+  - The insert is chosen by the width: of the grooving inserts not wider than the groove, the widest.
+    A groove narrower than every insert in the turret gets no tool and a warning (it is not cut wider).
+  - A groove wider than the insert is cut with several plunges: `1 + ceil((W - w) / (0.8 w))`, the first
+    and the last at the walls, the step at most 0.8 of the insert width, so the plunges overlap by at
+    least 20% of it (a placeholder constant; the tools carry no overlap). Passes = plunges. A groove of
+    the insert's width is one plunge.
+  - With Ra 1.6 or finer (placeholder: plunging leaves about Ra 3.2) the plunges leave 0.2 mm on both
+    walls and the bottom, and a finishing operation follows over the bottom and both walls. A groove
+    with no room for it gets a warning that it needs a narrower insert. A tolerance on the width is not
+    used: a groove's tolerance field is its bottom diameter's.
 - **Parting:** insert width and depth per side instead of ap. Depth = diameter / 2 (the parting
   feature's diameter, or the blank), or down to the smallest bore if the part has one.
   Note: "reduce feed ~50% for last 2 mm before center" for a solid part, or
