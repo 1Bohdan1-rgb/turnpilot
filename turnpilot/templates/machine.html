@@ -15,6 +15,13 @@
   <p class="muted small">When threading the feed is the pitch, so the Z axis moves at n·P mm/min. With a limit
     here the speed of thread operations is reduced to stay within it; without one every thread operation asks
     you to check n·P for this machine.</p>
+  <label>Drive efficiency (0–1)
+    <input name="drive_efficiency" type="number" step="any" min="0" max="1"
+           value="{{ machine.drive_efficiency if machine.drive_efficiency is not none else '' }}" placeholder="not set">
+  </label>
+  <p class="muted small">The spindle delivers power × efficiency (see the machine's documentation; often
+    0.75–0.85). Roughing passes are made thinner when the cutting power would exceed it; without it every
+    roughing operation asks you to check the power.</p>
   <button type="submit">Save profile</button>
 </form>
 
@@ -27,6 +34,30 @@
   <p class="muted small">A part whose largest section is a hex of one of these sizes gets a hex bar as the
     suggested blank: its flats are not machined. Round bar sizes are set in the configuration.</p>
   <button type="submit">Save bar stock</button>
+</form>
+
+<h2>Materials</h2>
+<form method="post" class="card">
+  <input type="hidden" name="action" value="materials">
+  <table>
+    <thead><tr><th>Material</th><th>ISO</th><th>kc1, N/mm²</th><th>mc</th><th>Source of kc1 / mc</th></tr></thead>
+    <tbody>
+    {% for m in materials %}
+      <tr>
+        <td>{{ m.name }}</td>
+        <td>{{ m.iso_group }}</td>
+        <td><input name="m{{ m.id }}-kc1" type="number" step="any" min="0" value="{{ m.kc1 if m.kc1 is not none else '' }}"></td>
+        <td><input name="m{{ m.id }}-mc" type="number" step="any" min="0" max="1" value="{{ m.mc if m.mc is not none else '' }}"></td>
+        <td><input name="m{{ m.id }}-kc_source" value="{{ m.kc_source or '' }}" size="60"></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">Specific cutting force kc = kc1 · hm<sup>−mc</sup> (hm = feed for a 90° entering angle),
+    as the tool maker's catalogue gives it for the material group. The cutting power of roughing is
+    Pc = Vc · ap · f · kc / 60000 kW. A material without kc1 and mc is not checked. The seed values are
+    placeholders: replace them with your catalogue's.</p>
+  <button type="submit">Save materials</button>
 </form>
 
 <h2>Turret</h2>

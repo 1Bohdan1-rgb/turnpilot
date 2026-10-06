@@ -31,6 +31,9 @@ class Machine(db.Model):
     # Z feed the machine allows when threading (feed = pitch, so n·P), mm/min. Empty: not known, and every
     # thread operation asks the machinist to check n·P (no number is guessed).
     max_thread_feed = db.Column(db.Float)
+    # Share of power_kw the spindle delivers (0..1, from the machine's documentation). Empty: not known, and
+    # roughing asks for the power to be checked (no efficiency is guessed).
+    drive_efficiency = db.Column(db.Float)
     # Hex bar sizes across flats in stock, "8, 10, 11"; empty: HEX_BAR_SIZES from the config.
     hex_bar_sizes = db.Column(db.String(200))
 
@@ -76,6 +79,11 @@ class Material(db.Model):
     name = db.Column(db.String(100), nullable=False)
     iso_group = db.Column(db.String(1), nullable=False)
     hardness_hb = db.Column(db.Integer)
+    # Specific cutting force for the cutting power: kc = kc1 * hm^-mc (kc1 in N/mm² at hm = 1 mm), as the tool
+    # makers' catalogues give it per material group; kc_source says where the numbers come from.
+    kc1 = db.Column(db.Float)
+    mc = db.Column(db.Float)
+    kc_source = db.Column(db.String(200))
 
 
 class Job(db.Model):

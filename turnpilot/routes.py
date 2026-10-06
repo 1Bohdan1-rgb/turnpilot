@@ -81,6 +81,10 @@ def machine():
                 machine.power_kw = _number(request.form, "power_kw", required=True)
                 machine.max_diameter = _number(request.form, "max_diameter", required=True)
                 machine.max_thread_feed = _number(request.form, "max_thread_feed")  # empty: not known
+                efficiency = _number(request.form, "drive_efficiency")  # empty: not known
+                if efficiency is not None and efficiency > 1:
+                    raise FormError("Drive efficiency is a share of the power: 0 to 1 (e.g. 0.8)")
+                machine.drive_efficiency = efficiency
                 flash("Machine profile saved.")
             elif request.form.get("action") == "stock":
                 text = request.form.get("hex_bar_sizes", "").strip()
@@ -90,6 +94,15 @@ def machine():
                     raise FormError("Hex bar sizes: numbers across flats in mm, e.g. 8, 10, 11") from None
                 machine.hex_bar_sizes = ", ".join(f"{s:g}" for s in sizes) or None
                 flash("Bar stock saved.")
+            elif request.form.get("action") == "materials":
+                for material in db.session.execute(db.select(Material)).scalars():
+                    prefix = f"m{material.id}-"
+                    material.kc1 = _number(request.form, prefix + "kc1")
+                    material.mc = _number(request.form, prefix + "mc")
+                    if material.mc is not None and material.mc >= 1:
+                        raise FormError(f"{material.name}: mc is an exponent below 1 (e.g. 0.25)")
+                    material.kc_source = (request.form.get(prefix + "kc_source") or "").strip()[:200] or None
+                flash("Materials saved.")
             elif request.form.get("action") == "turret":
                 for slot in machine.slots:
                     tool_id = request.form.get(f"slot_{slot.position}") or None
@@ -102,9 +115,11 @@ def machine():
         return redirect(url_for("main.machine"))
 
     tools = db.session.execute(db.select(Tool).order_by(Tool.name)).scalars().all()
+    materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
     hex_sizes = services.hex_bar_sizes(machine, current_app.config)
     return render_template(
-        "machine.html", machine=machine, tools=tools, tool_types=TOOL_TYPES, iso_groups=ISO_GROUPS,
+        "machine.html", machine=machine, tools=tools, materials=materials, tool_types=TOOL_TYPES,
+        iso_groups=ISO_GROUPS,
         hex_bar_sizes=", ".join(f"{s:g}" for s in hex_sizes),
     )
 
