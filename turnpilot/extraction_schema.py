@@ -8,10 +8,19 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveFloat, PositiveInt, field_validator, model_validator
 
-FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex")
-FeatureType = Literal["face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex"]
-# Types the model may send (all of them; dimensions_first has its own schema and does not know hex).
-TOOL_FEATURE_TYPES = FEATURE_TYPES
+FEATURE_TYPES = (
+    "face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex", "arc",
+)
+FeatureType = Literal[
+    "face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex", "arc",
+]
+# Types the model may send: all but "arc", which only the DXF reader gives (a formed section: an arc of the
+# outer profile that is not a fillet). Leaving it out keeps the tool schema and the prompt version unchanged.
+# (dimensions_first has its own schema and does not know hex.)
+TOOL_FEATURE_TYPES = tuple(t for t in FEATURE_TYPES if t != "arc")
+# Types with a radius and with a start diameter (an arc: the diameter at its start, its end in diameter).
+RADIUS_TYPES = ("fillet", "arc")
+START_DIAMETER_TYPES = ("groove", "taper", "arc")
 PART_TYPES = ("turned", "not_turned", "unclear")
 # Roughness parameter as written on the drawing: GOST drawings often give Rz instead of Ra.
 ROUGHNESS_PARAMS = ("Ra", "Rz")
@@ -146,8 +155,8 @@ class ExtractedFeature(BaseModel):
             self.location = self.face = None
         elif self.type == "thread":
             self.face = None
-        if self.radius is not None and self.type != "fillet":
-            raise ValueError(f"radius is only valid for fillets, got it on {self.type}")
+        if self.radius is not None and self.type not in RADIUS_TYPES:
+            raise ValueError(f"radius is only valid for fillets and arcs, got it on {self.type}")
         if self.across_flats is not None and self.type != "hex":
             raise ValueError(f"across_flats is only valid for hexes, got it on {self.type}")
         if self.type == "hex":
@@ -158,8 +167,10 @@ class ExtractedFeature(BaseModel):
                 self.across_flats = hex_across_flats(self.diameter)
                 self.size_derived = "across_flats"
         if self.start_diameter is not None:
-            if self.type not in ("groove", "taper"):
-                raise ValueError(f"start_diameter is only valid for grooves and tapers, got it on {self.type}")
+            if self.type not in START_DIAMETER_TYPES:
+                raise ValueError(
+                    f"start_diameter is only valid for grooves, tapers and arcs, got it on {self.type}"
+                )
             if self.type == "groove" and self.diameter is not None and self.start_diameter <= self.diameter:
                 raise ValueError("groove start_diameter must be larger than the groove bottom diameter")
         return self

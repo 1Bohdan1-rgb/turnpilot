@@ -28,9 +28,9 @@ RZ_PER_RA = 4.0
 def rz_to_ra(rz: float) -> float:
     """Approximate Ra (µm) for an Rz value: Ra ≈ Rz / 4 (GOST 2789)."""
     return round(rz / RZ_PER_RA, 3)
-# Tapers and fillets are recognised on drawings but not planned automatically yet.
+# Tapers, fillets and arcs (formed sections) are recognised on drawings but not planned automatically yet.
 MANUAL_OPERATION_WARNING = "manual operation"
-MANUAL_FEATURE_TYPES = ("taper", "fillet")
+MANUAL_FEATURE_TYPES = ("taper", "fillet", "arc")
 # A hex is turned to its diameter across corners, then its flats are milled with a driven tool.
 HEX_CORNERS_NOTE = "diameter across corners of the hex"
 NO_MILLING_TOOL = "manual operation: no driven tool in the turret, mill the hex on a milling machine"
@@ -97,9 +97,9 @@ class FeatureSpec:
     length: float | None = None
     ra: float | None = None
     pitch: float | None = None
-    start_diameter: float | None = None  # groove: diameter it is cut from; taper: diameter at its start
+    start_diameter: float | None = None  # groove: diameter it is cut from; taper / arc: diameter at its start
     tolerance: str | None = None
-    radius: float | None = None  # fillet
+    radius: float | None = None  # fillet, arc
     ra_from_rz: float | None = None  # the Rz written on the drawing when ra was converted from it
     location: str | None = None  # chamfer / thread: "external" / "internal"
     across_flats: float | None = None  # hex: size across flats S; diameter is across corners
@@ -343,7 +343,7 @@ def needs_grinding(tolerance: str | None, diameter: float | None, ra: float | No
 # without its own: holes H14, shafts h14, everything else ±IT14/2.
 
 HOLE_TYPES = ("bore",)
-SHAFT_TYPES = ("od_turn", "taper", "groove", "hex")  # hex: its size across flats
+SHAFT_TYPES = ("od_turn", "taper", "groove", "hex", "arc")  # hex: its size across flats
 OTHER_TYPES = ("fillet", "chamfer")  # threads have their own class, face/parting no diameter tolerance
 
 
@@ -381,7 +381,7 @@ class BlankSuggestion:
 GEOMETRY_TOLERANCE_MM = 0.2
 # Sections that follow each other along the axis. Threads and chamfers lie on top of a section,
 # bores inside the part, so they are not part of the sum.
-AXIAL_SECTION_TYPES = ("od_turn", "taper", "groove", "fillet", "hex")
+AXIAL_SECTION_TYPES = ("od_turn", "taper", "groove", "fillet", "hex", "arc")
 
 
 def thread_section(thread, features):
@@ -498,10 +498,11 @@ def suggest_blank(
     """
     notes = []
     external = [
-        f.diameter for f in features if f.type in ("od_turn", "thread", "chamfer", "parting", "taper") and f.diameter
+        f.diameter for f in features
+        if f.type in ("od_turn", "thread", "chamfer", "parting", "taper", "arc") and f.diameter
     ]
     external += [hex_corners(f) for f in features if f.type == "hex" and hex_corners(f)]
-    external += [f.start_diameter for f in features if f.type in ("groove", "taper") and f.start_diameter]
+    external += [f.start_diameter for f in features if f.type in ("groove", "taper", "arc") and f.start_diameter]
 
     diameter = None
     if external:
@@ -519,8 +520,8 @@ def suggest_blank(
     if hexes:
         largest_hex = max(hexes, key=hex_corners)
         others = [
-            f.diameter for f in features if f.type in ("od_turn", "thread", "parting", "taper") and f.diameter
-        ] + [f.start_diameter for f in features if f.type in ("groove", "taper") and f.start_diameter]
+            f.diameter for f in features if f.type in ("od_turn", "thread", "parting", "taper", "arc") and f.diameter
+        ] + [f.start_diameter for f in features if f.type in ("groove", "taper", "arc") and f.start_diameter]
         size = hex_flats(largest_hex)
         # every other diameter must fit inside the flats: between S and the corners it would stay
         # partly unturned on a hex bar

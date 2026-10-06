@@ -15,7 +15,13 @@ from flask import (
 )
 
 from . import drawing_reader, number_check, planner, services
-from .extraction_schema import hex_across_corners, hex_across_flats, normalize_tolerance
+from .extraction_schema import (
+    RADIUS_TYPES,
+    START_DIAMETER_TYPES,
+    hex_across_corners,
+    hex_across_flats,
+    normalize_tolerance,
+)
 from .models import (
     BLANK_SHAPES,
     FEATURE_TYPES,
@@ -212,7 +218,7 @@ def _feature_from_form(form, blank_diameter, prefix=""):
         # D need not be S / cos 30° (it may be the diameter turned before milling), but not below S
         if diameter < across_flats:
             raise FormError("Hex diameter must not be smaller than its size across flats")
-    start_diameter = _number(form, prefix + "start_diameter") if feature_type in ("groove", "taper") else None
+    start_diameter = _number(form, prefix + "start_diameter") if feature_type in START_DIAMETER_TYPES else None
     if start_diameter is not None:
         if start_diameter > blank_diameter:
             raise FormError("Start diameter is larger than the blank diameter")
@@ -228,7 +234,7 @@ def _feature_from_form(form, blank_diameter, prefix=""):
         **_position(form, prefix, feature_type),
         pitch=pitch if feature_type == "thread" else None,
         start_diameter=start_diameter,
-        radius=_number(form, prefix + "radius") if feature_type == "fillet" else None,
+        radius=_number(form, prefix + "radius") if feature_type in RADIUS_TYPES else None,
         across_flats=across_flats,
     )
 

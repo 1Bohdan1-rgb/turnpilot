@@ -4,7 +4,10 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
-FEATURE_TYPES = ("face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex")
+FEATURE_TYPES = (
+    "face", "od_turn", "groove", "thread", "bore", "chamfer", "parting", "taper", "fillet", "hex",
+    "arc",  # a formed section (an arc of the outer profile); only the DXF reader gives it
+)
 TOOL_TYPES = (
     "facing", "turning_rough", "turning_finish", "grooving", "threading", "boring", "parting",
     "drilling", "tapping", "threading_internal", "milling",  # milling: a driven tool (live tooling)
@@ -125,8 +128,8 @@ class Feature(db.Model):
     ra = db.Column(db.Float)  # um, of the parameter in ra_param
     ra_param = db.Column(db.String(2))  # "Ra" (default when empty) or "Rz", as written on the drawing
     pitch = db.Column(db.Float)  # mm, threads only
-    start_diameter = db.Column(db.Float)  # mm, groove: diameter it is cut from; taper: diameter at its start
-    radius = db.Column(db.Float)  # mm, fillets only
+    start_diameter = db.Column(db.Float)  # mm, groove: diameter it is cut from; taper / arc: diameter at its start
+    radius = db.Column(db.Float)  # mm, fillets and arcs only
     across_flats = db.Column(db.Float)  # mm, hex only: size across flats S (diameter = across corners)
     location = db.Column(db.String(10))  # chamfers: "external" / "internal"
     face = db.Column(db.String(10))  # chamfers: "left" / "right" end face

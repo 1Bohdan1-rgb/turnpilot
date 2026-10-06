@@ -263,7 +263,7 @@ def test_radius_only_on_fillets():
 
 
 def test_start_diameter_not_allowed_on_od_turn():
-    with pytest.raises(ExtractionError, match="grooves and tapers"):
+    with pytest.raises(ExtractionError, match="grooves, tapers and arcs"):
         parse_response(make_response(part([feature("od_turn", 30, start_diameter=40)])))
 
 

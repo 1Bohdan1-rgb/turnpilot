@@ -54,8 +54,8 @@
     </span>
   </label>
   <label>Pitch, mm (thread) <input name="pitch" type="number" step="any" min="0"></label>
-  <label>Start Ø, mm (groove / taper) <input name="start_diameter" type="number" step="any" min="0" placeholder="groove: blank Ø if empty"></label>
-  <label>Radius, mm (fillet) <input name="radius" type="number" step="any" min="0"></label>
+  <label>Start Ø, mm (groove / taper / arc) <input name="start_diameter" type="number" step="any" min="0" placeholder="groove: blank Ø if empty"></label>
+  <label>Radius, mm (fillet / arc) <input name="radius" type="number" step="any" min="0"></label>
   <label>S across flats, mm (hex; Ø = across corners) <input name="across_flats" type="number" step="any" min="0"></label>
   <label>Where (chamfer / thread)
     <select name="position"><option value="">—</option>{% for p in positions %}<option>{{ p }}</option>{% endfor %}</select>

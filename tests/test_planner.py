@@ -531,15 +531,16 @@ def test_chamfer_still_merged_on_thread_diameter(turret):
 from turnpilot.planner import MANUAL_OPERATION_WARNING  # noqa: E402
 
 
-def test_taper_and_fillet_become_manual_operations(turret):
+def test_taper_fillet_and_arc_become_manual_operations(turret):
     job = JobSpec("P", 85, 150, (
         FeatureSpec(1, "od_turn", diameter=60, length=60),
         FeatureSpec(2, "taper", diameter=55, start_diameter=60, length=30),
         FeatureSpec(3, "fillet", radius=10),
+        FeatureSpec(4, "arc", diameter=40, start_diameter=55, radius=12.5, length=15),
     ))
     ops = plan_job(job, turret, max_rpm=4000)
     manual = [op for op in ops if op.tool_type == "manual"]
-    assert [op.feature_id for op in manual] == [2, 3]
+    assert [op.feature_id for op in manual] == [2, 3, 4]
     for op in manual:
         assert op.warnings == [MANUAL_OPERATION_WARNING]
         assert op.tool_id is None and op.n is None
