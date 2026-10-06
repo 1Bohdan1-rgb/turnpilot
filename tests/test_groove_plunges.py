@@ -104,3 +104,37 @@ def test_wide_groove_through_the_app(client):
     assert groove.passes == 4 and "4 plunges" in groove.note
     page = client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
     assert "4 plunges, step 1.667 mm (overlap 1.333 mm)" in page
+
+
+# --- finishing pass when the groove's Ra is fine ---------------------------------------------------
+
+def test_fine_ra_wide_groove_plunges_leave_an_allowance_then_a_finishing_pass():
+    plunges, finish = _groove_op(8, ra=0.8)
+    assert (plunges.mode, finish.mode) == ("rough", "finish")
+    assert plunges.sequence + 1 == finish.sequence  # right after the plunges
+    # 8 − 2 × 0.2 = 7.6 mm by plunges: 3, step 2.3; depth 2 − 0.2
+    assert (plunges.passes, plunges.depth) == (3, 1.8)
+    assert "3 plunges, step 2.3 mm (overlap 0.7 mm)" in plunges.notes
+    assert "leaves 0.2 mm on the walls and the bottom for finishing" in plunges.notes
+    assert finish.depth == 2.0 and "finish the bottom and both walls: 0.2 mm" in finish.notes
+    assert finish.tool_id == plunges.tool_id and finish.n and finish.f and not finish.warnings
+    assert finish.vc > plunges.vc  # finishing data from the tool's range
+
+
+def test_fine_ra_groove_of_the_insert_width_has_no_room_to_finish():
+    plunges, finish = _groove_op(3, ra=0.8)
+    assert (plunges.passes, plunges.depth) == (1, 2.0)  # full width and depth: no allowance left
+    assert not any("leaves" in n for n in plunges.notes)
+    assert finish.warnings == ["Ra 0.8 needs a finishing pass, but the groove (3 mm) has no room for it with a "
+                               "3 mm insert and 0.2 mm on each wall: finishing needs a narrower insert."]
+
+
+@pytest.mark.parametrize("ra", [3.2, 6.3, None])
+def test_no_finishing_pass_for_a_coarser_ra(ra):
+    (op,) = _groove_op(8, ra=ra)
+    assert op.mode == "finish" and op.passes == 4  # as without the finishing rule
+    assert not any("finish the bottom" in n or "leaves" in n for n in op.notes)
+
+
+def test_finishing_threshold_is_inclusive():
+    assert len(_groove_op(8, ra=1.6)) == 2

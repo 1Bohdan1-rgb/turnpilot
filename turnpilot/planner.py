@@ -675,6 +675,9 @@ def feature_to_steps(feature: FeatureSpec, hex_bar: float | None = None) -> list
         tool = "boring" if feature.location == "internal" else "turning_finish"
         return [Step(feature, tool, "finish", "finish")]
     if t == "groove":
+        if groove_needs_finish(feature):
+            # plunges leaving an allowance, then a finishing pass over the bottom and the walls
+            return [Step(feature, "grooving", "rough", "groove"), Step(feature, "grooving", "finish", "groove")]
         return [Step(feature, "grooving", "finish", "groove")]
     if t == "thread":
         if feature.location == "internal":
@@ -795,6 +798,25 @@ def select_tool(tool_type: str, iso_group: str, turret: list[TurretEntry]) -> tu
 # by at least 20% of it (0.6 mm on a 3 mm insert). The tools carry no overlap of their own.
 GROOVE_STEP_FACTOR = 0.8
 GROOVE_WIDTH_TOL_MM = 0.01  # a groove this much wider than the insert is still one plunge
+# PLACEHOLDER: plunging leaves about Ra 3.2; a groove with Ra this fine or finer gets a finishing pass over
+# the bottom and both walls, after plunges that leave this allowance on each of them.
+GROOVE_FINISH_RA = 1.6
+GROOVE_FINISH_ALLOWANCE_MM = 0.2
+GROOVE_FINISH_NOTE = "finish the bottom and both walls: {a:g} mm"
+GROOVE_ALLOWANCE_NOTE = "leaves {a:g} mm on the walls and the bottom for finishing"
+GROOVE_NO_ROOM_WARNING = ("Ra {ra:g} needs a finishing pass, but the groove ({width:g} mm) has no room for it with a "
+                          "{insert:g} mm insert and {a:g} mm on each wall: finishing needs a narrower insert.")
+
+
+def groove_needs_finish(feature) -> bool:
+    return feature.type == "groove" and feature.ra is not None and feature.ra <= GROOVE_FINISH_RA + 1e-9
+
+
+def _groove_has_room(width: float | None, insert_width: float | None) -> bool:
+    """Plunges that leave the allowance on both walls still fit the insert (there is room to finish)."""
+    if width is None or not insert_width:
+        return True
+    return width - 2 * GROOVE_FINISH_ALLOWANCE_MM >= insert_width - GROOVE_WIDTH_TOL_MM
 
 
 def groove_plunges(width: float, insert_width: float) -> tuple[int, float]:
@@ -875,23 +897,42 @@ def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSp
         op.notes.append("no finishing tool in turret: default allowance used")
 
 
-def _plan_groove(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec) -> None:
+def _plan_groove(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec,
+                 leave_allowance: bool = False) -> None:
+    """Plunges; with leave_allowance (a finishing pass follows) they stop short of the walls and the bottom."""
     op.ap = None
     op.insert_width = tool.insert_width
     if tool.insert_width is None:
         op.warnings.append("Insert width is not set for this grooving tool.")
     if feature.start_diameter is None:
         op.notes.append(f"start diameter not given: blank Ø{job.stock_diameter:g} used")
+    allowance = GROOVE_FINISH_ALLOWANCE_MM if leave_allowance and _groove_has_room(
+        feature.length, tool.insert_width) else 0.0
+    if allowance:
+        op.notes.append(GROOVE_ALLOWANCE_NOTE.format(a=allowance))
     if feature.diameter is not None:
-        op.depth = round((op.ref_diameter - feature.diameter) / 2, 3)
+        op.depth = round((op.ref_diameter - feature.diameter) / 2 - allowance, 3)
         if op.depth <= 0:
             op.warnings.append("Groove bottom diameter is not smaller than the start diameter.")
     if feature.length is None:
         op.notes.append("groove width not given: one plunge")
     elif tool.insert_width:
-        op.passes, step = groove_plunges(feature.length, tool.insert_width)
+        op.passes, step = groove_plunges(feature.length - 2 * allowance, tool.insert_width)
         if op.passes > 1:
             op.notes.append(f"{op.passes} plunges, step {step:g} mm (overlap {round(tool.insert_width - step, 3):g} mm)")
+
+
+def _plan_groove_finish(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec) -> None:
+    """One pass down a wall, along the bottom and up the other wall, taking the allowance the plunges left."""
+    op.ap = None
+    op.insert_width = tool.insert_width
+    if feature.diameter is not None:
+        op.depth = round((op.ref_diameter - feature.diameter) / 2, 3)
+    if _groove_has_room(feature.length, tool.insert_width):
+        op.notes.append(GROOVE_FINISH_NOTE.format(a=GROOVE_FINISH_ALLOWANCE_MM))
+    else:
+        op.warnings.append(GROOVE_NO_ROOM_WARNING.format(ra=feature.ra, width=feature.length,
+                                                         insert=tool.insert_width, a=GROOVE_FINISH_ALLOWANCE_MM))
 
 
 def _plan_thread(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec) -> None:
@@ -1053,8 +1094,10 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
 
     if step.tool_type == "turning_rough" and feature.diameter is not None:
         _plan_rough_turning(op, tool, feature, job, turret, start)
+    elif step.tool_type == "grooving" and step.mode == "finish" and groove_needs_finish(feature):
+        _plan_groove_finish(op, tool, feature, job)
     elif step.tool_type == "grooving":
-        _plan_groove(op, tool, feature, job)
+        _plan_groove(op, tool, feature, job, leave_allowance=step.mode == "rough")
     elif step.tool_type == "threading":
         _plan_thread(op, tool, feature)
     elif step.tool_type == "parting":
