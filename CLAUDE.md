@@ -287,6 +287,32 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
 - Current script md5: 5a3b83768e9a20a82015999e0ae2fc13 (not frozen yet; it is frozen before the control
   run).
 - Next: the control run on Завіса 36 (partly seen, see above). Nothing in the product.
+- **Control run on Завіса 36 (2026-10-06), the official result:**
+  - A single run, with code that did not change after it was frozen:
+    - `dxf_bind.py` md5 5a3b83768e9a20a82015999e0ae2fc13 (binding, unchanged since development);
+    - `dxf_compare.py` md5 486339cd95bbce56a85334422114a28e (comparison only; it reads expected answers
+      with several parts, section lists and "inner" rows, and imports the binding unchanged);
+    - the md5 of both is in the scratchpad file `control_md5.txt`.
+  - Basic steps:
+    - 2 axes, 2 parts. The "nearest axis" rule worked: the x ranges overlap, and all 26 dimensions
+      went to the right part;
+    - sections: 5/5 on the bushing and 7/7 on the pin, all boundaries coinciding with the expected ones.
+  - External dimensions bound right:
+    - bushing 9/9 (100%);
+    - pin 12/13 (92%). The one miss is the comparison, not the binding: Ø22−0,21 was bound right
+      (section 6, the Ø22 neck), but the expected answer writes the minus as "−" (U+2212) while the DXF
+      has "-", so the texts did not pair.
+  - Criterion ≥ 90% met on both parts.
+  - "Geometry ≠ text": the bushing's Ø22+0,21 (drawn at 21.8) is flagged.
+  - Inner dimensions, outside the criterion: Ø22+0,21 and Ø10+0,15 are in the "not bound (inner)" list.
+    The bore depths 32 and 5 were bound as lengths ending inside a section.
+  - Caveats:
+    - the sheet was partly seen before (dimension list and render during the DXF probe);
+    - the parts are simple (cylinders, grooves, chamfers, one taper);
+    - all three files are from KOMPAS;
+    - inner profiles are out of scope.
+- `dxf_compare.py` normalises "−" (U+2212) to "-" for future runs (added after the control run;
+  Завіса 36 was not rerun).
 - Observations for the planner (from НД 012, the user's reading; not implemented):
   - a section marked "not machined" (the roughness sign with a circle) is the bar held in the chuck, not
     part of the part;
