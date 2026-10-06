@@ -350,6 +350,29 @@ DXF → sections → review → planner, as a second input next to the model. Co
   "length from the geometry only, no dimension".
 - The not-machined chucked section (НД 012 §1 Ø50) is a row to untick by hand.
 
+## Roughing from the neighbouring section (2026-10-06)
+Commits ab942d5, f80f261, b7b0c7d. Plan agreed with the user (all three defaults).
+- Bug found while planning, fixed first: a DXF threaded section gave only a thread row, so the planner
+  never turned the Ø under the thread (НД 012 M24, деталь 1 M22). Now od_turn + thread, like the model.
+- `Job.axial_order_known` (migration d5838ef1ecf1; DB backup `instance/turnpilot.db.bak-2026-10-06-
+  before-axial-order`): True on Confirm from a DXF, cleared by "Add feature" (a new feature goes to the
+  end of the list), kept by delete. Jobs read by the model or entered by hand: False, planned as before.
+- `planner.rough_starts`: with a known order, the largest Ø (the chuck side) is roughed from the bar;
+  every other od_turn / hex from the nearest turned section towards it with Ø ≥ its own (by the drawing's
+  Ø), starting at the Ø that section is cut to (a thread's d − 0.1·P). Grooves, tapers, arcs, fillets
+  are passed over. A section narrower than both neighbours: "check", roughed from the bar (not guessed).
+  A largest Ø between smaller sections: note "machined from both sides (re-chucking is not planned)".
+  The start Ø sets passes, ap, ref_diameter and n. The planner computes no machining time.
+- Roughing passes (seed turret T2 ap_max 4, finishing allowance 0.2, suggested blank):
+  - НД 012 (Ø55): §2 Ø45 2 → 1, §4 Ø38.5 3 → 1, §8 M24 (newly turned) 4 → 2; total 10 → 5;
+  - Завіса 36 bushing (Ø38): 3 → 3 (all Ø34.8, the largest);
+  - Завіса 36 pin (Ø38): §6 Ø22 2 × 3.9 → 2 × 3.1, n 1675 → 1829; total 5 → 5;
+  - деталь 1 (Ø32): §4 M22 2 → 1, §5 Ø20 2 → 1; total 5 → 3.
+- Existing tests did not change (the rule is off without a known order); test_dxf_input changed for
+  the thread row.
+- Not done: the chuck end is inferred from the largest Ø (no fixture data); re-chucking for a part
+  machined from both sides; a wide groove (wider than the insert) is still one plunge.
+
 ## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
 - Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
   answers are written by the user by hand before the run.
@@ -369,7 +392,7 @@ DXF → sections → review → planner, as a second input next to the model. Co
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 591 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 605 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

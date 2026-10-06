@@ -31,8 +31,15 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 - **Tool selection:** only tools loaded in the turret, matched by operation type and material ISO
   group (P/M/N). If none fits, the operation is kept with a clear warning and cannot be approved.
 - **Roughing:** Vc near `vc_min`, f near `f_max`. Roughing leaves the finishing allowance
-  (the finishing tool's ap): radial stock = `(blank_diameter - diameter) / 2 - ap_finish`,
+  (the finishing tool's ap): radial stock = `(start_diameter - diameter) / 2 - ap_finish`,
   split into equal passes: `passes = ceil(stock / ap_max)`, `ap = stock / passes`.
+  The start diameter is the blank's, unless the sections are known in their order along the axis (a
+  job confirmed from a DXF, with no feature added by hand since). Then the profile is turned from the
+  free end towards the chuck, which holds the largest Ø: that section is roughed from the bar, every
+  other one from the nearest turned section (od_turn / hex) towards it that is at least as large, at the
+  diameter it is cut to. Grooves, tapers, arcs and fillets are passed over. A section narrower than both
+  neighbours is not guessed: it gets **check** and is roughed from the bar. A largest Ø between smaller
+  sections gets a note that the part is machined from both sides (re-chucking is not planned).
 - **Finishing:** Vc near `vc_max`, ap = `ap_min`, feed from the target roughness
   `f = sqrt(Ra * 32 * r_eps / 1000)` (Ra in µm, nose radius r_eps from the insert code),
   clamped to the tool's `f_min..f_max`.
@@ -59,7 +66,7 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   or a numeric band within IT5 for the diameter, ISO 286) or whose Ra ≤ 0.4 µm gets the warning
   "may require grinding — not guaranteed by turning".
 - **Spindle speed:** `n = 1000 * Vc / (pi * D)`, capped at the machine max RPM. Roughing uses the
-  diameter before the pass (the blank diameter). Facing and parting are marked
+  diameter before the pass (the start diameter above). Facing and parting are marked
   "G96 constant surface speed, capped at max RPM".
 
 > The seed cutting data are **placeholders** and have not been validated. Replace them with values
@@ -209,6 +216,8 @@ section it belongs to from the geometry of the file, with no API call.
   pitch and class, chamfer leg and R come from the bound dimension's text, otherwise from the geometry
   with a **check** note. Lengths are the distances between section boundaries, never corrected; the ones
   no single dimension gives are marked **check** with the reason.
+- A threaded section gives an od_turn row (the diameter under the thread, turned to `d - 0.1 * pitch`)
+  and a thread row, as the model records it.
 - Upload: one extraction (and later one job) per part on the sheet. The review screen shows the table
   "Dimensions → sections", the section (§) of each row, the dimensions behind it and the reasons for
   every **check**, and links to the other parts of the sheet.
