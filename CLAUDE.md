@@ -362,6 +362,7 @@ DXF → sections → review → planner, as a second input next to the model. Co
 
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
+- Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
   question: does the code's solver remove the end-face confusion? Expectation: probably not. The
   mirrored reading 16 / 28 / 14 / 30 sums to 44 like the right one, so a consistent wrong binding
