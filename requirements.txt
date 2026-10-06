@@ -7,3 +7,4 @@ python-dotenv>=1.0
 pymupdf>=1.24
 pydantic>=2.7
 pytest>=8.0
+ezdxf==1.4.4  # DXF input (turnpilot/dxf_reader.py); pinned: the binding was measured with this version
