@@ -72,6 +72,12 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   The OD section under an external thread (an od_turn with the thread's nominal diameter) is
   roughed and finished to `d - 0.1 * pitch` (Ø19.85 for M20x1.5), noted "major diameter for thread".
   The feature keeps the nominal diameter from the drawing.
+- **Thread speed (n·P):** feed = pitch, so the Z axis moves at `n * P` mm/min. The Machine page has an
+  optional "Max Z feed when threading (n·P)". Above it, an external thread, a tap (G84) or an internal
+  threading bar gets `n = floor(limit / P)` and the note "n reduced to …"; within it, the note
+  "Z feed n·P …". Without a limit (the seed machine has none: no number is guessed) every thread operation
+  keeps its n and gets the warning "check n·P = … mm/min for your machine". The max RPM cap applies
+  first. The tap drill is not checked.
 - **Grinding check:** a finishing operation whose tolerance is IT5 or finer (fit grade such as `h5`,
   or a numeric band within IT5 for the diameter, ISO 286) or whose Ra ≤ 0.4 µm gets the warning
   "may require grinding — not guaranteed by turning".

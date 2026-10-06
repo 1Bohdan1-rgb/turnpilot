@@ -391,6 +391,18 @@ Commits 1ee88c5, c757e24. Plan agreed with the user (all three defaults).
   and the general tolerance fills it; it needs its own field (DXF could read it from the width dimension
   text; for the model it is a prompt change).
 
+## Thread speed check, n·P (2026-10-06)
+Commits b0393ad, 895848e. Plan agreed with the user.
+- `Machine.max_thread_feed` (mm/min, optional; migration 13d9cb0e4528; DB backup
+  `instance/turnpilot.db.bak-2026-10-06-before-thread-feed`). Seed: empty, the number is not guessed.
+- `planner.limit_thread_speed` for an external thread, a tap (G84) and an internal threading bar, after
+  the max RPM cap: above the limit n = floor(limit / P) with a note; within it a "Z feed n·P" note; no
+  limit: warning "check n·P = … mm/min for your machine". Warnings do not block Approve (only a missing
+  tool does). The tap drill is not checked.
+- Real parts (seed turret, Vc 132.5): НД 012 M24×1.5 n 1757, n·P 2635.5; деталь 1 M22×1.5 n 1917,
+  n·P 2875.5. Without a limit both get the warning; with an illustrative 2000 mm/min both go to 1333.
+- Existing tests did not change.
+
 ## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
 - Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
   answers are written by the user by hand before the run.
@@ -410,7 +422,7 @@ Commits 1ee88c5, c757e24. Plan agreed with the user (all three defaults).
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 624 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 638 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
