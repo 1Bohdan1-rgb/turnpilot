@@ -125,3 +125,15 @@ def test_confirm_each_part_as_its_own_job(client, no_api, tmp_path):
     page = client.get(f"/extractions/{shaft.id}/review").get_data(as_text=True)
     assert f"/jobs/{job.id}" in page and "(job created)" in page
     assert shaft.status == "extracted"
+
+
+def test_od_under_a_dxf_thread_is_turned(client, no_api, tmp_path):
+    from turnpilot.models import Job, Operation
+    from turnpilot.planner import THREAD_MAJOR_NOTE
+    _upload(client, _dxf_bytes(tmp_path, dd.draw_shaft))
+    (shaft,) = _extractions()
+    client.post(f"/extractions/{shaft.id}/confirm", data=_confirm_form(shaft, name="Shaft"))
+    job = db.session.execute(db.select(Job)).scalar_one()
+    client.post(f"/jobs/{job.id}/calculate")
+    finish = db.session.execute(db.select(Operation).filter_by(tool_type="turning_finish")).scalars().all()
+    assert any(f"{THREAD_MAJOR_NOTE}: Ø35.85 (nominal Ø36)" in (op.note or "") for op in finish)

@@ -170,6 +170,12 @@ def _section_rows(part, section: Section, by_section, chamfer_dims, fillet_dims,
     if note:
         row.notes.append(note)
     rows = [row]
+    if section.kind == "thread":
+        # the section under an external thread is turned first (to the reduced major Ø by the planner), so it
+        # is an od_turn row as well, as the model records it
+        turned = _Row({"type": "od_turn", "diameter": feature["diameter"], "length": feature["length"],
+                       "length_derived": feature["length_derived"]}, section.index, list(row.dims), list(row.notes))
+        rows.insert(0, turned)
 
     for side, leg, face_x in section.chamfers:
         # a chamfer's host is always a cylinder (dxf_reader), so the row has its diameter

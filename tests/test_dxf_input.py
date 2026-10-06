@@ -34,6 +34,7 @@ def test_shaft_rows(results):
         (1, {"type": "od_turn", "diameter": 40, "length": 20, "tolerance": "h12"}),
         (1, {"type": "chamfer", "diameter": 40, "length": 1, "location": "external", "face": "left"}),
         (2, {"type": "groove", "diameter": 30.2, "start_diameter": 36, "length": 3}),  # the text, not the geometry
+        (3, {"type": "od_turn", "diameter": 36, "length": 27}),  # the section under the thread is turned first
         (3, {"type": "thread", "diameter": 36, "length": 27, "tolerance": "6g", "pitch": 1.5,
              "location": "external"}),
         (3, {"type": "chamfer", "diameter": 36, "length": 1.5, "location": "external", "face": "right"}),
@@ -44,7 +45,8 @@ def test_shaft_rows(results):
     # 20 = 50 − 27 − 3: no single dimension, so the length is marked
     assert shaft.data.features[0].length_derived
     assert rows[0]["notes"] == ["length computed from other dimensions (no dimension spans this section alone)"]
-    assert not shaft.data.features[4].length_derived and rows[4]["notes"] == []
+    assert not shaft.data.features[5].length_derived and rows[5]["notes"] == []
+    assert rows[3]["dims"] == rows[4]["dims"] == ["M36×1,5-6g"]
     assert any("Ø10H11" in w and "inner profile" in w for w in shaft.data.warnings)
 
 
