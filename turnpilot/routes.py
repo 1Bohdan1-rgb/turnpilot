@@ -267,6 +267,7 @@ def add_feature(job_id):
     job = db.get_or_404(Job, job_id)
     try:
         job.features.append(_feature_from_form(request.form, _stock_diameter(job)))
+        job.axial_order_known = False  # the new feature is at the end of the list, not in its place on the axis
         db.session.commit()
     except FormError as e:
         flash(str(e), "error")
@@ -670,6 +671,8 @@ def confirm_extraction(extraction_id):
         return _render_review(extraction, _review_values_from_form(form), status=400)
 
     job.features = features
+    # a DXF gives its rows left to right along the axis; a model's reading has no such guarantee
+    job.axial_order_known = extraction.is_dxf
     db.session.add(job)
     extraction.job = job
     extraction.status = "confirmed"

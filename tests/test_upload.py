@@ -222,6 +222,7 @@ def test_confirm_creates_job_with_features(app, client):
 
     extraction = db.session.get(DrawingExtraction, 1)
     assert extraction.status == "confirmed" and extraction.job_id == job.id and extraction.confirmed_at
+    assert not job.axial_order_known  # a model's reading gives no guaranteed order along the axis
 
     client.post(f"/jobs/{job.id}/calculate")
     ops = db.session.execute(db.select(Operation)).scalars().all()

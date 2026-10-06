@@ -83,6 +83,9 @@ class Job(db.Model):
     blank_diameter = db.Column(db.Float, nullable=False)  # round bar: Ø; hex bar: size across flats S
     blank_length = db.Column(db.Float, nullable=False)
     blank_shape = db.Column(db.String(10), nullable=False, default="round", server_default="round")
+    # The features are in their order along the axis (a job confirmed from a DXF). A feature added by hand
+    # goes to the end of the list, so it clears the flag; deleting one keeps the order.
+    axial_order_known = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     created_at = db.Column(db.DateTime, default=_now)
 
     material = db.relationship("Material")

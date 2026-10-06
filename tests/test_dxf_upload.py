@@ -137,3 +137,16 @@ def test_od_under_a_dxf_thread_is_turned(client, no_api, tmp_path):
     client.post(f"/jobs/{job.id}/calculate")
     finish = db.session.execute(db.select(Operation).filter_by(tool_type="turning_finish")).scalars().all()
     assert any(f"{THREAD_MAJOR_NOTE}: Ø35.85 (nominal Ø36)" in (op.note or "") for op in finish)
+
+
+def test_axial_order_known_from_a_dxf_until_a_feature_is_added(client, no_api, tmp_path):
+    from turnpilot.models import Job
+    _upload(client, _dxf_bytes(tmp_path, dd.draw_pin))
+    (pin,) = _extractions()
+    client.post(f"/extractions/{pin.id}/confirm", data=_confirm_form(pin))
+    job = db.session.execute(db.select(Job)).scalar_one()
+    assert job.axial_order_known
+    client.post(f"/jobs/{job.id}/features/{job.active_features[1].id}/delete")
+    assert job.axial_order_known  # deleting keeps the order
+    client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=20, length=5))
+    assert not job.axial_order_known  # an added feature is at the end of the list
