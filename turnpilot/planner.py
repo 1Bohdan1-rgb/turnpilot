@@ -935,7 +935,38 @@ def _plan_groove_finish(op: PlannedOperation, tool: ToolSpec, feature: FeatureSp
                                                          insert=tool.insert_width, a=GROOVE_FINISH_ALLOWANCE_MM))
 
 
-def _plan_thread(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec) -> None:
+# --- spindle speed when threading: the Z axis moves at n·P -------------------------------------------
+THREAD_FEED_NOTE = "Z feed n·P {feed:g} mm/min"
+THREAD_FEED_REDUCED_NOTE = "n reduced to {n} rpm: n·P {feed:g} ≤ {limit:g} mm/min (was {n0} rpm, n·P {feed0:g})"
+THREAD_FEED_UNKNOWN_WARNING = ("check n·P = {feed:g} mm/min for your machine: no threading feed limit is set on "
+                               "the Machine page")
+THREAD_FEED_BELOW_PITCH_WARNING = ("the machine's threading feed limit {limit:g} mm/min is below one revolution "
+                                   "per minute at pitch {pitch:g}: check the limit")
+
+
+def limit_thread_speed(op: PlannedOperation, pitch: float | None, max_thread_feed: float | None) -> None:
+    """Feed = pitch when threading, so the Z axis moves at n·P mm/min. Above the machine's limit n is reduced
+    to fit it; without a known limit the operation asks for n·P to be checked (no limit is guessed)."""
+    if not op.n or not pitch:
+        return
+    feed = round(op.n * pitch, 1)
+    if max_thread_feed is None:
+        op.warnings.append(THREAD_FEED_UNKNOWN_WARNING.format(feed=feed))
+        return
+    if feed <= max_thread_feed + 1e-9:
+        op.notes.append(THREAD_FEED_NOTE.format(feed=feed))
+        return
+    n = math.floor(round(max_thread_feed / pitch, 9))
+    if n < 1:
+        op.warnings.append(THREAD_FEED_BELOW_PITCH_WARNING.format(limit=max_thread_feed, pitch=pitch))
+        return
+    op.notes.append(THREAD_FEED_REDUCED_NOTE.format(n=n, feed=round(n * pitch, 1), limit=max_thread_feed,
+                                                    n0=op.n, feed0=feed))
+    op.n = n
+
+
+def _plan_thread(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec,
+                 max_thread_feed: float | None = None) -> None:
     op.ap = None
     op.notes.insert(0, G97_THREAD_NOTE)
     if not feature.pitch:
@@ -943,6 +974,7 @@ def _plan_thread(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec) -> 
         op.warnings.append("Thread pitch is missing: feed equals pitch.")
         return
     op.f = feature.pitch
+    limit_thread_speed(op, feature.pitch, max_thread_feed)
     op.depth = thread_depth(feature.pitch)
     infeed, method = thread_infeed(op.depth, tool.ap_max, tool.ap_min)
     op.passes = len(infeed)
@@ -972,7 +1004,7 @@ def _plan_parting(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, jo
         op.notes.append(PARTING_CENTER_NOTE)
 
 
-def _plan_internal_thread_step(op, step, job, turret, max_rpm) -> PlannedOperation:
+def _plan_internal_thread_step(op, step, job, turret, max_rpm, max_thread_feed=None) -> PlannedOperation:
     """Tap drill, then a tap or an internal threading bar; a manual operation without the tool."""
     feature = step.feature
     if not (feature.diameter and feature.pitch):
@@ -1005,6 +1037,7 @@ def _plan_internal_thread_step(op, step, job, turret, max_rpm) -> PlannedOperati
     op.tool_id, op.tool_name, op.turret_position = tool.id, tool.name, entry.position
     op.vc = round((tool.vc_min + tool.vc_max) / 2, 1)
     op.n, _ = spindle_speed(op.vc, feature.diameter, max_rpm)
+    limit_thread_speed(op, feature.pitch, max_thread_feed)  # a tap (G84) and an internal threading bar alike
     if tool_type == "tapping":
         op.notes.append(TAPPING_NOTE)
     else:
@@ -1040,7 +1073,7 @@ def _plan_hex_milling(op: PlannedOperation, feature: FeatureSpec, job: JobSpec, 
 
 
 def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int,
-               start: RoughStart | None = None) -> PlannedOperation:
+               start: RoughStart | None = None, max_thread_feed: float | None = None) -> PlannedOperation:
     feature = step.feature
     op = PlannedOperation(
         feature_id=feature.id,
@@ -1059,7 +1092,7 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         return op
 
     if step.tool_type in ("drilling", "internal_threading"):
-        return _plan_internal_thread_step(op, step, job, turret, max_rpm)
+        return _plan_internal_thread_step(op, step, job, turret, max_rpm, max_thread_feed)
 
     if step.tool_type == "milling":
         return _plan_hex_milling(op, feature, job, turret)
@@ -1099,7 +1132,7 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     elif step.tool_type == "grooving":
         _plan_groove(op, tool, feature, job, leave_allowance=step.mode == "rough")
     elif step.tool_type == "threading":
-        _plan_thread(op, tool, feature)
+        _plan_thread(op, tool, feature, max_thread_feed)
     elif step.tool_type == "parting":
         _plan_parting(op, tool, feature, job)
     elif feature.type == "chamfer":
@@ -1108,8 +1141,10 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     return op
 
 
-def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> list[PlannedOperation]:
-    """Build the ordered list of proposed operations for a job."""
+def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
+             max_thread_feed: float | None = None) -> list[PlannedOperation]:
+    """Build the ordered list of proposed operations for a job. max_thread_feed: the machine's Z feed limit
+    when threading (n·P, mm/min), None when not known."""
     features = list(job.features)
     hex_bar = job.blank_diameter if job.blank_shape == "hex" else None
     chamfer_hosts = match_chamfers(features)
@@ -1143,7 +1178,7 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> list[Plan
         elif original.type == "hex" and step.tool_type != "milling":
             step = replace(step, feature=replace(original, diameter=hex_corners(original)))
         start = starts.get(id(original)) if step.tool_type == "turning_rough" else None
-        op = _plan_step(step, job, turret, max_rpm, start)
+        op = _plan_step(step, job, turret, max_rpm, start, max_thread_feed)
         if start and start.from_bar and not start.pit and both_sides:
             op.notes.append(TWO_SIDES_NOTE)
         if pitch and step.mode == "finish":

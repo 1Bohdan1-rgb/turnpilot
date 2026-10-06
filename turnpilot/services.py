@@ -93,7 +93,7 @@ def calculate_operations(job, machine):
     version = job.last_calculation_version + 1
     for op in job.current_operations:
         op.is_archived = True
-    for planned in planner.plan_job(job_spec(job), turret_entries(machine), machine.max_rpm):
+    for planned in planner.plan_job(job_spec(job), turret_entries(machine), machine.max_rpm, machine.max_thread_feed):
         job.operations.append(
             Operation(
                 feature_id=planned.feature_id,
