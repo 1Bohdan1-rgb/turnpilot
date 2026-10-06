@@ -287,6 +287,11 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
 - Current script md5: 5a3b83768e9a20a82015999e0ae2fc13 (not frozen yet; it is frozen before the control
   run).
 - Next: the control run on Завіса 36 (partly seen, see above). Nothing in the product.
+- Observations for the planner (from НД 012, the user's reading; not implemented):
+  - a section marked "not machined" (the roughness sign with a circle) is the bar held in the chuck, not
+    part of the part;
+  - the part is parted off at the end of the overall dimension;
+  - when turning the first diameter, the parting tool's width (~3 mm) is added to the length.
 
 ## Deferred
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
