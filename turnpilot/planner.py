@@ -129,11 +129,23 @@ class JobSpec:
     # The features are listed in their order along the axis (a job from a DXF): each section is then roughed
     # from its neighbour towards the chuck, not from the bar (see rough_starts).
     axial_order: bool = False
+    # The material's specific cutting force (kc = kc1 * hm^-mc) for the spindle power check, and its source.
+    material_name: str | None = None
+    kc1: float | None = None
+    mc: float | None = None
+    kc_source: str | None = None
 
     @property
     def stock_diameter(self) -> float:
         """Largest diameter of the bar the tools meet: a hex bar's diameter across corners."""
         return stock_diameter(self.blank_shape, self.blank_diameter)
+
+
+@dataclass(frozen=True)
+class PowerSpec:
+    """The machine's spindle power and the share of it the drive delivers; None: not known."""
+    power_kw: float | None
+    efficiency: float | None
 
 
 def stock_diameter(blank_shape: str, blank_size: float) -> float:
@@ -874,8 +886,65 @@ def _reference_diameter(step: Step, job: JobSpec, start: RoughStart | None = Non
     return step.feature.diameter or job.stock_diameter
 
 
+# --- spindle power of roughing: Pc = Vc · ap · f · kc / 60000 kW ------------------------------------
+# kc = kc1 · hm^-mc with hm = f · sin(κr); the tools carry no entering angle, so κr = 90° (hm = f). A 95°
+# holder changes kc by under 0.5%; a 45° one would raise it.
+POWER_OK_NOTE = "Pc {pc:.2f} kW ≤ {allowed:.2f} kW ({power:g} × {eff:g}); kc {kc:.0f} N/mm² ({source})"
+POWER_REDUCED_NOTE = ("ap reduced for spindle power: Pc {pc0:.2f} > {allowed:.2f} kW ({power:g} × {eff:g}) at ap {ap0:g}; "
+                      "now {passes} × ap {ap:g}, Pc {pc:.2f} kW; kc {kc:.0f} N/mm² ({source})")
+POWER_AP_MIN_WARNING = ("spindle power is not enough even at the tool's ap_min {ap_min:g}: Pc {pc:.2f} > {allowed:.2f} kW; "
+                        "reduce f or Vc (not changed automatically)")
+NO_KC_WARNING = "no kc1 / mc for {material}: spindle power not checked (Machine page, Materials)"
+NO_EFFICIENCY_WARNING = ("check the spindle power: Pc {pc:.2f} kW at ap {ap:g}, power {power:g} kW, but the drive "
+                         "efficiency is not set on the Machine page")
+NO_POWER_WARNING = "check the spindle power: Pc {pc:.2f} kW at ap {ap:g}, the machine power is not set"
+
+
+def specific_cutting_force(kc1: float, mc: float, f: float) -> float:
+    """kc in N/mm² for the feed f (mm/rev): kc1 · hm^-mc with hm = f (entering angle 90°)."""
+    return kc1 * f ** -mc
+
+
+def cutting_power(vc: float, ap: float, f: float, kc: float) -> float:
+    """Cutting power in kW: Vc (m/min) · ap (mm) · f (mm/rev) · kc (N/mm²) / 60000."""
+    return vc * ap * f * kc / 60000
+
+
+def _check_rough_power(op, tool, feature, job, from_diameter, allowance, power: PowerSpec) -> None:
+    """Fewer passes are not taken: above the available power the passes get thinner (more of them); Vc and f
+    stay as chosen."""
+    if job.kc1 is None or job.mc is None:
+        op.warnings.append(NO_KC_WARNING.format(material=job.material_name or "this material"))
+        return
+    kc = specific_cutting_force(job.kc1, job.mc, op.f)
+    vc = math.pi * op.ref_diameter * op.n / 1000  # actual: n may be capped at max RPM
+    pc = cutting_power(vc, op.ap, op.f, kc)
+    if power.power_kw is None:
+        op.warnings.append(NO_POWER_WARNING.format(pc=pc, ap=op.ap))
+        return
+    if power.efficiency is None:
+        op.warnings.append(NO_EFFICIENCY_WARNING.format(pc=pc, ap=op.ap, power=power.power_kw))
+        return
+    allowed = power.power_kw * power.efficiency
+    source = job.kc_source or "source not given"
+    if pc <= allowed + 1e-9:
+        op.notes.append(POWER_OK_NOTE.format(pc=pc, allowed=allowed, power=power.power_kw, eff=power.efficiency,
+                                             kc=kc, source=source))
+        return
+    ap_power = allowed * 60000 / (vc * op.f * kc)
+    if ap_power < tool.ap_min:
+        ap_power = tool.ap_min
+        op.warnings.append(POWER_AP_MIN_WARNING.format(ap_min=tool.ap_min, pc=cutting_power(vc, tool.ap_min, op.f, kc),
+                                                       allowed=allowed))
+    ap0 = op.ap
+    op.passes, op.ap = rough_passes(from_diameter, feature.diameter, min(tool.ap_max, ap_power), allowance)
+    op.notes.append(POWER_REDUCED_NOTE.format(pc0=pc, allowed=allowed, power=power.power_kw, eff=power.efficiency,
+                                              ap0=ap0, passes=op.passes, ap=op.ap,
+                                              pc=cutting_power(vc, op.ap, op.f, kc), kc=kc, source=source))
+
+
 def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec, turret,
-                        start: RoughStart | None = None) -> None:
+                        start: RoughStart | None = None, power: PowerSpec | None = None) -> None:
     allowance, is_default = finish_allowance(job.iso_group, turret)
     from_diameter = start.diameter if start else job.stock_diameter
     if start:
@@ -895,6 +964,8 @@ def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSp
     op.notes.append(f"leaves {allowance:g} mm/side for finishing")
     if is_default:
         op.notes.append("no finishing tool in turret: default allowance used")
+    if power is not None:  # None: not checked (a planner call without a machine)
+        _check_rough_power(op, tool, feature, job, from_diameter, allowance, power)
 
 
 def _plan_groove(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec,
@@ -1073,7 +1144,8 @@ def _plan_hex_milling(op: PlannedOperation, feature: FeatureSpec, job: JobSpec, 
 
 
 def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int,
-               start: RoughStart | None = None, max_thread_feed: float | None = None) -> PlannedOperation:
+               start: RoughStart | None = None, max_thread_feed: float | None = None,
+               power: PowerSpec | None = None) -> PlannedOperation:
     feature = step.feature
     op = PlannedOperation(
         feature_id=feature.id,
@@ -1126,7 +1198,7 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         op.notes.append(f"n limited to machine max {max_rpm} rpm")
 
     if step.tool_type == "turning_rough" and feature.diameter is not None:
-        _plan_rough_turning(op, tool, feature, job, turret, start)
+        _plan_rough_turning(op, tool, feature, job, turret, start, power)
     elif step.tool_type == "grooving" and step.mode == "finish" and groove_needs_finish(feature):
         _plan_groove_finish(op, tool, feature, job)
     elif step.tool_type == "grooving":
@@ -1142,9 +1214,10 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
 
 
 def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
-             max_thread_feed: float | None = None) -> list[PlannedOperation]:
+             max_thread_feed: float | None = None, power: PowerSpec | None = None) -> list[PlannedOperation]:
     """Build the ordered list of proposed operations for a job. max_thread_feed: the machine's Z feed limit
-    when threading (n·P, mm/min), None when not known."""
+    when threading (n·P, mm/min), None when not known. power: the machine's spindle power for the roughing
+    check; None: not checked."""
     features = list(job.features)
     hex_bar = job.blank_diameter if job.blank_shape == "hex" else None
     chamfer_hosts = match_chamfers(features)
@@ -1178,7 +1251,7 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
         elif original.type == "hex" and step.tool_type != "milling":
             step = replace(step, feature=replace(original, diameter=hex_corners(original)))
         start = starts.get(id(original)) if step.tool_type == "turning_rough" else None
-        op = _plan_step(step, job, turret, max_rpm, start, max_thread_feed)
+        op = _plan_step(step, job, turret, max_rpm, start, max_thread_feed, power)
         if start and start.from_bar and not start.pit and both_sides:
             op.notes.append(TWO_SIDES_NOTE)
         if pitch and step.mode == "finish":

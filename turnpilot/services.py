@@ -82,6 +82,10 @@ def job_spec(job):
         features=features,
         blank_shape=job.blank_shape or "round",
         axial_order=bool(job.axial_order_known),
+        material_name=job.material.name,
+        kc1=job.material.kc1,
+        mc=job.material.mc,
+        kc_source=job.material.kc_source,
     )
 
 
@@ -93,7 +97,9 @@ def calculate_operations(job, machine):
     version = job.last_calculation_version + 1
     for op in job.current_operations:
         op.is_archived = True
-    for planned in planner.plan_job(job_spec(job), turret_entries(machine), machine.max_rpm, machine.max_thread_feed):
+    power = planner.PowerSpec(machine.power_kw, machine.drive_efficiency)
+    for planned in planner.plan_job(job_spec(job), turret_entries(machine), machine.max_rpm, machine.max_thread_feed,
+                                    power):
         job.operations.append(
             Operation(
                 feature_id=planned.feature_id,
