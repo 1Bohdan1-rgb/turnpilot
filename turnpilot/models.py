@@ -190,15 +190,19 @@ class DrawingExtraction(db.Model):
     original_filename = db.Column(db.String(255), nullable=False)
     stored_filename = db.Column(db.String(100), nullable=False)  # original file in instance/drawings/
     sent_filename = db.Column(db.String(100))  # the image actually sent to the model
-    file_type = db.Column(db.String(10), nullable=False)  # png / jpeg / pdf
+    file_type = db.Column(db.String(10), nullable=False)  # png / jpeg / pdf / dxf
     size_bytes = db.Column(db.Integer, nullable=False)
     sha256 = db.Column(db.String(64), nullable=False)
     model = db.Column(db.String(100))
     prompt_version = db.Column(db.String(16))  # drawing_reader.prompt_version() used for this reading
-    read_mode = db.Column(db.String(20))  # "features" or "dimensions_first"
+    read_mode = db.Column(db.String(20))  # "features" or "dimensions_first"; "dxf": read by the code, no model
     status = db.Column(db.String(10), nullable=False, default="pending")  # pending/extracted/failed/confirmed
     raw_response = db.Column(db.Text)  # full API response as JSON
     parsed = db.Column(db.Text)  # validated DrawingData as JSON
+    # DXF only: which part of the sheet (1, 2, ...; one extraction per part) and the binding report of
+    # dxf_input (rows with their dimensions and notes, every dimension with what it is bound to) as JSON.
+    dxf_part = db.Column(db.Integer)
+    binding = db.Column(db.Text)
     error = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=_now, nullable=False)
     confirmed_at = db.Column(db.DateTime)
@@ -212,3 +216,7 @@ class DrawingExtraction(db.Model):
     @property
     def is_cached(self):
         return self.cached_from_id is not None
+
+    @property
+    def is_dxf(self):
+        return self.read_mode == "dxf"
