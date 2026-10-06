@@ -81,6 +81,7 @@ def job_spec(job):
         blank_length=job.blank_length,
         features=features,
         blank_shape=job.blank_shape or "round",
+        axial_order=bool(job.axial_order_known),
     )
 
 

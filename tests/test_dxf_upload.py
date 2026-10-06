@@ -150,3 +150,26 @@ def test_axial_order_known_from_a_dxf_until_a_feature_is_added(client, no_api, t
     assert job.axial_order_known  # deleting keeps the order
     client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=20, length=5))
     assert not job.axial_order_known  # an added feature is at the end of the list
+
+
+def test_dxf_job_is_roughed_from_the_neighbouring_sections(client, no_api, tmp_path):
+    from turnpilot.models import Job, Operation
+    from turnpilot.planner import TWO_SIDES_NOTE
+    _upload(client, _dxf_bytes(tmp_path, dd.draw_pin))
+    (pin,) = _extractions()
+    client.post(f"/extractions/{pin.id}/confirm", data=_confirm_form(pin))  # blank Ø45
+    job = db.session.execute(db.select(Job)).scalar_one()
+
+    def rough():
+        ops = db.session.execute(db.select(Operation).filter_by(tool_type="turning_rough", is_archived=False)).scalars()
+        return {op.feature.diameter: op for op in ops}
+
+    client.post(f"/jobs/{job.id}/calculate")
+    by_diameter = rough()
+    # Ø28 is the largest: from the bar; Ø24, Ø16 and Ø18 lie on both sides of it and start from Ø28
+    assert {d: op.ref_diameter for d, op in by_diameter.items()} == {24: 28, 16: 28, 28: 45, 18: 28}
+    assert TWO_SIDES_NOTE in by_diameter[28].note
+
+    client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=10, length=2))  # order lost
+    client.post(f"/jobs/{job.id}/calculate")
+    assert {op.ref_diameter for op in rough().values()} == {45}

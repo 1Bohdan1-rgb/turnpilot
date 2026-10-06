@@ -126,6 +126,9 @@ class JobSpec:
     blank_length: float
     features: tuple[FeatureSpec, ...]
     blank_shape: str = "round"  # "round" or "hex"
+    # The features are listed in their order along the axis (a job from a DXF): each section is then roughed
+    # from its neighbour towards the chuck, not from the bar (see rough_starts).
+    axial_order: bool = False
 
     @property
     def stock_diameter(self) -> float:
@@ -222,6 +225,79 @@ def rough_passes(
         return 0, 0.0
     passes = math.ceil(round(stock / ap_max, 9))
     return passes, round(stock / passes, 3)
+
+
+# --- roughing from the neighbouring section (features in their order along the axis) ---------------
+#
+# The profile is turned from the free end towards the chuck. The chuck holds the part at its largest
+# diameter, so that section is roughed from the bar; every other section is roughed from the nearest
+# section towards the chuck that the planner turns and that is at least as large (its pass has already
+# brought the material there down to it). Grooves, tapers, arcs and fillets are not roughed by the planner:
+# they are passed over. A section narrower than both neighbours is not guessed: it is flagged and roughed
+# from the bar as before.
+
+TURNED_SECTION_TYPES = ("od_turn", "hex")  # sections the planner roughs
+PROFILE_SECTION_TYPES = ("od_turn", "hex", "taper", "arc")  # sections with a diameter at both ends
+ROUGH_FROM_BAR_NOTE = "roughed from the bar Ø{d:g}"
+ROUGH_FROM_NEIGHBOUR_NOTE = "roughed from Ø{d:g}, the neighbouring section towards the chuck"
+NO_STOCK_AFTER_NEIGHBOUR_NOTE = "no roughing stock left after Ø{d:g} (the neighbouring section towards the chuck)"
+PIT_WARNING = ("check: section narrower than both its neighbours (a wide groove?): how it is roughed is not "
+               "determined, passes counted from the bar")
+TWO_SIDES_NOTE = ("largest Ø between smaller sections: the part is machined from both sides of it "
+                  "(re-chucking is not planned)")
+
+
+@dataclass(frozen=True)
+class RoughStart:
+    diameter: float  # the diameter the section is roughed from
+    from_bar: bool
+    pit: bool = False
+
+
+def _boundary_diameters(feature) -> tuple[float, float]:
+    """(Ø at its left end, Ø at its right end); a taper / arc runs from start_diameter to diameter."""
+    if feature.type in ("taper", "arc"):
+        return feature.start_diameter or 0.0, feature.diameter or 0.0
+    d = (hex_corners(feature) if feature.type == "hex" else feature.diameter) or 0.0
+    return d, d
+
+
+def rough_starts(features, turned_diameter, stock: float) -> tuple[dict[int, RoughStart], bool]:
+    """The diameter each turned section (by id()) is roughed from, and whether the largest Ø is between smaller
+    sections (the part is machined from both sides). `features` are in their order along the axis;
+    turned_diameter(f) is the diameter a turned section is cut to (a thread's reduced major Ø, a hex's corners)."""
+    profile = [f for f in features if f.type in PROFILE_SECTION_TYPES]
+    turned = [k for k, f in enumerate(profile) if f.type in TURNED_SECTION_TYPES and turned_diameter(f)]
+    if not turned:
+        return {}, False
+    # compared by the drawing's diameters; a start is the diameter the neighbour is actually cut to
+    nominal = {k: _boundary_diameters(profile[k])[0] for k in turned}
+    sizes = {k: turned_diameter(profile[k]) for k in turned}
+    pits = set()
+    for k in turned:
+        if 0 < k < len(profile) - 1:
+            left, right = _boundary_diameters(profile[k - 1])[1], _boundary_diameters(profile[k + 1])[0]
+            if left > nominal[k] + 1e-9 and right > nominal[k] + 1e-9:
+                pits.add(k)
+    largest = max((nominal[k] for k in turned if k not in pits), default=None)
+    roots = [k for k in turned if k not in pits and largest is not None and nominal[k] >= largest - 1e-9]
+    starts = {}
+    for k in turned:
+        if k in pits:
+            starts[id(profile[k])] = RoughStart(stock, from_bar=True, pit=True)
+            continue
+        if k in roots:
+            starts[id(profile[k])] = RoughStart(stock, from_bar=True)
+            continue
+        root = min(roots, key=lambda r: abs(r - k))  # the chuck side: towards the nearest largest Ø
+        step = 1 if root > k else -1
+        j = k + step
+        while not (j in sizes and j not in pits and nominal[j] >= nominal[k] - 1e-9):
+            j += step
+        starts[id(profile[k])] = RoughStart(sizes[j], from_bar=False)
+    both_sides = bool(roots) and any(k < roots[0] for k in turned if k not in pits) and \
+        any(k > roots[-1] for k in turned if k not in pits)
+    return starts, both_sides
 
 
 def thread_depth(pitch: float) -> float:
@@ -720,27 +796,39 @@ def finish_allowance(iso_group: str, turret: list[TurretEntry]) -> tuple[float, 
     return cutting_data(entry.tool, "finish")[2], False
 
 
-def _reference_diameter(step: Step, job: JobSpec) -> float:
+def _reference_diameter(step: Step, job: JobSpec, start: RoughStart | None = None) -> float:
     """Diameter used for the spindle speed calculation."""
     if step.stage == "face":
         return job.stock_diameter
     if step.stage == "parting":
         return step.feature.diameter or job.stock_diameter
     if step.tool_type == "turning_rough":
-        # Diameter before the first pass is the blank diameter (a hex bar: across corners).
-        return job.stock_diameter
+        # Diameter before the first pass: the neighbouring section's when known, else the blank's (a hex bar:
+        # across corners).
+        return start.diameter if start else job.stock_diameter
     if step.tool_type == "grooving":
         # The groove starts on the larger diameter, not at the bottom.
         return step.feature.start_diameter or job.stock_diameter
     return step.feature.diameter or job.stock_diameter
 
 
-def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec, turret) -> None:
+def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec, turret,
+                        start: RoughStart | None = None) -> None:
     allowance, is_default = finish_allowance(job.iso_group, turret)
-    op.passes, op.ap = rough_passes(job.stock_diameter, feature.diameter, tool.ap_max, allowance)
+    from_diameter = start.diameter if start else job.stock_diameter
+    if start:
+        template = ROUGH_FROM_BAR_NOTE if start.from_bar else ROUGH_FROM_NEIGHBOUR_NOTE
+        op.notes.append(template.format(d=from_diameter))
+        if start.pit:
+            op.warnings.append(PIT_WARNING)
+    op.passes, op.ap = rough_passes(from_diameter, feature.diameter, tool.ap_max, allowance)
     if op.passes == 0:
         op.ap = None
-        op.warnings.append("No roughing stock: feature diameter plus finishing allowance reaches the blank.")
+        if start and not start.from_bar:
+            # the neighbour's passes already took this section down: nothing is wrong
+            op.notes[-1] = NO_STOCK_AFTER_NEIGHBOUR_NOTE.format(d=from_diameter)
+        else:
+            op.warnings.append("No roughing stock: feature diameter plus finishing allowance reaches the blank.")
         return
     op.notes.append(f"leaves {allowance:g} mm/side for finishing")
     if is_default:
@@ -864,7 +952,8 @@ def _plan_hex_milling(op: PlannedOperation, feature: FeatureSpec, job: JobSpec, 
     return op
 
 
-def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> PlannedOperation:
+def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int,
+               start: RoughStart | None = None) -> PlannedOperation:
     feature = step.feature
     op = PlannedOperation(
         feature_id=feature.id,
@@ -906,7 +995,7 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     uses_ra = step.tool_type in ("turning_finish", "boring")
     op.vc, op.f, op.ap = cutting_data(tool, step.mode, feature.ra if uses_ra else None)
 
-    op.ref_diameter = _reference_diameter(step, job)
+    op.ref_diameter = _reference_diameter(step, job, start)
     op.n, limited = spindle_speed(op.vc, op.ref_diameter, max_rpm)
     if step.stage in ("face", "parting"):
         op.notes.append(G96_NOTE)
@@ -914,7 +1003,7 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         op.notes.append(f"n limited to machine max {max_rpm} rpm")
 
     if step.tool_type == "turning_rough" and feature.diameter is not None:
-        _plan_rough_turning(op, tool, feature, job, turret)
+        _plan_rough_turning(op, tool, feature, job, turret, start)
     elif step.tool_type == "grooving":
         _plan_groove(op, tool, feature, job)
     elif step.tool_type == "threading":
@@ -941,6 +1030,15 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> list[Plan
 
     thread_pitches = match_thread_diameters(features)
 
+    def turned_diameter(f):
+        """The diameter a section is cut to: a thread's reduced major Ø, a hex's corners."""
+        if f.type == "hex":
+            return hex_corners(f)
+        pitch = thread_pitches.get(id(f))
+        return thread_major_diameter(f.diameter, pitch) if pitch and f.diameter else f.diameter
+
+    starts, both_sides = rough_starts(features, turned_diameter, job.stock_diameter) if job.axial_order else ({}, False)
+
     steps = [s for f in features if id(f) not in chamfer_hosts for s in feature_to_steps(f, hex_bar)]
     operations = []
     for step in order_steps(steps):
@@ -952,7 +1050,10 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int) -> list[Plan
             step = replace(step, feature=replace(original, diameter=major))
         elif original.type == "hex" and step.tool_type != "milling":
             step = replace(step, feature=replace(original, diameter=hex_corners(original)))
-        op = _plan_step(step, job, turret, max_rpm)
+        start = starts.get(id(original)) if step.tool_type == "turning_rough" else None
+        op = _plan_step(step, job, turret, max_rpm, start)
+        if start and start.from_bar and not start.pit and both_sides:
+            op.notes.append(TWO_SIDES_NOTE)
         if pitch and step.mode == "finish":
             op.notes.append(f"{THREAD_MAJOR_NOTE}: Ø{major:g} (nominal Ø{original.diameter:g})")
         if step.mode == "finish" and id(original) in hosts_with_chamfer and step.tool_type != "milling":
