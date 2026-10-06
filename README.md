@@ -27,7 +27,18 @@ still shows what they were.
 
 Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 
-- **Order:** face → roughing → finishing (incl. chamfers) → grooves → threads → parting.
+- **Order:** face → centring and drilling → roughing → finishing (incl. chamfers) → grooves → threads →
+  parting. Boring is in roughing / finishing, so always after the hole is drilled.
+- **Holes:** one centring (tool type `centre_drilling`) starts the holes on the axis; drills follow from
+  the smallest. Drills are chosen by their diameter (tool library, "Diameter"). A bore gets the largest
+  drill up to its Ø less the boring tool's `ap_min` on each side (the finishing allowance comes from the
+  tool, not a guess); rough boring then opens it in passes by the boring tool's `ap_max`. A drill of the
+  bore's own size makes it with no boring when the bore needs nothing finer than IT12 and Ra 6.3
+  (placeholders). A hole deeper than 3 × the drill (placeholder) gets "G83 peck drilling". A tap drill
+  must be the exact size. A hole drilled for one feature that is at least as large and as deep makes
+  another's drill. Without a boring tool (allowance unknown), a fitting drill or a centre drill: a
+  warning, nothing guessed. Not modelled: through vs blind (depth = the bore length), the smallest bore a
+  boring bar enters, a flat bottom.
 - **Tool selection:** only tools loaded in the turret, matched by operation type and material ISO
   group (P/M/N). If none fits, the operation is kept with a clear warning and cannot be approved.
 - **Roughing:** Vc near `vc_min`, f near `f_max`. Roughing leaves the finishing allowance

@@ -421,6 +421,23 @@ Commits 7fd8d86, 661b3fb. Plan agreed with the user (all three defaults).
   pin §6 Ø22 8.32 kW (unchanged). With the seed (no efficiency) every roughing operation gets the warning.
 - Not done: facing, boring, grooving and parting power; the entering angle per tool.
 
+## Drilling before boring (2026-10-06)
+Commits 3a7cfe6, c2bf00c. Plan agreed with the user (all three defaults).
+- Before: a bore was bored from solid (no drilling, no centring); the tap drill was any drill in the turret.
+- `Tool.diameter` (migration e057e67f3716; DB backup `instance/turnpilot.db.bak-2026-10-06-before-drilling`)
+  and tool type `centre_drilling`; the seed turret has neither drills nor a centre drill (warnings).
+- `planner.plan_holes`: drill ≤ D − 2·ap_min(boring tool); drill-only when a drill of D exists and the bore
+  is IT ≥ 12 (`DRILL_IT_GRADE`) and Ra ≥ 6.3 or none (`DRILL_RA_UM`), placeholders; the general tolerance
+  fills most bores, so "no tolerance" alone would never apply. A one-sided "+0.21" counts as a 0.21 band
+  (IT12 on Ø22). G83 note above 3 × the drill (`PECK_DEPTH_FACTOR`, placeholder). Coaxial holes share a
+  drill. New stage `drill` after `face`; one centring on the first hole's row; drills from the smallest.
+- Deviation from the plan, on purpose: rough boring keeps n from the bore Ø (as before), not from the drill
+  Ø; inside a hole the Ø grows during the pass, so the bore Ø is the conservative one.
+- Examples (synthetic turret: centre drill, Ø6/8/10/16/20, seed boring bar ap 0.2–2): Завіса 36 bushing
+  Ø22+0,21 L32 → Ø20, rough boring 1 × 0.8; pin Ø10+0,15 L5 → drill Ø10 only; Ø8 H7 L40 → Ø6 with G83.
+- Tests updated as planned: the bore without tools now has four operations; the test drills got their
+  diameter; the tap drill test sees the bore's drill too.
+
 ## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
 - Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
   answers are written by the user by hand before the run.
@@ -440,7 +457,7 @@ Commits 7fd8d86, 661b3fb. Plan agreed with the user (all three defaults).
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 653 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 671 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
