@@ -788,6 +788,46 @@ def select_tool(tool_type: str, iso_group: str, turret: list[TurretEntry]) -> tu
     return None, f"No {tool_type} tool in the turret. Install one to machine this feature."
 
 
+# --- grooves wider than the insert -----------------------------------------------------------------
+#
+# A groove wider than the insert is cut with several plunges that overlap (never edge to edge).
+# PLACEHOLDER: the step between plunges is at most this share of the insert width, i.e. the plunges overlap
+# by at least 20% of it (0.6 mm on a 3 mm insert). The tools carry no overlap of their own.
+GROOVE_STEP_FACTOR = 0.8
+GROOVE_WIDTH_TOL_MM = 0.01  # a groove this much wider than the insert is still one plunge
+
+
+def groove_plunges(width: float, insert_width: float) -> tuple[int, float]:
+    """(plunges, step between them in mm) to cut a groove of `width` with an insert of `insert_width`.
+
+    One plunge when the groove is the insert's width; otherwise the first and the last plunge touch the
+    walls and the ones between are spread evenly, the step never above GROOVE_STEP_FACTOR * insert_width.
+    """
+    if width <= insert_width + GROOVE_WIDTH_TOL_MM:
+        return 1, 0.0
+    plunges = 1 + math.ceil(round((width - insert_width) / (GROOVE_STEP_FACTOR * insert_width), 9))
+    return plunges, round((width - insert_width) / (plunges - 1), 3)
+
+
+def select_grooving_tool(width: float | None, iso_group: str,
+                         turret: list[TurretEntry]) -> tuple[TurretEntry | None, str | None]:
+    """The grooving tool for a groove of `width`: of the inserts not wider than the groove, the widest (fewest
+    plunges). A groove narrower than every insert gets no tool and a warning (not cut wider than drawn).
+    Without a width, or when no insert width is known, the choice is select_tool's."""
+    entry, warning = select_tool("grooving", iso_group, turret)
+    if entry is None or width is None:
+        return entry, warning
+    sized = [e for e in turret if e.tool.type == "grooving" and iso_group in e.tool.iso_group and e.tool.insert_width]
+    if not sized:
+        return entry, None
+    fits = [e for e in sized if e.tool.insert_width <= width + GROOVE_WIDTH_TOL_MM]
+    if not fits:
+        narrowest = min(e.tool.insert_width for e in sized)
+        return None, (f"Groove {width:g} mm is narrower than the narrowest grooving insert in the turret "
+                      f"({narrowest:g} mm): install a narrower insert.")
+    return min(fits, key=lambda e: (-e.tool.insert_width, e.position)), None
+
+
 def finish_allowance(iso_group: str, turret: list[TurretEntry]) -> tuple[float, bool]:
     """Radial allowance left for finishing: the finishing tool's ap. Returns (allowance, is_default)."""
     entry, _ = select_tool("turning_finish", iso_group, turret)
@@ -846,6 +886,12 @@ def _plan_groove(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job
         op.depth = round((op.ref_diameter - feature.diameter) / 2, 3)
         if op.depth <= 0:
             op.warnings.append("Groove bottom diameter is not smaller than the start diameter.")
+    if feature.length is None:
+        op.notes.append("groove width not given: one plunge")
+    elif tool.insert_width:
+        op.passes, step = groove_plunges(feature.length, tool.insert_width)
+        if op.passes > 1:
+            op.notes.append(f"{op.passes} plunges, step {step:g} mm (overlap {round(tool.insert_width - step, 3):g} mm)")
 
 
 def _plan_thread(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec) -> None:
@@ -981,7 +1027,10 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         op.notes.append(f"hex S{hex_flats(feature):g}: {HEX_FROM_BAR_NOTE}")
         return op
 
-    entry, warning = select_tool(step.tool_type, job.iso_group, turret)
+    if step.tool_type == "grooving":
+        entry, warning = select_grooving_tool(feature.length, job.iso_group, turret)
+    else:
+        entry, warning = select_tool(step.tool_type, job.iso_group, turret)
     if entry is None:
         op.warnings.append(warning)
         return op
