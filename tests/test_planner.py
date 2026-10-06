@@ -95,7 +95,8 @@ def test_select_tool_missing_type_gives_warning(turret):
 def test_missing_tool_operation_is_kept_with_warning(turret):
     job = JobSpec("P", 60, 100, (FeatureSpec(1, "bore", diameter=30),))
     ops = plan_job(job, turret, max_rpm=4000)
-    assert len(ops) == 2
+    # centring, drilling (no boring tool: no allowance, no drill), rough and finish boring
+    assert [op.tool_type for op in ops] == ["centre_drilling", "drilling", "boring", "boring"]
     for op in ops:
         assert op.tool_id is None and op.n is None
         assert op.warnings

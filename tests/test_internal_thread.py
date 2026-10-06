@@ -77,7 +77,8 @@ def _tool(tool_type, **ranges):
 
 def test_internal_thread_with_drill_and_tap(app):
     turret = services.turret_entries(services.get_machine()) + [
-        planner.TurretEntry(10, _tool("drilling", vc_min=20, vc_max=40, f_min=0.1, f_max=0.2)),
+        # a drill is chosen by its diameter: the Ø12 tap drill for M14×2
+        planner.TurretEntry(10, _tool("drilling", vc_min=20, vc_max=40, f_min=0.1, f_max=0.2, diameter=12)),
         planner.TurretEntry(11, _tool("tapping")),
     ]
     drill, tap = [op for op in planner.plan_job(_job(), turret, 4000) if op.feature_id == 3]

@@ -48,8 +48,9 @@ IT5_UM = (
     (120, 15), (180, 18), (250, 20), (315, 23), (400, 25), (500, 27),
 )
 
-# Stage order of the process sheet: face -> rough -> finish -> groove -> thread -> mill -> parting.
-STAGE_ORDER = {"face": 0, "rough": 1, "finish": 2, "groove": 3, "thread": 4, "mill": 5, "parting": 6}
+# Stage order of the process sheet: face -> drill (centre, then drills) -> rough -> finish -> groove -> thread ->
+# mill -> parting. Boring is in rough / finish, so always after the hole is drilled.
+STAGE_ORDER = {"face": 0, "drill": 1, "rough": 2, "finish": 3, "groove": 4, "thread": 5, "mill": 6, "parting": 7}
 
 # "Closer to the min/max of the range" is expressed as a position inside the range.
 NEAR_MIN = 0.25
@@ -388,6 +389,8 @@ def tolerance_band_mm(tolerance: str | None) -> float | None:
 
 # ISO 286-1 standard tolerance IT11 in um: (upper bound of the size range in mm, IT11).
 IT11_UM = ((3, 60), (6, 75), (10, 90), (18, 110), (30, 130), (50, 160), (80, 190), (120, 220), (180, 250), (250, 290))
+# ISO 286-1 standard tolerance IT12 in um: (upper bound of the size range in mm, IT12).
+IT12_UM = ((3, 100), (6, 120), (10, 150), (18, 180), (30, 210), (50, 250), (80, 300), (120, 350), (180, 400), (250, 460))
 # Drawn (calibrated) hex bar is made to h11 across flats (GOST 8560 / EN 10278).
 HEX_BAR_TOLERANCE = "h11"
 
@@ -667,8 +670,9 @@ def cutting_data(tool: ToolSpec, mode: str, ra: float | None = None) -> tuple[fl
     return round(vc, 1), round(f, 3), round(ap, 2)
 
 
-def feature_to_steps(feature: FeatureSpec, hex_bar: float | None = None) -> list[Step]:
-    """Split a part feature into machining steps. hex_bar: size across flats of a hex bar blank."""
+def feature_to_steps(feature: FeatureSpec, hex_bar: float | None = None, hole: HolePlan | None = None) -> list[Step]:
+    """Split a part feature into machining steps. hex_bar: size across flats of a hex bar blank. hole: how a bore
+    or an internal thread is drilled (plan_holes); without it a bore is bored only, as from a drilled hole."""
     t = feature.type
     if t == "face":
         return [Step(feature, "facing", "rough", "face")]
@@ -678,7 +682,10 @@ def feature_to_steps(feature: FeatureSpec, hex_bar: float | None = None) -> list
             Step(feature, "turning_finish", "finish", "finish"),
         ]
     if t == "bore":
-        return [
+        drilling = [Step(feature, "drilling", "finish", "drill")] if hole and hole.drilled_here else []
+        if hole and hole.drill_only:
+            return drilling
+        return drilling + [
             Step(feature, "boring", "rough", "rough"),
             Step(feature, "boring", "finish", "finish"),
         ]
@@ -694,8 +701,9 @@ def feature_to_steps(feature: FeatureSpec, hex_bar: float | None = None) -> list
         return [Step(feature, "grooving", "finish", "groove")]
     if t == "thread":
         if feature.location == "internal":
-            # tap drill first, then a tap or an internal threading bar
-            return [Step(feature, "drilling", "finish", "rough"), Step(feature, "internal_threading", "finish", "thread")]
+            # tap drill first (unless a hole drilled for another feature already makes it), then a tap or a bar
+            drilling = [] if hole and not hole.drilled_here else [Step(feature, "drilling", "finish", "drill")]
+            return drilling + [Step(feature, "internal_threading", "finish", "thread")]
         return [Step(feature, "threading", "finish", "thread")]
     if t == "parting":
         return [Step(feature, "parting", "finish", "parting")]
@@ -771,6 +779,118 @@ def tap_drill_diameter(nominal: float, pitch: float) -> float:
         if math.isclose(size, nominal) and math.isclose(pitch, coarse_pitch(size) or 0):
             return drill
     return round(nominal - pitch, 2)
+
+
+# --- holes: centre drilling, then a drill chosen by its diameter, then boring ---------------------------------
+#
+# All holes are on the axis and drilled from one face: one centring starts them. A bore gets the largest drill
+# that still leaves the boring tool's finishing allowance (its ap_min) on each side; a drill of the bore's own
+# diameter makes it at once when the bore needs no finer tolerance or roughness than a drill gives. A tap drill
+# has to be the exact size. A hole drilled for one feature that is at least as large and as deep as another's
+# drill makes that one too.
+
+# PLACEHOLDER: a drilled hole is about IT12 with Ra 6.3 or coarser; finer needs boring.
+DRILL_IT_GRADE = 12
+DRILL_RA_UM = 6.3
+# PLACEHOLDER: deeper than this many drill diameters is drilled with chip removal (G83).
+PECK_DEPTH_FACTOR = 3
+DRILL_SIZE_TOL_MM = 0.01
+TAP_DRILL_TOL_MM = 0.05
+NO_CENTRE_DRILL = "no centre drill in the turret: centre the hole by hand"
+NO_BORING_ALLOWANCE = "no boring tool in the turret: the boring allowance is unknown, no drill chosen"
+NO_DRILL_UP_TO = "no drill up to Ø{d:g} in the turret (Ø{hole:g} less the boring allowance {a:g} mm/side): drill by hand"
+NO_TAP_DRILL = "no Ø{d:g} drill in the turret (tap drill for M{nominal:g}×{pitch:g})"
+DRILL_NOTE = "drill Ø{d:g}: the largest up to Ø{limit:g} (Ø{hole:g} less the boring tool's ap_min {a:g} mm/side)"
+DRILL_ONLY_NOTE = "drill Ø{d:g} makes the hole: tolerance and roughness need no boring"
+PECK_NOTE = "G83 peck drilling: depth {depth:g} > {k:g} × Ø{d:g}"
+COVERED_NOTE = "drilled Ø{d:g} with feature {fid}'s hole"
+FROM_SOLID_NOTE = "no drill chosen: bored from solid? Drill the hole first"
+
+
+@dataclass(frozen=True)
+class HolePlan:
+    diameter: float | None  # the drilled diameter (None: no drill chosen)
+    depth: float | None
+    entry: TurretEntry | None = None  # the drill; None with a warning when there is none
+    warning: str | None = None
+    drill_only: bool = False  # the drill makes the bore, no boring
+    drilled_here: bool = True  # False: another feature's hole makes this one (covered_by)
+    covered_by: int | None = None  # that feature's id
+    note: str | None = None
+
+
+def drill_gives(tolerance: str | None, diameter: float, ra: float | None) -> bool:
+    """A drilled hole is good enough: no tolerance finer than IT12 and no roughness finer than Ra 6.3."""
+    if ra is not None and ra < DRILL_RA_UM - 1e-9:
+        return False
+    if not tolerance:
+        return True
+    grade = iso_fit_grade(tolerance)
+    if grade is not None:
+        return grade >= DRILL_IT_GRADE
+    band = tolerance_band_mm(tolerance)
+    single = re.fullmatch(r"\s*([+\-−])\s*(\d*[.,]?\d+)\s*", tolerance)
+    if band is None and single:  # one deviation written ("+0.21" is 0 / +0.21): the band is its size
+        band = float(single.group(2).replace(",", "."))
+    it12 = next((um / 1000 for upper, um in IT12_UM if diameter <= upper), None)
+    return band is not None and it12 is not None and band >= it12 - 1e-9
+
+
+def _drills(iso_group, turret):
+    return [e for e in turret if e.tool.type == "drilling" and iso_group in e.tool.iso_group and e.tool.diameter]
+
+
+def plan_holes(features, iso_group: str, turret: list[TurretEntry]) -> dict[int, HolePlan]:
+    """How each bore and internal thread (by id()) is drilled."""
+    drills = _drills(iso_group, turret)
+    boring, _ = select_tool("boring", iso_group, turret)
+    plans = {}
+    for f in features:
+        if f.type == "bore" and f.diameter:
+            exact = [e for e in drills if abs(e.tool.diameter - f.diameter) <= DRILL_SIZE_TOL_MM]
+            if exact and drill_gives(f.tolerance, f.diameter, f.ra):
+                plans[id(f)] = HolePlan(f.diameter, f.length, exact[0], drill_only=True,
+                                        note=DRILL_ONLY_NOTE.format(d=f.diameter))
+                continue
+            if boring is None:
+                plans[id(f)] = HolePlan(None, f.length, warning=NO_BORING_ALLOWANCE)
+                continue
+            allowance = boring.tool.ap_min
+            limit = round(f.diameter - 2 * allowance, 3)
+            fits = [e for e in drills if e.tool.diameter <= limit + 1e-9]
+            if not fits:
+                plans[id(f)] = HolePlan(None, f.length, warning=NO_DRILL_UP_TO.format(d=limit, hole=f.diameter,
+                                                                                       a=allowance))
+                continue
+            entry = min(fits, key=lambda e: (-e.tool.diameter, e.position))
+            plans[id(f)] = HolePlan(entry.tool.diameter, f.length, entry, note=DRILL_NOTE.format(
+                d=entry.tool.diameter, limit=limit, hole=f.diameter, a=allowance))
+        elif f.type == "thread" and f.location == "internal" and f.diameter and f.pitch:
+            size = tap_drill_diameter(f.diameter, f.pitch)
+            exact = [e for e in drills if abs(e.tool.diameter - size) <= TAP_DRILL_TOL_MM]
+            if exact:
+                plans[id(f)] = HolePlan(size, f.length, min(exact, key=lambda e: e.position))
+            else:
+                plans[id(f)] = HolePlan(size, f.length, warning=NO_DRILL if not drills else NO_TAP_DRILL.format(
+                    d=size, nominal=f.diameter, pitch=f.pitch))
+    # a hole drilled for one feature makes another's when it is at least as large and as deep
+    by_id = {id(f): f for f in features}
+    for key, plan in list(plans.items()):
+        if plan.diameter is None or plan.depth is None or plan.drill_only:
+            continue
+        for other_key, other in plans.items():
+            if other_key == key or other.diameter is None or other.depth is None or other.covered_by is not None:
+                continue
+            hole = by_id[key]
+            fits_inside = hole.type != "bore" or other.diameter <= hole.diameter + 1e-9
+            larger = other.diameter > plan.diameter + 1e-9 or (abs(other.diameter - plan.diameter) <= 1e-9
+                                                               and other.depth > plan.depth + 1e-9)
+            if fits_inside and larger and other.depth >= plan.depth - 1e-9 and other.diameter >= plan.diameter - 1e-9:
+                plans[key] = replace(plan, diameter=other.diameter, entry=None, warning=None, drilled_here=False,
+                                     covered_by=by_id[other_key].id,
+                                     note=COVERED_NOTE.format(d=other.diameter, fid=by_id[other_key].id))
+                break
+    return plans
 
 
 def thread_major_diameter(nominal: float, pitch: float) -> float:
@@ -969,6 +1089,20 @@ def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSp
         _check_rough_power(op, tool, feature, job, from_diameter, allowance, power)
 
 
+def _plan_rough_boring(op, tool, feature, job, turret, hole: HolePlan) -> None:
+    """Open the drilled hole to the bore, leaving the finishing pass (the boring tool's ap_min)."""
+    if hole.diameter is None or feature.diameter is None:
+        op.notes.append(FROM_SOLID_NOTE)
+        return
+    stock = (feature.diameter - hole.diameter) / 2 - tool.ap_min
+    op.notes.append(f"bored from the drilled Ø{hole.diameter:g}, leaves {tool.ap_min:g} mm/side for finishing")
+    if stock <= 1e-9:
+        op.passes, op.ap = 0, None
+        return
+    op.passes = math.ceil(round(stock / tool.ap_max, 9))
+    op.ap = round(stock / op.passes, 3)
+
+
 def _plan_groove(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec,
                  leave_allowance: bool = False) -> None:
     """Plunges; with leave_allowance (a finishing pass follows) they stop short of the walls and the bottom."""
@@ -1076,23 +1210,56 @@ def _plan_parting(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, jo
         op.notes.append(PARTING_CENTER_NOTE)
 
 
+def _plan_centring(op, job, turret, max_rpm) -> PlannedOperation:
+    """One centring for all the holes on the axis."""
+    op.notes.append("centre the holes on the axis")
+    entry, _ = select_tool("centre_drilling", job.iso_group, turret)
+    if entry is None:
+        op.warnings.append(NO_CENTRE_DRILL)
+        return op
+    op.tool_id, op.tool_name, op.turret_position = entry.tool.id, entry.tool.name, entry.position
+    op.vc, op.f, _ = cutting_data(entry.tool, "finish")
+    if entry.tool.diameter:
+        op.ref_diameter = entry.tool.diameter
+        op.n, _ = spindle_speed(op.vc, entry.tool.diameter, max_rpm)
+    else:
+        op.vc = op.f = None
+        op.warnings.append("the centre drill has no diameter: set it in the tool library to get its speed")
+    return op
+
+
+def _plan_drilling(op, step, hole: HolePlan | None, max_rpm) -> PlannedOperation:
+    """Drill a bore or a tap drill hole with the drill plan_holes chose; a manual operation without one."""
+    feature = step.feature
+    if feature.type == "thread":
+        if not (feature.diameter and feature.pitch):
+            op.warnings.append("Internal thread without diameter or pitch: cannot plan it.")
+            return op
+        op.notes.append(f"tap drill Ø{tap_drill_diameter(feature.diameter, feature.pitch):g} "
+                        f"for M{feature.diameter:g}×{feature.pitch:g}")
+    if hole is None:
+        op.warnings.append(NO_DRILL)
+        return op
+    op.ref_diameter, op.depth = hole.diameter, hole.depth
+    if hole.note:
+        op.notes.append(hole.note)
+    if hole.entry is None:
+        op.warnings.append(hole.warning or NO_DRILL)
+        return op
+    tool = hole.entry.tool
+    op.tool_id, op.tool_name, op.turret_position = tool.id, tool.name, hole.entry.position
+    op.vc, op.f, _ = cutting_data(tool, "finish")
+    op.n, _ = spindle_speed(op.vc, tool.diameter, max_rpm)
+    if hole.depth and hole.depth > PECK_DEPTH_FACTOR * tool.diameter + 1e-9:
+        op.notes.append(PECK_NOTE.format(depth=hole.depth, k=PECK_DEPTH_FACTOR, d=tool.diameter))
+    return op
+
+
 def _plan_internal_thread_step(op, step, job, turret, max_rpm, max_thread_feed=None) -> PlannedOperation:
-    """Tap drill, then a tap or an internal threading bar; a manual operation without the tool."""
+    """A tap or an internal threading bar (the tap drill is a drilling step); a manual operation without one."""
     feature = step.feature
     if not (feature.diameter and feature.pitch):
         op.warnings.append("Internal thread without diameter or pitch: cannot plan it.")
-        return op
-    if step.tool_type == "drilling":
-        drill = tap_drill_diameter(feature.diameter, feature.pitch)
-        op.notes.append(f"tap drill Ø{drill:g} for M{feature.diameter:g}×{feature.pitch:g}")
-        op.ref_diameter, op.depth = drill, feature.length
-        entry, _ = select_tool("drilling", job.iso_group, turret)
-        if entry is None:
-            op.warnings.append(NO_DRILL)
-            return op
-        op.tool_id, op.tool_name, op.turret_position = entry.tool.id, entry.tool.name, entry.position
-        op.vc, op.f, _ = cutting_data(entry.tool, "finish")
-        op.n, _ = spindle_speed(op.vc, drill, max_rpm)
         return op
 
     for tool_type in ("tapping", "threading_internal"):
@@ -1146,7 +1313,7 @@ def _plan_hex_milling(op: PlannedOperation, feature: FeatureSpec, job: JobSpec, 
 
 def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int,
                start: RoughStart | None = None, max_thread_feed: float | None = None,
-               power: PowerSpec | None = None) -> PlannedOperation:
+               power: PowerSpec | None = None, hole: HolePlan | None = None) -> PlannedOperation:
     feature = step.feature
     op = PlannedOperation(
         feature_id=feature.id,
@@ -1164,7 +1331,11 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         op.warnings.append(MANUAL_OPERATION_WARNING)
         return op
 
-    if step.tool_type in ("drilling", "internal_threading"):
+    if step.tool_type == "centre_drilling":
+        return _plan_centring(op, job, turret, max_rpm)
+    if step.tool_type == "drilling":
+        return _plan_drilling(op, step, hole, max_rpm)
+    if step.tool_type == "internal_threading":
         return _plan_internal_thread_step(op, step, job, turret, max_rpm, max_thread_feed)
 
     if step.tool_type == "milling":
@@ -1208,6 +1379,8 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         _plan_thread(op, tool, feature, max_thread_feed)
     elif step.tool_type == "parting":
         _plan_parting(op, tool, feature, job)
+    elif step.tool_type == "boring" and step.mode == "rough" and hole is not None:
+        _plan_rough_boring(op, tool, feature, job, turret, hole)
     elif feature.type == "chamfer":
         op.notes.append("no finishing pass on this diameter: chamfer machined separately")
 
@@ -1221,11 +1394,14 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
     check; None: not checked."""
     features = list(job.features)
     hex_bar = job.blank_diameter if job.blank_shape == "hex" else None
+    holes = plan_holes(features, job.iso_group, turret)
     chamfer_hosts = match_chamfers(features)
-    # a hex left as it comes from a hex bar has no finish pass: its chamfer gets its own
+    # a hex left as it comes from a hex bar, or a bore made by its drill, has no finish pass: its chamfer gets
+    # its own
     chamfer_hosts = {
         chamfer: host for chamfer, host in chamfer_hosts.items()
         if not (host.type == "hex" and feature_to_steps(host, hex_bar)[0].tool_type in ("hex_bar", "milling"))
+        and not (id(host) in holes and holes[id(host)].drill_only)
     }
     hosts_with_chamfer = {id(host) for host in chamfer_hosts.values()}
 
@@ -1240,7 +1416,19 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
 
     starts, both_sides = rough_starts(features, turned_diameter, job.stock_diameter) if job.axial_order else ({}, False)
 
-    steps = [s for f in features if id(f) not in chamfer_hosts for s in feature_to_steps(f, hex_bar)]
+    steps = [s for f in features if id(f) not in chamfer_hosts for s in feature_to_steps(f, hex_bar, holes.get(id(f)))]
+    drilling = [s for s in steps if s.tool_type == "drilling"]
+    if drilling:  # one centring for the holes on the axis, before the first drill; on the first hole's row
+        first_hole = next(f for f in features if id(f) in holes)
+        steps.insert(0, Step(first_hole, "centre_drilling", "finish", "drill"))
+
+    def drill_rank(step):  # in the drilling stage: the centring, then the drills from the smallest
+        if step.tool_type != "drilling":
+            return 0.0
+        plan = holes.get(id(step.feature))
+        return plan.diameter if plan and plan.diameter else 0.0
+
+    steps.sort(key=drill_rank)  # stable; order_steps then sorts by stage
     operations = []
     for step in order_steps(steps):
         original = step.feature
@@ -1252,7 +1440,7 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
         elif original.type == "hex" and step.tool_type != "milling":
             step = replace(step, feature=replace(original, diameter=hex_corners(original)))
         start = starts.get(id(original)) if step.tool_type == "turning_rough" else None
-        op = _plan_step(step, job, turret, max_rpm, start, max_thread_feed, power)
+        op = _plan_step(step, job, turret, max_rpm, start, max_thread_feed, power, holes.get(id(original)))
         if start and start.from_bar and not start.pit and both_sides:
             op.notes.append(TWO_SIDES_NOTE)
         if pitch and step.mode == "finish":

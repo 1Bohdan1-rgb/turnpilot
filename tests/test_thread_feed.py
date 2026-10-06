@@ -109,8 +109,9 @@ def test_tap_and_internal_threading_bar_are_checked_too(tool_type):
 
 
 def test_tap_drill_is_not_checked():
-    (drill,) = _thread_op(None, M14_INTERNAL, _internal_turret("tapping"), tool_types=("drilling",))
-    assert not any("n·P" in w for w in drill.warnings) and not any("n·P" in n for n in drill.notes)
+    drills = _thread_op(None, M14_INTERNAL, _internal_turret("tapping"), tool_types=("drilling",))
+    assert len(drills) == 2  # the bore's drill and the tap drill
+    assert not any("n·P" in text for drill in drills for text in drill.warnings + drill.notes)
 
 
 def test_limit_from_the_machine_page_through_the_app(client):
