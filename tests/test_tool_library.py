@@ -42,8 +42,8 @@ def test_source_is_saved_and_shown_in_the_library(client):
 def test_seed_tools_carry_a_source_only_when_checked_against_the_catalogue(app):
     tools = {t.name: t for t in db.session.execute(db.select(Tool)).scalars()}
     checked = ("Facing SCMT", "Rough turning CNMG (P)", "Finish turning DNMG (P)", "Grooving 3 mm",
-               "Threading 60 deg", "Parting 3 mm", "Boring bar CCMT")
-    assert all(tools[name].source.startswith("Sandvik Coromant Turning tools 2020") for name in checked)
+               "Threading 60 deg", "Parting 3 mm", "Rough boring CCMT (P)", "Boring bar CCMT")
+    assert all(tools[name].source.startswith("Sandvik") for name in checked)
     assert all(t.source is None for name, t in tools.items() if name not in checked)
 
 
@@ -230,3 +230,22 @@ def test_seed_migration_t6_t7_t8_leaves_an_edited_tool():
     migration = _seed_migration(T678)
     old = migration.TOOLS["Grooving 3 mm"][0]
     assert migration._same(dict(old), old) and not migration._same({**old, "f_max": 0.2}, old)
+
+
+ROUGH_BORING_MIGRATION = "8c2d41e7b9a3_rough_boring_tool_on_t5.py"
+
+
+def test_rough_boring_migration_writes_what_the_seed_has_on_t5():
+    from turnpilot.seed import LIBRARY_TOOLS, TURRET_TOOLS
+    migration = _seed_migration(ROUGH_BORING_MIGRATION)
+    assert migration._same({**TURRET_TOOLS[5], "is_retired": False}, migration.ROUGH_BORING)
+    assert migration._same(LIBRARY_TOOLS[0], migration.VCGT)
+    assert not migration._same({**LIBRARY_TOOLS[0], "vc_max": 550}, migration.VCGT)
+
+
+def test_seed_vcgt_is_in_the_library_but_not_in_the_turret(app):
+    vcgt = db.session.execute(db.select(Tool).filter_by(name="Finish turning VCGT (N)")).scalar_one()
+    assert not vcgt.is_retired
+    assert all(slot.tool_id != vcgt.id for slot in services.get_machine().slots)
+    t5 = next(s for s in services.get_machine().slots if s.position == 5)
+    assert (t5.tool.name, t5.tool.type) == ("Rough boring CCMT (P)", "boring_rough")

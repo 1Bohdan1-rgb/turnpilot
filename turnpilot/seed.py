@@ -22,7 +22,8 @@ MATERIALS = [
 # Key = turret position. T1, T2, T4, T6-T9: Sandvik Coromant 2020 values for steel P1.2 with their pages
 # (docs/turnpilot_catalog_P1.2.md; grade = the catalogue's first choice, the operator's decision of 2026-10-07),
 # ISO P only: they are checked for steel only. Vc with coolant, as the catalogue gives it. The feeds of T6 and
-# T8 are read from a graph (marked "graph"). T3 and T5 are PLACEHOLDERS, NOT validated.
+# T8 are read from a graph (marked "graph"). T5 roughs bores (T9, a PF finishing insert, finishes them).
+# T3 is a PLACEHOLDER, NOT validated.
 CATALOGUE_P12 = "Sandvik Coromant Turning tools 2020, steel P1.2, with coolant"
 TURRET_TOOLS = {
     1: dict(name="Facing SCMT", type="facing", insert_code="SCMT120408-PM", grade="GC4325",
@@ -39,8 +40,10 @@ TURRET_TOOLS = {
             iso_group="P", vc_min=265, vc_max=510, f_min=0.07, f_max=0.3, ap_min=0.25, ap_max=1.5,
             ap_rec=0.4, f_rec=0.15, vc_points="0.1:510, 0.4:365, 0.8:265",
             source=f"{CATALOGUE_P12}: A160 (grade), A285 (ap, f), A278 (Vc)"),
-    5: dict(name="Finish turning VCGT (N)", type="turning_finish", insert_code="VCGT 160404", grade="H10",
-            iso_group="N", vc_min=300, vc_max=600, f_min=0.05, f_max=0.2, ap_min=0.2, ap_max=1.5),
+    5: dict(name="Rough boring CCMT (P)", type="boring_rough", insert_code="CCMT09T304-PM", grade="GC4325",
+            iso_group="P", vc_min=215, vc_max=455, f_min=0.08, f_max=0.23, ap_min=0.25, ap_max=3.0,
+            ap_rec=0.64, f_rec=0.15, vc_points="0.1:455, 0.4:305, 0.8:215",
+            source="Sandvik TT 2020: сплав A41 (★), ap/f A289, Vc A279"),
     6: dict(name="Grooving 3 mm", type="grooving", insert_code="N123G2-0300-0003-GM", grade="GC4325",
             iso_group="P", vc_min=140, vc_max=315, f_min=0.04, f_max=0.14, ap_min=3.0, ap_max=3.0, insert_width=3.0,
             f_rec=0.07, vc_points="0.05:315, 0.5:140",
@@ -60,6 +63,13 @@ TURRET_TOOLS = {
 }
 
 
+# In the tool library but not in the turret. PLACEHOLDER, NOT validated (aluminium, not checked).
+LIBRARY_TOOLS = [
+    dict(name="Finish turning VCGT (N)", type="turning_finish", insert_code="VCGT 160404", grade="H10",
+         iso_group="N", vc_min=300, vc_max=600, f_min=0.05, f_max=0.2, ap_min=0.2, ap_max=1.5),
+]
+
+
 def seed_database():
     """Insert seed data. Does nothing if a machine already exists."""
     if db.session.execute(db.select(Machine)).first():
@@ -74,6 +84,7 @@ def seed_database():
         if tool:
             db.session.add(tool)
         machine.slots.append(TurretSlot(position=position, tool=tool))
+    db.session.add_all(Tool(**t) for t in LIBRARY_TOOLS)
     db.session.commit()
     return True
 

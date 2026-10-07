@@ -58,7 +58,8 @@ def test_bushing_bore_drilled_then_bored():
     ops = _ops([FeatureSpec(1, "od_turn", diameter=34.8, length=80),
                 FeatureSpec(2, "bore", diameter=22, length=32, tolerance="+0.21")])
     centre, drill, rough, finish = _of(ops, 2)
-    assert [op.tool_type for op in (centre, drill, rough, finish)] == ["centre_drilling", "drilling", "boring", "boring"]
+    assert [op.tool_type for op in (centre, drill, rough, finish)] == [
+        "centre_drilling", "drilling", "boring_rough", "boring"]  # T5 roughs, T9 finishes
     assert centre.tool_name == "centre_drilling 3.15" and centre.n and not centre.warnings
     assert (drill.tool_name, drill.ref_diameter, drill.depth) == ("drilling 20", 20, 32) and not drill.warnings
     assert "drill Ø20: the largest up to Ø21.3 (Ø22 less the boring tool's finishing pass 0.35 mm/side)" in drill.notes
@@ -81,7 +82,7 @@ def test_pin_hole_made_by_its_drill():
 @pytest.mark.parametrize("tolerance, ra", [("H7", None), (None, 1.6), ("+0.1", None)])
 def test_finer_hole_is_bored_even_with_a_drill_of_its_size(tolerance, ra):
     ops = _of(_ops([FeatureSpec(1, "bore", diameter=10, length=5, tolerance=tolerance, ra=ra)]), 1)
-    assert [op.tool_type for op in ops] == ["centre_drilling", "drilling", "boring", "boring"]
+    assert [op.tool_type for op in ops] == ["centre_drilling", "drilling", "boring_rough", "boring"]
     assert ops[1].tool_name == "drilling 8"  # the largest up to 10 − 0.4
 
 
@@ -102,8 +103,8 @@ def test_large_bore_several_boring_passes():
     ops = _of(_ops([FeatureSpec(1, "bore", diameter=30, length=45, tolerance="H7")], blank=50), 1)
     drill, rough = ops[1], ops[2]
     assert drill.tool_name == "drilling 20" and not any("G83" in n for n in drill.notes)
-    # (30 − 20) / 2 − 0.35 = 4.65 by T9's ap rec 0.35 (a finishing-geometry PF insert): 14 passes
-    assert (rough.passes, rough.ap) == (14, 0.332)
+    # (30 − 20) / 2 − 0.35 (T9's finishing pass) = 4.65 by the seed T5 rough boring tool's ap rec 0.64: 8 passes
+    assert (rough.passes, rough.ap) == (8, 0.581)
 
 
 def test_seed_turret_warns_and_does_not_guess():
@@ -139,7 +140,7 @@ def test_coaxial_holes_share_the_drilling_and_drills_go_from_the_smallest():
     # the Ø12.3 bore's Ø12 drill is made by the Ø12 tap drill (deeper): one drill Ø12, then Ø16
     assert [(op.tool_type, op.feature_id, op.ref_diameter) for op in drilling] == [
         ("centre_drilling", 1, 3.15), ("drilling", 3, 12), ("drilling", 1, 16)]
-    rough_12 = next(op for op in ops if op.feature_id == 2 and op.tool_type == "boring" and op.mode == "rough")
+    rough_12 = next(op for op in ops if op.feature_id == 2 and op.tool_type == "boring_rough")
     assert any("bored from the drilled Ø12" in n for n in rough_12.notes)
     assert ops.index(drilling[-1]) < ops.index(rough_12)
 
@@ -204,7 +205,8 @@ def test_rough_boring_by_its_own_tool_finishing_by_the_finishing_bar():
 
 
 def test_without_a_rough_boring_tool_the_finishing_bar_roughs_with_a_note():
-    rough = _of(_ops([FeatureSpec(1, "bore", diameter=30, length=45, tolerance="H7")], blank=50), 1)[2]
+    turret = [e for e in DRILLS if e.tool.type != "boring_rough"]
+    rough = _of(_ops([FeatureSpec(1, "bore", diameter=30, length=45, tolerance="H7")], turret=turret, blank=50), 1)[2]
     assert (rough.tool_type, rough.tool_name) == ("boring", "Boring bar CCMT")
     assert planner.NO_ROUGH_BORING_TOOL in rough.notes
 
