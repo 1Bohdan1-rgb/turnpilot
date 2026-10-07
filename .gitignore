@@ -224,3 +224,5 @@ __marimo__/
 tests/fixtures/drawings/real_*
 # real DXF drawings (copyright): local only, like real_*
 real_dxf/
+# Tool makers' catalogue PDFs (copyright): local only; the numbers taken from them are in docs/turnpilot_catalog_*.md
+docs/catalogs/*.pdf
