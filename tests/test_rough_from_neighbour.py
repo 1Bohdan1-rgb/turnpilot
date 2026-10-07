@@ -1,23 +1,21 @@
 """Roughing from the neighbouring section towards the chuck (features in their order along the axis)."""
 import pytest
+from conftest import seed_turret
 
+from turnpilot import planner
 from turnpilot.planner import (
     PIT_WARNING,
     THREAD_MAJOR_NOTE,
     TWO_SIDES_NOTE,
     FeatureSpec,
     JobSpec,
-    ToolSpec,
-    TurretEntry,
     plan_job,
     rough_passes,
 )
-from turnpilot.seed import TURRET_TOOLS
 
-TURRET = [TurretEntry(pos, ToolSpec(id=pos, **{k: v for k, v in tool.items() if k != "grade"}))
-          for pos, tool in TURRET_TOOLS.items()]
-AP_MAX = TURRET_TOOLS[2]["ap_max"]  # rough turning, ISO P
-ALLOWANCE = TURRET_TOOLS[4]["ap_min"]  # left for the finishing tool
+TURRET = seed_turret()
+AP_MAX = planner.roughing_ap_limit(TURRET[1].tool)  # T2 rough turning: its catalogue ap rec
+ALLOWANCE = planner.finishing_ap(TURRET[3].tool)  # left for T4, the finishing tool: its ap rec
 
 
 def _rough(features, blank=45, axial_order=True):
@@ -39,8 +37,8 @@ def test_monotonic_shaft():
         _expected(45, 40), _expected(40, 30), _expected(30, 20)]
     assert [rough[i].ref_diameter for i in (1, 2, 3)] == [45, 40, 30]
     assert rough[1].n < rough[2].n < rough[3].n  # smaller start Ø, higher speed
-    assert rough[1].notes[0] == "roughed from the bar Ø45"
-    assert rough[2].notes[0] == "roughed from Ø40, the neighbouring section towards the chuck"
+    assert "roughed from the bar Ø45" in rough[1].notes
+    assert "roughed from Ø40, the neighbouring section towards the chuck" in rough[2].notes
     assert not any(TWO_SIDES_NOTE in n for op in rough.values() for n in op.notes)
 
 
@@ -113,7 +111,7 @@ def test_no_stock_left_after_the_neighbour_is_a_note_not_a_warning():
     rough = _rough([_od(1, 40), _od(2, 30), FeatureSpec(3, "groove", diameter=26, length=3, start_diameter=30),
                     _od(4, 30)])
     assert rough[4].ref_diameter == 30 and rough[4].passes == 0
-    assert rough[4].notes[0] == "no roughing stock left after Ø30 (the neighbouring section towards the chuck)"
+    assert "no roughing stock left after Ø30 (the neighbouring section towards the chuck)" in rough[4].notes
     assert not rough[4].warnings
 
 

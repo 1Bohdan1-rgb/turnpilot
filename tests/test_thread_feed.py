@@ -1,4 +1,5 @@
 """Thread speed check: the Z axis moves at n·P when threading; the machine's limit, or a warning without one."""
+from conftest import seed_turret
 from turnpilot import services
 from turnpilot.models import db
 
@@ -31,8 +32,7 @@ from turnpilot import planner  # noqa: E402
 from turnpilot.planner import FeatureSpec, JobSpec, ToolSpec, TurretEntry, plan_job  # noqa: E402
 from turnpilot.seed import TURRET_TOOLS  # noqa: E402
 
-SEED = [TurretEntry(pos, ToolSpec(id=pos, **{k: v for k, v in tool.items() if k != "grade"}))
-        for pos, tool in TURRET_TOOLS.items()]
+SEED = seed_turret()
 M24 = (FeatureSpec(1, "od_turn", diameter=24, length=22), FeatureSpec(2, "thread", diameter=24, length=22, pitch=1.5))
 
 

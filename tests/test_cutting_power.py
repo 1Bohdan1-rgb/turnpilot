@@ -1,4 +1,5 @@
 """Spindle power check of roughing: Pc = Vc·ap·f·kc / 60000 against power_kw × drive efficiency."""
+from conftest import seed_turret
 from turnpilot import services
 from turnpilot.models import Material, db
 
@@ -77,8 +78,7 @@ from turnpilot.planner import (  # noqa: E402
 )
 from turnpilot.seed import TURRET_TOOLS  # noqa: E402
 
-SEED = [TurretEntry(pos, ToolSpec(id=pos, **{k: v for k, v in tool.items() if k != "grade"}))
-        for pos, tool in TURRET_TOOLS.items()]
+SEED = seed_turret()
 C45 = dict(material_name="Steel 45 (C45)", kc1=1600, mc=0.25, kc_source="test catalogue")
 SEED_POWER = PowerSpec(11, 0.8)  # 8.8 kW at the spindle
 
@@ -101,37 +101,36 @@ ND012 = [FeatureSpec(1, "od_turn", diameter=50, length=44), FeatureSpec(2, "od_t
 
 def test_nd012_within_power_unchanged_with_a_note():
     rough = _rough(ND012, 55)
-    op = rough[3]  # Ø38.5 from Ø45: 3.05 × 1, Pc 8.18
-    assert (op.passes, op.ap, op.vc, op.f) == (1, 3.05, 200, 0.4) and not op.warnings
-    assert any(n.startswith("Pc 8.") and "≤ 8.80 kW (11 × 0.8); kc 2012 N/mm² (test catalogue)" in n
-               for n in op.notes)
+    op = rough[1]  # Ø50 from the bar Ø55: 2.1 × 1 at f 0.3, Vc 355: Pc 8.06
+    assert (op.passes, op.ap, op.vc, op.f) == (1, 2.1, 355, 0.3) and not op.warnings
+    assert "Pc 8.06 kW ≤ 8.80 kW (11 × 0.8); kc 2162 N/mm² (test catalogue)" in op.notes
 
 
 def test_nd012_section_above_power_gets_more_thinner_passes():
-    op = _rough(ND012, 55)[4]  # Ø24 (under M24, 23.85) from Ø38.5: was 2 × 3.562, Pc 9.56
-    assert (op.passes, op.ap) == (3, 2.375) and (op.vc, op.f) == (200, 0.4)  # Vc and f unchanged
+    op = _rough(ND012, 55)[4]  # Ø24 (under M24, 23.85) from Ø38.5: 3 × 2.308 by ap rec 3, Pc 8.86
+    assert (op.passes, op.ap) == (4, 1.731) and (op.vc, op.f) == (355, 0.3)  # Vc and f unchanged
     assert not op.warnings
     note = next(n for n in op.notes if n.startswith("ap reduced"))
-    assert "Pc 9.56 > 8.80 kW (11 × 0.8) at ap 3.562; now 3 × ap 2.375, Pc 6.37 kW" in note
+    assert "Pc 8.86 > 8.80 kW (11 × 0.8) at ap 2.308; now 4 × ap 1.731, Pc 6.64 kW" in note
 
 
 def test_without_efficiency_a_warning_and_no_change():
     with_none = _rough(ND012, 55, power=PowerSpec(11, None))[4]
     unchecked = _rough(ND012, 55, power=None)[4]
-    assert (with_none.passes, with_none.ap) == (unchecked.passes, unchecked.ap) == (2, 3.562)
-    assert with_none.warnings == ["check the spindle power: Pc 9.56 kW at ap 3.562, power 11 kW, but the drive "
+    assert (with_none.passes, with_none.ap) == (unchecked.passes, unchecked.ap) == (3, 2.308)
+    assert with_none.warnings == ["check the spindle power: Pc 8.86 kW at ap 2.308, power 11 kW, but the drive "
                                   "efficiency is not set on the Machine page"]
 
 
 def test_without_machine_power_a_warning():
     op = _rough(ND012, 55, power=PowerSpec(None, 0.8))[4]
-    assert op.passes == 2 and op.warnings == ["check the spindle power: Pc 9.56 kW at ap 3.562, the machine power is "
+    assert op.passes == 3 and op.warnings == ["check the spindle power: Pc 8.86 kW at ap 2.308, the machine power is "
                                               "not set"]
 
 
 def test_material_without_kc_is_not_checked():
     op = _rough(ND012, 55, kc1=None, mc=None)[4]
-    assert op.passes == 2 and op.warnings == [
+    assert op.passes == 3 and op.warnings == [
         "no kc1 / mc for Steel 45 (C45): spindle power not checked (Machine page, Materials)"]
 
 
@@ -142,10 +141,10 @@ def test_no_power_spec_means_no_check():
 
 def test_not_enough_power_even_at_ap_min():
     op = _rough([FeatureSpec(1, "od_turn", diameter=30, length=40)], 45, power=PowerSpec(2, 0.8))
-    op = op[1]  # 1.6 kW available; even ap_min 1.5 needs more
-    # 7.3 mm/side split by ap_min 1.5: 5 passes of 1.46
-    assert (op.passes, op.ap) == rough_passes(45, 30, TURRET_TOOLS[2]["ap_min"], 0.2) == (5, 1.46)
-    assert "spindle power is not enough even at the tool's ap_min 1.5" in op.warnings[0]
+    op = op[1]  # 1.6 kW available; even ap_min 0.5 needs more
+    # 7.1 mm/side (less T4's ap rec 0.4) split by ap_min 0.5: 15 passes of 0.473
+    assert (op.passes, op.ap) == rough_passes(45, 30, TURRET_TOOLS[2]["ap_min"], 0.4) == (15, 0.473)
+    assert "spindle power is not enough even at the tool's ap_min 0.5" in op.warnings[0]
 
 
 def test_power_from_the_actual_speed_when_n_is_capped():

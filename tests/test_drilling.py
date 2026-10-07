@@ -1,4 +1,5 @@
 """Holes: centre drilling, a drill chosen by its diameter, peck drilling, boring only after drilling."""
+from conftest import seed_turret
 from turnpilot import services
 from turnpilot.models import TOOL_TYPES, Tool, db
 
@@ -32,8 +33,7 @@ from turnpilot import planner  # noqa: E402
 from turnpilot.planner import FeatureSpec, JobSpec, ToolSpec, TurretEntry, drill_gives, plan_job  # noqa: E402
 from turnpilot.seed import TURRET_TOOLS  # noqa: E402
 
-SEED = [TurretEntry(pos, ToolSpec(id=pos, **{k: v for k, v in tool.items() if k != "grade"}))
-        for pos, tool in TURRET_TOOLS.items()]  # boring bar T9: ap 0.2–2.0; no drills, no centre drill
+SEED = seed_turret()  # boring bar T9: CCMT PF, ap 0.11–0.35 (rec)–2; no drills, no centre drill
 
 
 def _drill(position, diameter, tool_type="drilling"):
@@ -61,9 +61,11 @@ def test_bushing_bore_drilled_then_bored():
     assert [op.tool_type for op in (centre, drill, rough, finish)] == ["centre_drilling", "drilling", "boring", "boring"]
     assert centre.tool_name == "centre_drilling 3.15" and centre.n and not centre.warnings
     assert (drill.tool_name, drill.ref_diameter, drill.depth) == ("drilling 20", 20, 32) and not drill.warnings
-    assert "drill Ø20: the largest up to Ø21.6 (Ø22 less the boring tool's ap_min 0.2 mm/side)" in drill.notes
+    assert "drill Ø20: the largest up to Ø21.3 (Ø22 less the boring tool's finishing pass 0.35 mm/side)" in drill.notes
     assert not any("G83" in n for n in drill.notes)  # 32 < 3 × 20
-    assert (rough.passes, rough.ap) == (1, 0.8) and "bored from the drilled Ø20" in rough.notes[0]
+    # (22 − 20) / 2 − 0.35 = 0.65 by ap rec 0.35: 2 passes
+    assert (rough.passes, rough.ap) == (2, 0.325)
+    assert any("bored from the drilled Ø20" in n for n in rough.notes)
     assert finish.mode == "finish"
     assert [op.tool_type for op in ops][:3] == ["centre_drilling", "drilling", "turning_rough"]  # drill first
 
@@ -93,14 +95,15 @@ def test_deep_hole_is_peck_drilled():
     ops = _of(_ops([FeatureSpec(1, "bore", diameter=8, length=40, tolerance="H7")]), 1)
     drill = ops[1]
     assert drill.tool_name == "drilling 6" and "G83 peck drilling: depth 40 > 3 × Ø6" in drill.notes
-    assert (ops[2].passes, ops[2].ap) == (1, 0.8)
+    assert (ops[2].passes, ops[2].ap) == (2, 0.325)  # (8 − 6) / 2 − 0.35 by ap rec 0.35
 
 
 def test_large_bore_several_boring_passes():
     ops = _of(_ops([FeatureSpec(1, "bore", diameter=30, length=45, tolerance="H7")], blank=50), 1)
     drill, rough = ops[1], ops[2]
     assert drill.tool_name == "drilling 20" and not any("G83" in n for n in drill.notes)
-    assert (rough.passes, rough.ap) == (3, 1.6)  # (30 − 20) / 2 − 0.2 = 4.8 by ap_max 2
+    # (30 − 20) / 2 − 0.35 = 4.65 by T9's ap rec 0.35 (a finishing-geometry PF insert): 14 passes
+    assert (rough.passes, rough.ap) == (14, 0.332)
 
 
 def test_seed_turret_warns_and_does_not_guess():
@@ -108,7 +111,7 @@ def test_seed_turret_warns_and_does_not_guess():
     centre, drill, rough, _ = ops
     assert planner.NO_CENTRE_DRILL in centre.warnings
     assert drill.tool_id is None and drill.warnings == [
-        "no drill up to Ø21.6 in the turret (Ø22 less the boring allowance 0.2 mm/side): drill by hand"]
+        "no drill up to Ø21.3 in the turret (Ø22 less the boring allowance 0.35 mm/side): drill by hand"]
     assert rough.passes is None and planner.FROM_SOLID_NOTE in rough.notes
 
 
@@ -137,7 +140,7 @@ def test_coaxial_holes_share_the_drilling_and_drills_go_from_the_smallest():
     assert [(op.tool_type, op.feature_id, op.ref_diameter) for op in drilling] == [
         ("centre_drilling", 1, 3.15), ("drilling", 3, 12), ("drilling", 1, 16)]
     rough_12 = next(op for op in ops if op.feature_id == 2 and op.tool_type == "boring" and op.mode == "rough")
-    assert "bored from the drilled Ø12" in rough_12.notes[0]
+    assert any("bored from the drilled Ø12" in n for n in rough_12.notes)
     assert ops.index(drilling[-1]) < ops.index(rough_12)
 
 

@@ -2,6 +2,7 @@
 from dataclasses import replace
 
 import pytest
+from conftest import seed_turret
 
 from turnpilot.planner import (
     GROOVE_STEP_FACTOR,
@@ -15,8 +16,7 @@ from turnpilot.planner import (
 )
 from turnpilot.seed import TURRET_TOOLS
 
-SEED = [TurretEntry(pos, ToolSpec(id=pos, **{k: v for k, v in tool.items() if k != "grade"}))
-        for pos, tool in TURRET_TOOLS.items()]  # one grooving insert: T6, 3 mm
+SEED = seed_turret()  # one grooving insert: T6, 3 mm
 GROOVING_3 = SEED[5].tool
 
 

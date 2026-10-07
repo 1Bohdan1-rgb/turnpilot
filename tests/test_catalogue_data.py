@@ -1,5 +1,6 @@
 """The catalogue's recommended values on a tool: f rec, ap rec and Vc(f) points, used instead of range positions."""
 import pytest
+from conftest import seed_turret
 
 from turnpilot import planner
 from turnpilot.models import Tool, db
@@ -81,8 +82,7 @@ def test_f_rec_without_points_keeps_the_vc_range_position():
 # --- planner --------------------------------------------------------------------------------------
 
 def _turret(**t2_catalogue):
-    seed = [TurretEntry(pos, ToolSpec(id=pos, **{k: v for k, v in tool.items() if k != "grade"}))
-            for pos, tool in TURRET_TOOLS.items()]
+    seed = seed_turret()
     return [TurretEntry(2, _tool(id=2, **t2_catalogue)) if e.position == 2 else e for e in seed]
 
 
@@ -90,8 +90,8 @@ def test_rough_passes_by_ap_rec_with_a_note():
     turret = _turret(ap_rec=3, f_rec=0.3, vc_points=T2_POINTS, source="TT A283, A279")
     ops = plan_job(JobSpec("P", 55, 100, (FeatureSpec(1, "od_turn", diameter=40, length=30),)), turret, 4000)
     rough = next(op for op in ops if op.tool_type == "turning_rough")
-    # (55 − 40) / 2 − 0.2 (finishing allowance of the seed T4) = 7.3 by ap rec 3: 3 passes
-    assert (rough.passes, rough.ap, rough.f, rough.vc) == (3, 2.433, 0.3, 355.0)
+    # (55 − 40) / 2 − 0.4 (the seed T4's ap rec, the finishing allowance) = 7.1 by ap rec 3: 3 passes
+    assert (rough.passes, rough.ap, rough.f, rough.vc) == (3, 2.367, 0.3, 355.0)
     assert "catalogue values: f rec 0.3, ap rec 3; Vc 355 from Vc(f) at f 0.3" in rough.notes
     assert "cutting data ranges: TT A283, A279" in rough.notes
 

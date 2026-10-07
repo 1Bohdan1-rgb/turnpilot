@@ -39,8 +39,11 @@ def test_source_is_saved_and_shown_in_the_library(client):
     assert "Sandvik catalogue 2024, p. 112" in client.get("/machine").get_data(as_text=True)
 
 
-def test_seed_tools_have_no_source(app):
-    assert all(t.source is None for t in db.session.execute(db.select(Tool)).scalars())
+def test_seed_tools_carry_a_source_only_when_checked_against_the_catalogue(app):
+    tools = {t.name: t for t in db.session.execute(db.select(Tool)).scalars()}
+    checked = ("Facing SCMT", "Rough turning CNMG (P)", "Finish turning DNMG (P/M)", "Boring bar CCMT")
+    assert all(tools[name].source.startswith("Sandvik Coromant Turning tools 2020") for name in checked)
+    assert all(t.source is None for name, t in tools.items() if name not in checked)
 
 
 # --- edit -----------------------------------------------------------------------------------------
@@ -178,3 +181,31 @@ def test_operations_without_a_recorded_time_get_no_banner(client):
     db.session.commit()
     client.post(f"/tools/{tool.id}/edit", data=_edit_form(tool, vc_max="35"))
     assert BANNER not in client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
+
+
+# --- data migration 3748554069af: the seed tools of an existing database -----------------------------
+
+def _seed_migration():
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).parents[1] / "migrations" / "versions" / "3748554069af_seed_tools_t1_t2_t4_t9_from_the_sandvik_.py"
+    spec = importlib.util.spec_from_file_location("seed_migration", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_seed_migration_writes_what_the_seed_has():
+    from turnpilot.seed import TURRET_TOOLS
+    migration = _seed_migration()
+    seed = {tool["name"]: tool for tool in TURRET_TOOLS.values()}
+    for name, (_old, new) in migration.TOOLS.items():
+        assert migration._same(seed[name], new), name
+
+
+def test_seed_migration_leaves_an_edited_tool():
+    migration = _seed_migration()
+    old = migration.TOOLS["Rough turning CNMG (P)"][0]
+    assert migration._same(dict(old), old)
+    assert not migration._same({**old, "vc_max": 280}, old)
+    assert not migration._same({**old, "source": "my catalogue"}, old)

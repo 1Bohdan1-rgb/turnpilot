@@ -99,3 +99,16 @@ def part(features, material="Steel 45 (C45)", blank_diameter=None, blank_length=
         "part_type": part_type, "general_ra": general_ra, "material": material, "blank_diameter": blank_diameter, "blank_length": blank_length,
         "overall_length": overall_length, "quantity": quantity, "features": features, "warnings": list(warnings),
     }
+
+
+def seed_turret():
+    """The seed turret as the planner sees it (TurretEntry / ToolSpec), as services.turret_entries builds it."""
+    from turnpilot.planner import ToolSpec, TurretEntry, parse_vc_points
+    from turnpilot.seed import TURRET_TOOLS
+
+    def spec(position, tool):
+        data = {k: v for k, v in tool.items() if k != "grade"}
+        data["vc_points"] = parse_vc_points(data.get("vc_points"))
+        return ToolSpec(id=position, **data)
+
+    return [TurretEntry(position, spec(position, tool)) for position, tool in TURRET_TOOLS.items()]
