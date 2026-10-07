@@ -137,7 +137,17 @@ def _tool_fields(form):
     for lo, hi in (("vc_min", "vc_max"), ("f_min", "f_max"), ("ap_min", "ap_max")):
         if values[lo] > values[hi]:
             raise FormError(f"{lo} must not exceed {hi}")
+    recommended = {k: _number(form, k) for k in ("ap_rec", "f_rec")}
+    for key, (lo, hi) in (("ap_rec", ("ap_min", "ap_max")), ("f_rec", ("f_min", "f_max"))):
+        if recommended[key] is not None and not values[lo] <= recommended[key] <= values[hi]:
+            raise FormError(f"{key} must be within {lo}..{hi}")
+    try:
+        points = planner.parse_vc_points(form.get("vc_points"))
+    except ValueError as e:
+        raise FormError(f"Vc(f) points: {e} (write e.g. 0.1:455, 0.4:305, 0.8:215, or one Vc)") from None
     return dict(
+        **recommended,
+        vc_points=planner.format_vc_points(points) or None,
         name=name,
         insert_code=form.get("insert_code", "").strip(),
         grade=form.get("grade", "").strip(),

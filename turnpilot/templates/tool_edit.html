@@ -20,6 +20,14 @@
     <input name="insert_width" type="number" step="any" min="0" value="{{ tool.insert_width if tool.insert_width is not none else '' }}"></label>
   <label>Diameter, mm (drills)
     <input name="diameter" type="number" step="any" min="0" value="{{ tool.diameter if tool.diameter is not none else '' }}"></label>
+  <label>ap rec (catalogue)
+    <input name="ap_rec" type="number" step="any" min="0" value="{{ tool.ap_rec if tool.ap_rec is not none else '' }}"></label>
+  <label>f rec (catalogue)
+    <input name="f_rec" type="number" step="any" min="0" value="{{ tool.f_rec if tool.f_rec is not none else '' }}"></label>
+  <label>Vc at f (catalogue)
+    <input name="vc_points" maxlength="200" value="{{ tool.vc_points or '' }}" placeholder="0.1:455, 0.4:305, 0.8:215"></label>
+  <p class="muted small">With f rec the planner takes the recommended f and ap and Vc from these points at that f
+    (linear between them) instead of positions in the ranges.</p>
   <label>Source of Vc / f / ap
     <input name="source" maxlength="300" value="{{ tool.source or '' }}" placeholder="catalogue, insert grade, page"></label>
   <div class="actions">

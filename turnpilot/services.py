@@ -51,6 +51,9 @@ def tool_spec(tool):
         insert_width=tool.insert_width,
         diameter=tool.diameter,
         source=tool.source,
+        ap_rec=tool.ap_rec,
+        f_rec=tool.f_rec,
+        vc_points=planner.parse_vc_points(tool.vc_points),
     )
 
 

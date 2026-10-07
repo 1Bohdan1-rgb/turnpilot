@@ -84,6 +84,10 @@ class ToolSpec:
     insert_width: float | None = None  # grooving / parting inserts
     diameter: float | None = None  # drills: the hole they make
     source: str | None = None  # where the Vc / f / ap ranges come from
+    # The catalogue's recommended ap and f, and Vc at given feeds ((f, vc), ...; one point: Vc for every f).
+    ap_rec: float | None = None
+    f_rec: float | None = None
+    vc_points: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -649,25 +653,89 @@ def suggest_blank(
     return BlankSuggestion(diameter, length, tuple(notes), shape)
 
 
-def cutting_data(tool: ToolSpec, mode: str, ra: float | None = None) -> tuple[float, float, float]:
-    """Pick (vc, f, ap) from the tool ranges.
+def parse_vc_points(text: str | None) -> tuple:
+    """"0.1:455, 0.4:305, 0.8:215" -> ((0.1, 455.0), (0.4, 305.0), (0.8, 215.0)); "125" -> ((0.0, 125.0),),
+    one Vc for every feed. Raises ValueError for anything else."""
+    if not text or not text.strip():
+        return ()
+    items = [item.strip() for item in text.replace(";", ",").split(",") if item.strip()]
+    if len(items) == 1 and ":" not in items[0]:
+        vc = float(items[0])
+        if vc <= 0:
+            raise ValueError("Vc must be positive")
+        return ((0.0, vc),)
+    points = []
+    for item in items:
+        f, sep, vc = item.partition(":")
+        if not sep:
+            raise ValueError(f"'{item}' is not f:Vc")
+        f, vc = float(f), float(vc)
+        if f <= 0 or vc <= 0:
+            raise ValueError("f and Vc must be positive")
+        points.append((f, vc))
+    points.sort()
+    if len({f for f, _ in points}) != len(points):
+        raise ValueError("a feed is given twice")
+    return tuple(points)
 
-    Rough: Vc near vc_min, f and ap near the top of their ranges.
-    Finish: Vc near vc_max, ap = ap_min, f from Ra when given, otherwise near f_min.
+
+def format_vc_points(points) -> str:
+    if len(points) == 1 and points[0][0] == 0.0:
+        return f"{points[0][1]:g}"
+    return ", ".join(f"{f:g}:{vc:g}" for f, vc in points)
+
+
+def vc_at(points, f: float) -> float:
+    """Vc at the feed f from the catalogue points: linear between them, the end value outside them."""
+    if len(points) == 1 or f <= points[0][0]:
+        return points[0][1]
+    for (f0, v0), (f1, v1) in zip(points, points[1:]):
+        if f <= f1:
+            return v0 + (v1 - v0) * (f - f0) / (f1 - f0)
+    return points[-1][1]
+
+
+def finishing_ap(tool: ToolSpec) -> float:
+    """The finishing pass (and so the allowance roughing leaves for it): the catalogue's recommended ap, else ap_min."""
+    return tool.ap_rec if tool.ap_rec is not None else tool.ap_min
+
+
+def roughing_ap_limit(tool: ToolSpec) -> float:
+    """The deepest roughing pass: the catalogue's recommended ap, else ap_max."""
+    return tool.ap_rec if tool.ap_rec is not None else tool.ap_max
+
+
+def cutting_data(tool: ToolSpec, mode: str, ra: float | None = None) -> tuple[float, float, float]:
+    """Pick (vc, f, ap) for a tool.
+
+    With the catalogue's recommended values: f = f_rec (finish: from Ra when given, within f_min..f_max),
+    ap = ap_rec, Vc from the tool's Vc(f) points at that f.
+    Otherwise from positions in the tool's ranges (placeholders): rough: Vc near vc_min, f and ap near the top
+    of their ranges; finish: Vc near vc_max, ap = ap_min, f from Ra when given, otherwise near f_min.
     """
+    if mode not in ("rough", "finish"):
+        raise ValueError(f"Unknown mode: {mode}")
+    if tool.f_rec is not None:
+        f = tool.f_rec
+        if mode == "finish" and ra:
+            f = finish_feed_from_ra(ra, nose_radius_from_insert(tool.insert_code), tool.f_min, tool.f_max)
+        ap = finishing_ap(tool) if mode == "finish" else roughing_ap_limit(tool)
+        if tool.vc_points:
+            vc = vc_at(tool.vc_points, f)
+        else:
+            vc = _lerp(tool.vc_min, tool.vc_max, NEAR_MIN if mode == "rough" else NEAR_MAX)
+        return round(vc, 1), round(f, 3), round(ap, 2)
     if mode == "rough":
         vc = _lerp(tool.vc_min, tool.vc_max, NEAR_MIN)
         f = _lerp(tool.f_min, tool.f_max, NEAR_MAX)
         ap = _lerp(tool.ap_min, tool.ap_max, NEAR_MAX)
-    elif mode == "finish":
+    else:
         vc = _lerp(tool.vc_min, tool.vc_max, NEAR_MAX)
         ap = tool.ap_min
         if ra:
             f = finish_feed_from_ra(ra, nose_radius_from_insert(tool.insert_code), tool.f_min, tool.f_max)
         else:
             f = _lerp(tool.f_min, tool.f_max, NEAR_MIN)
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
     return round(vc, 1), round(f, 3), round(ap, 2)
 
 
@@ -856,7 +924,7 @@ def plan_holes(features, iso_group: str, turret: list[TurretEntry]) -> dict[int,
             if boring is None:
                 plans[id(f)] = HolePlan(None, f.length, warning=NO_BORING_ALLOWANCE)
                 continue
-            allowance = boring.tool.ap_min
+            allowance = finishing_ap(boring.tool)
             limit = round(f.diameter - 2 * allowance, 3)
             fits = [e for e in drills if e.tool.diameter <= limit + 1e-9]
             if not fits:
@@ -1059,7 +1127,7 @@ def _check_rough_power(op, tool, feature, job, from_diameter, allowance, power: 
         op.warnings.append(POWER_AP_MIN_WARNING.format(ap_min=tool.ap_min, pc=cutting_power(vc, tool.ap_min, op.f, kc),
                                                        allowed=allowed))
     ap0 = op.ap
-    op.passes, op.ap = rough_passes(from_diameter, feature.diameter, min(tool.ap_max, ap_power), allowance)
+    op.passes, op.ap = rough_passes(from_diameter, feature.diameter, min(roughing_ap_limit(tool), ap_power), allowance)
     op.notes.append(POWER_REDUCED_NOTE.format(pc0=pc, allowed=allowed, power=power.power_kw, eff=power.efficiency,
                                               ap0=ap0, passes=op.passes, ap=op.ap,
                                               pc=cutting_power(vc, op.ap, op.f, kc), kc=kc, source=source))
@@ -1074,7 +1142,7 @@ def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSp
         op.notes.append(template.format(d=from_diameter))
         if start.pit:
             op.warnings.append(PIT_WARNING)
-    op.passes, op.ap = rough_passes(from_diameter, feature.diameter, tool.ap_max, allowance)
+    op.passes, op.ap = rough_passes(from_diameter, feature.diameter, roughing_ap_limit(tool), allowance)
     if op.passes == 0:
         op.ap = None
         if start and not start.from_bar:
@@ -1095,12 +1163,13 @@ def _plan_rough_boring(op, tool, feature, job, turret, hole: HolePlan) -> None:
     if hole.diameter is None or feature.diameter is None:
         op.notes.append(FROM_SOLID_NOTE)
         return
-    stock = (feature.diameter - hole.diameter) / 2 - tool.ap_min
-    op.notes.append(f"bored from the drilled Ø{hole.diameter:g}, leaves {tool.ap_min:g} mm/side for finishing")
+    allowance = finishing_ap(tool)
+    stock = (feature.diameter - hole.diameter) / 2 - allowance
+    op.notes.append(f"bored from the drilled Ø{hole.diameter:g}, leaves {allowance:g} mm/side for finishing")
     if stock <= 1e-9:
         op.passes, op.ap = 0, None
         return
-    op.passes = math.ceil(round(stock / tool.ap_max, 9))
+    op.passes = math.ceil(round(stock / roughing_ap_limit(tool), 9))
     op.ap = round(stock / op.passes, 3)
 
 
@@ -1212,7 +1281,11 @@ def _plan_parting(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, jo
 
 
 def _note_source(op: PlannedOperation, tool: ToolSpec) -> None:
-    """The source of the tool's cutting data ranges, next to the cutting data."""
+    """Where the cutting data come from, next to them: the catalogue's recommended values and the source."""
+    if tool.f_rec is not None and op.vc is not None and op.f is not None:
+        vc_from = f"Vc(f) at f {op.f:g}" if tool.vc_points else "the Vc range"
+        op.notes.append(f"catalogue values: f rec {tool.f_rec:g}, ap rec "
+                        f"{tool.ap_rec if tool.ap_rec is not None else '—'}; Vc {op.vc:g} from {vc_from}")
     if tool.source:
         op.notes.append(f"cutting data ranges: {tool.source}")
 

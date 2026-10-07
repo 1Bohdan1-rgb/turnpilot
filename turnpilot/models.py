@@ -59,6 +59,11 @@ class Tool(db.Model):
     insert_width = db.Column(db.Float)  # mm, grooving / parting inserts
     diameter = db.Column(db.Float)  # mm, drills: the hole they make
     source = db.Column(db.String(300))  # where the Vc / f / ap ranges come from: catalogue, insert grade, page
+    # The catalogue's recommended values: the planner takes these instead of positions in the ranges. vc_points:
+    # Vc at given feeds, "0.1:455, 0.4:305, 0.8:215" (linear between them), or one Vc for every feed ("125").
+    ap_rec = db.Column(db.Float)
+    f_rec = db.Column(db.Float)
+    vc_points = db.Column(db.String(200))
     # A tool used by operations is never deleted (the operations keep their audit): it is retired instead,
     # out of the library and the turret.
     is_retired = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
