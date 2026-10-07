@@ -1159,12 +1159,17 @@ def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSp
         _check_rough_power(op, tool, feature, job, from_diameter, allowance, power)
 
 
+NO_ROUGH_BORING_TOOL = "no rough boring tool in the turret: the finishing boring bar roughs too"
+
+
 def _plan_rough_boring(op, tool, feature, job, turret, hole: HolePlan) -> None:
-    """Open the drilled hole to the bore, leaving the finishing pass (the boring tool's ap_min)."""
+    """Open the drilled hole to the bore in passes of the roughing tool, leaving the finishing pass of the
+    finishing boring tool (its ap rec, else ap_min)."""
     if hole.diameter is None or feature.diameter is None:
         op.notes.append(FROM_SOLID_NOTE)
         return
-    allowance = finishing_ap(tool)
+    finisher, _ = select_tool("boring", job.iso_group, turret)
+    allowance = finishing_ap(finisher.tool if finisher else tool)
     stock = (feature.diameter - hole.diameter) / 2 - allowance
     op.notes.append(f"bored from the drilled Ø{hole.diameter:g}, leaves {allowance:g} mm/side for finishing")
     if stock <= 1e-9:
@@ -1429,13 +1434,24 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         op.notes.append(f"hex S{hex_flats(feature):g}: {HEX_FROM_BAR_NOTE}")
         return op
 
+    rough_boring_fallback = False
     if step.tool_type == "grooving":
         entry, warning = select_grooving_tool(feature.length, job.iso_group, turret)
+    elif step.tool_type == "boring" and step.mode == "rough":
+        # a rough boring tool when there is one; else the finishing boring bar roughs too
+        entry, warning = select_tool("boring_rough", job.iso_group, turret)
+        if entry is not None:
+            op.tool_type = "boring_rough"
+        else:
+            entry, warning = select_tool("boring", job.iso_group, turret)
+            rough_boring_fallback = entry is not None
     else:
         entry, warning = select_tool(step.tool_type, job.iso_group, turret)
     if entry is None:
         op.warnings.append(warning)
         return op
+    if rough_boring_fallback:
+        op.notes.append(NO_ROUGH_BORING_TOOL)
 
     tool = entry.tool
     op.tool_id = tool.id

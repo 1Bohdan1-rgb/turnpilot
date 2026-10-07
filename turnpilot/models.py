@@ -12,6 +12,7 @@ TOOL_TYPES = (
     "facing", "turning_rough", "turning_finish", "grooving", "threading", "boring", "parting",
     "drilling", "tapping", "threading_internal", "milling",  # milling: a driven tool (live tooling)
     "centre_drilling",  # a centre (spot) drill: starts every drilled hole
+    "boring_rough",  # roughs a bore; "boring" finishes it (and roughs too when there is no boring_rough)
 )
 ISO_GROUPS = ("P", "M", "N")
 BLANK_SHAPES = ("round", "hex")

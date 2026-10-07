@@ -30,7 +30,7 @@ def test_tool_form_without_a_diameter(client):
 import pytest  # noqa: E402
 
 from turnpilot import planner  # noqa: E402
-from turnpilot.planner import FeatureSpec, JobSpec, ToolSpec, TurretEntry, drill_gives, plan_job  # noqa: E402
+from turnpilot.planner import FeatureSpec, JobSpec, ToolSpec, TurretEntry, drill_gives, plan_job, vc_at  # noqa: E402
 from turnpilot.seed import TURRET_TOOLS  # noqa: E402
 
 SEED = seed_turret()  # boring bar T9: CCMT PF, ap 0.11–0.35 (rec)–2; no drills, no centre drill
@@ -178,3 +178,42 @@ def test_bore_through_the_app(client):
     assert [op.tool_type for op in ops][:2] == ["centre_drilling", "drilling"]
     drill = ops[1]
     assert drill.ref_diameter == 20 and drill.depth == 32 and "drill Ø20" in drill.note
+
+
+# --- rough boring with its own tool ---------------------------------------------------------------
+
+ROUGH_BORING = TurretEntry(5, ToolSpec(
+    id=50, name="Rough boring CCMT PM", type="boring_rough", iso_group="P", insert_code="CCMT09T304-PM",
+    vc_min=215, vc_max=455, f_min=0.08, f_max=0.23, ap_min=0.25, ap_max=3, ap_rec=0.64, f_rec=0.15,
+    vc_points=((0.1, 455.0), (0.4, 305.0), (0.8, 215.0)), source="TT A41, A289, A279"))
+WITH_ROUGH_BORING = [e for e in DRILLS if e.position != 5] + [ROUGH_BORING]
+
+
+def test_rough_boring_by_its_own_tool_finishing_by_the_finishing_bar():
+    ops = _of(_ops([FeatureSpec(1, "bore", diameter=30, length=45, tolerance="H7")], turret=WITH_ROUGH_BORING,
+                   blank=50), 1)
+    _, drill, rough, finish = ops
+    assert drill.tool_name == "drilling 20"
+    assert (rough.tool_type, rough.tool_name, rough.mode) == ("boring_rough", "Rough boring CCMT PM", "rough")
+    # (30 − 20) / 2 − 0.35 (T9's finishing pass) = 4.65 by the rough tool's ap rec 0.64: 8 passes
+    assert (rough.passes, rough.ap, rough.f) == (8, 0.581, 0.15)
+    assert rough.vc == pytest.approx(vc_at(ROUGH_BORING.tool.vc_points, 0.15), abs=0.05)
+    assert any("leaves 0.35 mm/side for finishing" in n for n in rough.notes)
+    assert not any(planner.NO_ROUGH_BORING_TOOL in n for n in rough.notes)
+    assert (finish.tool_type, finish.tool_name, finish.ap) == ("boring", "Boring bar CCMT", 0.35)
+
+
+def test_without_a_rough_boring_tool_the_finishing_bar_roughs_with_a_note():
+    rough = _of(_ops([FeatureSpec(1, "bore", diameter=30, length=45, tolerance="H7")], blank=50), 1)[2]
+    assert (rough.tool_type, rough.tool_name) == ("boring", "Boring bar CCMT")
+    assert planner.NO_ROUGH_BORING_TOOL in rough.notes
+
+
+def test_drill_choice_still_by_the_finishing_pass():
+    drill = _of(_ops([FeatureSpec(1, "bore", diameter=22, length=32, tolerance="H7")], turret=WITH_ROUGH_BORING), 1)[1]
+    assert "Ø22 less the boring tool's finishing pass 0.35 mm/side" in drill.notes[0]
+
+
+def test_boring_rough_is_a_tool_type_on_the_form(client):
+    assert "boring_rough" in TOOL_TYPES
+    assert "<option>boring_rough</option>" in client.get("/machine").get_data(as_text=True)
