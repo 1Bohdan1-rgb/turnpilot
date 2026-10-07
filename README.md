@@ -41,6 +41,12 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   boring bar enters, a flat bottom.
 - **Tool selection:** only tools loaded in the turret, matched by operation type and material ISO
   group (P/M/N). If none fits, the operation is kept with a clear warning and cannot be approved.
+- **Tool library** (Machine page): add, edit (everything but the type) and delete tools. A tool in the
+  turret is not deleted until it is taken off its position; a tool used by operations is retired instead
+  (out of the library and the turret, kept for their record). The optional "Source" of the Vc / f / ap
+  ranges (catalogue, insert grade, page) is shown in the library and as a note on every operation next
+  to its cutting data. Jobs calculated before a tool was edited or retired show a note on their process
+  sheet until they are recalculated; nothing is recalculated automatically.
 - **Roughing:** Vc near `vc_min`, f near `f_max`. Roughing leaves the finishing allowance
   (the finishing tool's ap): radial stock = `(start_diameter - diameter) / 2 - ap_finish`,
   split into equal passes: `passes = ceil(stock / ap_max)`, `ap = stock / passes`.

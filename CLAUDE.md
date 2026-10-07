@@ -47,7 +47,7 @@ Principle: no invented number. Every number is stored with its source (machine d
 catalogue, handbook, ISO), and the operator or the process engineer confirms it.
 
 Stages, in this order:
-1. Edit and delete tools on the Machine page.
+1. Edit and delete tools on the Machine page. **Done 2026-10-07** (a9bc72c, 4e9fce6): see "Tool library".
 2. Check every placeholder constant (see "Placeholders and assumptions") against the catalogue and the
    machinist's experience.
 3. Blind check of the DXF input on new files (see "DXF blind check: stop rule").
@@ -469,7 +469,7 @@ Machine and tools (seed, `turnpilot/seed.py`):
 | Name | Value | Depends on it | Source | Change |
 |---|---|---|---|---|
 | Seed machine `MACHINE` | 4000 rpm, 11 kW, Ø300 | n cap, power check, blank check | guessed (example) | Machine page |
-| Seed turret `TURRET_TOOLS` Vc / f / ap ranges, insert widths | per tool, e.g. T2 Vc 180–260, f 0.25–0.45, ap 1.5–4 | every Vc, n, f, ap, passes, grooving width | guessed (marked "NOT validated") | only by adding a new tool (no edit of a tool) and putting it in the turret |
+| Seed turret `TURRET_TOOLS` Vc / f / ap ranges, insert widths | per tool, e.g. T2 Vc 180–260, f 0.25–0.45, ap 1.5–4 | every Vc, n, f, ap, passes, grooving width | guessed (marked "NOT validated") | Machine page, tool library: Edit (and "Source") |
 | Seed materials kc1 / mc | C45 1600/0.25, AISI 304 2000/0.21, 6061 600/0.25 | spindle power check | catalogue-type, from memory, NOT verified (kc_source says so) | Machine page, Materials |
 | Seed: no drills, no centre drill, no threading feed limit, no drive efficiency | empty | holes, n·P, power: warnings until set | not guessed on purpose | Machine page / tool library |
 | Grooving T6 ISO "PN" | no ISO M | grooving of AISI 304 warns | chosen (demo of the warning) | add a tool |
@@ -528,8 +528,8 @@ DXF reader (`turnpilot/dxf_reader.py`, what becomes a section on the review scre
 | `TANGENT_TOL_DEG`, `AXIS_OVERHANG`, `MIN_MIRRORED_SHARE` | 1°, 5 mm, 0.8 | fillet vs arc, parts on the sheet | guessed | code |
 
 Check first (safety or scrap), in this order:
-1. Seed tool ranges (Vc, f, ap) of every tool in the turret: all cutting data comes from them, and the
-   seed tools cannot be edited in the app (add correct tools instead).
+1. Seed tool ranges (Vc, f, ap) of every tool in the turret: all cutting data comes from them. Edit them on
+   the Machine page and write their "Source".
 2. Machine max rpm (chuck / bar limit) and the threading feed limit n·P (Z axis following the thread).
 3. Tap drill sizes and peck depth (broken tap or drill), then the thread rules: d − 0.1·P, depths 0.613 /
    0.541·P, first pass 0.3 (thread out of gauge).
@@ -539,6 +539,18 @@ Check first (safety or scrap), in this order:
    and grooves.
 7. Finishing: ap_min allowance, rε default 0.4, Rz/4 (surface finish).
 8. Bar stock list and blank allowances (a blank too small), hex bar h11.
+
+## Tool library (2026-10-07)
+Commits a9bc72c, 4e9fce6. Plan agreed with the user, plus the "Source" field.
+- Edit everything but the type (a new type would change the meaning of the operations made with it).
+- Delete: refused while the tool is in the turret; deleted when no operation used it; otherwise retired
+  (`Tool.is_retired`): out of the library and the turret's choices, the operations keep `tool_id` and name.
+- `Tool.source` (optional text): where the Vc / f / ap ranges come from; shown in the library and as the
+  note "cutting data ranges: …" on every operation of that tool. Seed tools: empty (NOT validated anyway).
+- No automatic recalculation. `Tool.updated_at` > `Operation.created_at` → the process sheet names the
+  changed (or retired) tools and asks for Calculate. Operations calculated before `created_at` existed are
+  not compared.
+- Migration 157413ef972d; DB backup `instance/turnpilot.db.bak-2026-10-07-before-tool-edit`.
 
 ## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
 - Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
@@ -559,7 +571,7 @@ Check first (safety or scrap), in this order:
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 671 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 685 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
