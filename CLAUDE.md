@@ -49,7 +49,7 @@ catalogue, handbook, ISO), and the operator or the process engineer confirms it.
 Stages, in this order:
 1. Edit and delete tools on the Machine page. **Done 2026-10-07** (a9bc72c, 4e9fce6): see "Tool library".
 2. Check every placeholder constant (see "Placeholders and assumptions") against the catalogue and the
-   machinist's experience.
+   machinist's experience. **Partly done 2026-10-07** for steel P1.2 (Sandvik 2020): see the Status column.
 3. Blind check of the DXF input on new files (see "DXF blind check: stop rule").
 4. Machine documentation: upload the PDF → the model reads the data → the operator confirms it on a review
    screen.
@@ -458,87 +458,95 @@ Commits 3a7cfe6, c2bf00c. Plan agreed with the user (all three defaults).
 - Tests updated as planned: the bore without tools now has four operations; the test drills got their
   diameter; the tap drill test sees the bore's drill too.
 
-## Placeholders and assumptions (inventory, 2026-10-06)
+## Placeholders and assumptions (inventory 2026-10-06, status 2026-10-07)
 Every constant and assumption the planner and the seed data rest on. Source: ISO = from the standard
 (values typed from memory of it, not copied from the document); catalogue = tool makers' practice, from
-memory; rule of thumb = workshop practice, from memory; guessed = chosen here. "Machine page" = the operator
-can change it in the app; "code" = only in the code / config.
+memory; rule of thumb = workshop practice, from memory; guessed = chosen here; TT / SRT = Sandvik Coromant
+Turning tools / Solid round tools 2020 (`docs/turnpilot_catalog_P1.2.md`). "Machine page" = the operator can
+change it in the app; "code" = only in the code / config.
+Status: **verified** = checked against the catalogue (page given); **partly** = verified in part, the rest open;
+**operator decision** = set by the operator's choice, not by a catalogue number; **open** = not checked yet.
+All catalogue values are for steel P1.2 (C45) with coolant.
 
 Machine and tools (seed, `turnpilot/seed.py`):
 
-| Name | Value | Depends on it | Source | Change |
-|---|---|---|---|---|
-| Seed machine `MACHINE` | 4000 rpm, 11 kW, Ø300 | n cap, power check, blank check | guessed (example) | Machine page |
-| Seed turret `TURRET_TOOLS` Vc / f / ap ranges, insert widths | per tool, e.g. T2 Vc 180–260, f 0.25–0.45, ap 1.5–4 | every Vc, n, f, ap, passes, grooving width | guessed (marked "NOT validated") | Machine page, tool library: Edit (and "Source") |
-| Seed materials kc1 / mc | C45 1600/0.25, AISI 304 2000/0.21, 6061 600/0.25 | spindle power check | catalogue-type, from memory, NOT verified (kc_source says so) | Machine page, Materials |
-| Seed: no drills, no centre drill, no threading feed limit, no drive efficiency | empty | holes, n·P, power: warnings until set | not guessed on purpose | Machine page / tool library |
-| Grooving T6 ISO "PN" | no ISO M | grooving of AISI 304 warns | chosen (demo of the warning) | add a tool |
+| Name | Value | Depends on it | Source | Change | Status |
+|---|---|---|---|---|---|
+| Seed machine `MACHINE` | 4000 rpm, 11 kW, Ø300 | n cap, power check, blank check | guessed (example) | Machine page | open (stage 4, machine documentation) |
+| Seed tools: ranges, ap rec, f rec, Vc(f) | T1 SCMT-PM, T2 CNMG-PM, T4 DNMG-PF, T5 CCMT-PM, T6 N123G2, T7 266RG VM, T8 QD-NG, T9 CCMT-PF, T10–T12 860-GM | every Vc, n, f, ap, passes | TT A41, A49, A160, A278–A279, A283, A285, A289, A290, B11, B53, B130–B131, B139, B144 (graphs), C5, C73; SRT B25–B26, B70–B71 | Machine page, tool library | verified (grades: the catalogue's ★, operator decision); T3 and VCGT (library) open |
+| Seed materials kc1 / mc | C45 1600/0.25, AISI 304 2000/0.21, 6061 600/0.25 | spindle power check | C45 kc1: TT A278; the rest from memory | Machine page, Materials | partly (C45 kc1 verified; mc and the other materials open) |
+| Seed: no centre drill, no threading feed limit, no drive efficiency | empty | centring, n·P, power: warnings until set | not guessed on purpose | Machine page / tool library | partly (drills added; centre drill not in TT / SRT: open by decision; n·P and efficiency: stage 4) |
+| ISO groups of the checked tools | P only | M / N jobs: "no tool" | operator decision 2026-10-07 | tool library | operator decision |
+| Coolant | present | every catalogue Vc (given with coolant) | catalogue condition | — | operator decision (assumed; check at stage 4) |
 
 Planner constants (`turnpilot/planner.py`):
 
-| Name | Value | Depends on it | Source | Change |
-|---|---|---|---|---|
-| `NEAR_MIN` / `NEAR_MAX` | 0.25 / 0.75 of a tool's range | rough: Vc low, f / ap high; finish: Vc high, f low | guessed | code |
-| finishing ap | the tool's ap_min | finishing allowance left by roughing | guessed | tool data |
-| `DEFAULT_FINISH_ALLOWANCE_MM` | 0.5 | allowance when no finishing tool | guessed (PLACEHOLDER) | code |
-| finish feed from Ra | f = √(Ra·32·rε/1000) | finishing feed | textbook formula | code |
-| `DEFAULT_NOSE_RADIUS_MM` | 0.4 | feed when rε is not in the insert code | guessed | code (insert code) |
-| `RZ_PER_RA` | Ra ≈ Rz/4 | feed for an Rz on the drawing | GOST 2789 approximation, from memory | code |
-| `GRINDING_IT_GRADE` / `GRINDING_RA_UM` | IT5 / Ra 0.4 | "may require grinding" warning | rule of thumb | code |
-| `IT5_UM`, `IT11_UM`, `IT12_UM` | ISO 286 tables | grinding, hex bar h11, drill-only holes | ISO | code |
-| `THREAD_MAJOR_REDUCTION` | d − 0.1·P | OD under an external thread | rule of thumb | code |
-| `METRIC_THREAD_DEPTH_FACTOR` | 0.613·P | external thread depth | ISO 68-1 (h3), from memory | code |
-| `INTERNAL_THREAD_DEPTH_FACTOR` | 0.541·P | internal thread depth | ISO 68-1 (H1), from memory | code |
-| `THREAD_FIRST_PASS_FACTOR` | 0.3 | thread infeed series | catalogue (modified constant chip area) | code |
-| `TAP_DRILL_MM` | ISO 2306 coarse table; else d − P | tap drill Ø | ISO, from memory | code |
-| `COARSE_PITCH_MM` (`extraction_schema.py`) | ISO 261 | pitch when the drawing has none ("check") | ISO, from memory | code |
-| `WRENCH_SIZES_MM` (`extraction_schema.py`) | ISO 272 | hex "not a wrench size" warning | ISO, from memory | code |
-| `HEX_BAR_TOLERANCE` | h11 | hex bar flats left unmachined | GOST 8560 / EN 10278, from memory | code |
-| `HEX_MIN_CORNERS_PER_FLATS` | 1.10 | hex corners warning | ISO 4032-like, from memory | code |
-| `HEX_BAR_MATCH_MM` | 0.05 | hex = bar size | guessed | code |
-| `GEOMETRY_TOLERANCE_MM` | 0.2 | "section lengths sum" warning | guessed | code |
-| tap / internal threading Vc | middle of the range | n of a tap / bar | guessed | code |
-| drill Vc / f | finishing position of the range | n, f of drills | guessed | tool data |
-| chuck side (`rough_starts`) | the largest Ø | roughing start Ø, passes, ap, n (DXF jobs) | assumption | code |
-| `GROOVE_STEP_FACTOR` | step ≤ 0.8 × insert | plunges of a wide groove | guessed (PLACEHOLDER) | code |
-| `GROOVE_FINISH_RA` / `GROOVE_FINISH_ALLOWANCE_MM` | Ra 1.6 / 0.2 mm | groove finishing pass | guessed (PLACEHOLDER) | code |
-| `GROOVE_WIDTH_TOL_MM`, `DRILL_SIZE_TOL_MM`, `TAP_DRILL_TOL_MM` | 0.01 / 0.01 / 0.05 | "same size" tests | guessed | code |
-| power: κr | 90° (hm = f) | kc, so Pc | assumption (a 45° holder raises kc) | code |
-| `DRILL_IT_GRADE` / `DRILL_RA_UM` | IT12 / Ra 6.3 | hole made by the drill alone | rule of thumb (PLACEHOLDER) | code |
-| `PECK_DEPTH_FACTOR` | 3 × drill Ø | G83 note | rule of thumb (PLACEHOLDER; carbide often 5×) | code |
-| boring allowance | the boring tool's ap_min | drill Ø for a bore | tool data | tool data |
-| parting note | feed −50% for the last 2 mm | note only | rule of thumb | code |
+| Name | Value | Depends on it | Source | Change | Status |
+|---|---|---|---|---|---|
+| `NEAR_MIN` / `NEAR_MAX` | 0.25 / 0.75 of a tool's range | rough / finish Vc, f, ap of a tool without catalogue values | guessed | code | verified where replaced: tools with f rec / ap rec / Vc(f) use them (operator decision (b)); still open for T3 and VCGT |
+| finishing ap | the tool's ap rec (else ap_min) | finishing pass, allowance left by roughing | TT A285 (T4 0.4), A289 (T9 0.35) | tool data | verified |
+| `DEFAULT_FINISH_ALLOWANCE_MM` | 0.5 | allowance when no finishing tool | guessed (PLACEHOLDER) | code | open |
+| finish feed from Ra | f = √(Ra·32·rε/1000) | finishing feed | textbook formula | code | open |
+| `DEFAULT_NOSE_RADIUS_MM` | 0.4 | feed when rε is not in the insert code | guessed | code (insert code) | open (fallback only: the seed insert codes give rε) |
+| `RZ_PER_RA` | Ra ≈ Rz/4 | feed for an Rz on the drawing | GOST 2789 approximation, from memory | code | open |
+| `GRINDING_IT_GRADE` / `GRINDING_RA_UM` | IT5 / Ra 0.4 | "may require grinding" warning | rule of thumb | code | open |
+| `IT5_UM`, `IT11_UM`, `IT12_UM` | ISO 286 tables | grinding, hex bar h11, drill-only holes | ISO | code | open |
+| `THREAD_MAJOR_REDUCTION` | d − 0.1·P | OD under an external thread | rule of thumb | code | open |
+| `METRIC_THREAD_DEPTH_FACTOR` | 0.613·P | external thread depth | ISO 68-1 (h3), from memory | code | open (C77 depth is for the full profile, not used for VM: operator decision) |
+| `INTERNAL_THREAD_DEPTH_FACTOR` | 0.541·P | internal thread depth | ISO 68-1 (H1), from memory | code | open (as above) |
+| thread passes and infeed series | C77 count (P 1 / 1.5 / 2: 5 / 6 / 8; internal 1.5: 6); series ϕ 0.3, 1, x − 1 | thread passes | TT C77, C82 | code | verified (other pitches: the tool's ap range, open) |
+| thread spring pass | one 0 mm pass | thread passes | rule of thumb | code | open |
+| `TAP_DRILL_MM` | ISO 2306 coarse table; else d − P | tap drill Ø | ISO, from memory | code | open |
+| `COARSE_PITCH_MM` (`extraction_schema.py`) | ISO 261 | pitch when the drawing has none ("check") | ISO, from memory | code | open |
+| `WRENCH_SIZES_MM` (`extraction_schema.py`) | ISO 272 | hex "not a wrench size" warning | ISO, from memory | code | open |
+| `HEX_BAR_TOLERANCE` | h11 | hex bar flats left unmachined | GOST 8560 / EN 10278, from memory | code | open |
+| `HEX_MIN_CORNERS_PER_FLATS` | 1.10 | hex corners warning | ISO 4032-like, from memory | code | open |
+| `HEX_BAR_MATCH_MM` | 0.05 | hex = bar size | guessed | code | open |
+| `GEOMETRY_TOLERANCE_MM` | 0.2 | "section lengths sum" warning | guessed | code | open |
+| tap / internal threading Vc | middle of the range | n of a tap / bar | guessed | code | open (no tap in the catalogue file) |
+| drill Vc / f | the drill's Vc 125 (start) and f rec | n, f of drills | SRT B70, B71 (860-GM) | tool data | verified |
+| drill max depth | 3 × D (860-GM 3×D) → "drill too short" | warning | SRT (3×D series) | tool data | verified |
+| chuck side (`rough_starts`) | the largest Ø | roughing start Ø, passes, ap, n (DXF jobs) | assumption | code | open |
+| `GROOVE_STEP_FACTOR` | step ≤ 0.8 × insert | plunges of a wide groove | guessed (PLACEHOLDER) | code | open |
+| `GROOVE_FINISH_RA` / `GROOVE_FINISH_ALLOWANCE_MM` | Ra 1.6 / 0.2 mm | groove finishing pass | guessed (PLACEHOLDER) | code | open |
+| `GROOVE_WIDTH_TOL_MM`, `DRILL_SIZE_TOL_MM`, `TAP_DRILL_TOL_MM` | 0.01 / 0.01 / 0.05 | "same size" tests | guessed | code | open |
+| power: κr | 90° (hm = f) | kc, so Pc | assumption (a 45° holder raises kc) | code | open |
+| Vc between catalogue points | linear | Vc at f rec / from Ra | assumption (the catalogue gives 3 points) | code | open |
+| `DRILL_IT_GRADE` / `DRILL_RA_UM` | IT12 / Ra 6.3 | hole made by the drill alone | rule of thumb (PLACEHOLDER) | code | open |
+| `PECK_DEPTH_FACTOR` | 3 × drill Ø | G83 note | rule of thumb (PLACEHOLDER; carbide often 5×) | code | open (3×D of 860-GM is its length: "drill too short", operator decision) |
+| boring allowance | the finishing boring tool's ap rec | drill Ø for a bore | TT A289 (T9 0.35) | tool data | verified |
+| rough boring | `boring_rough` tool (T5) by its ap rec | rough boring passes | TT A41, A289, A279 | tool data | verified |
+| parting note | feed −50% for the last 2 mm | note only | rule of thumb | code | open |
 
 Blank and config (`turnpilot/config.py`):
 
-| Name | Value | Depends on it | Source | Change |
-|---|---|---|---|---|
-| `BAR_STOCK_DIAMETERS` | 10 … 200 | suggested blank Ø | guessed (PLACEHOLDER) | code / config |
-| `HEX_BAR_SIZES` | 8 … 41 | suggested hex bar | ISO 272-like list | Machine page (bar stock) |
-| `BLANK_DIAMETER_ALLOWANCE_MM` | 2.0 | suggested blank Ø | guessed | code / config |
-| `BLANK_FACING_ALLOWANCE_MM` | 2.0 | suggested blank length | guessed | code / config |
-| `DEFAULT_PARTING_WIDTH_MM` | 3.0 | blank length without a parting tool width | guessed | code / config (else the parting tool's width) |
+| Name | Value | Depends on it | Source | Change | Status |
+|---|---|---|---|---|---|
+| `BAR_STOCK_DIAMETERS` | 10 … 200 | suggested blank Ø | guessed (PLACEHOLDER) | code / config | open |
+| `HEX_BAR_SIZES` | 8 … 41 | suggested hex bar | ISO 272-like list | Machine page (bar stock) | open |
+| `BLANK_DIAMETER_ALLOWANCE_MM` | 2.0 | suggested blank Ø | guessed | code / config | open |
+| `BLANK_FACING_ALLOWANCE_MM` | 2.0 | suggested blank length | guessed | code / config | open |
+| `DEFAULT_PARTING_WIDTH_MM` | 3.0 | blank length without a parting tool width | guessed | code / config (else the parting tool's width) | partly (T8 width 3 verified, TT B53; the default itself open) |
 
 DXF reader (`turnpilot/dxf_reader.py`, what becomes a section on the review screen):
 
-| Name | Value | Depends on it | Source | Change |
-|---|---|---|---|---|
-| `GEOM_TOL` / `BIND_TOL` | 0.01 / 0.05 mm | joining the contour, binding dimensions | guessed (measured on 3 files) | code |
-| `CHAMFER_MAX_LEG` | 3 mm | a 45° diagonal up to 3 mm is a chamfer, longer is a taper | guessed | code |
-| `TANGENT_TOL_DEG`, `AXIS_OVERHANG`, `MIN_MIRRORED_SHARE` | 1°, 5 mm, 0.8 | fillet vs arc, parts on the sheet | guessed | code |
+| Name | Value | Depends on it | Source | Change | Status |
+|---|---|---|---|---|---|
+| `GEOM_TOL` / `BIND_TOL` | 0.01 / 0.05 mm | joining the contour, binding dimensions | guessed (measured on 3 files) | code | open |
+| `CHAMFER_MAX_LEG` | 3 mm | a 45° diagonal up to 3 mm is a chamfer, longer is a taper | guessed | code | open |
+| `TANGENT_TOL_DEG`, `AXIS_OVERHANG`, `MIN_MIRRORED_SHARE` | 1°, 5 mm, 0.8 | fillet vs arc, parts on the sheet | guessed | code | open |
 
 Check first (safety or scrap), in this order:
-1. Seed tool ranges (Vc, f, ap) of every tool in the turret: all cutting data comes from them. Edit them on
-   the Machine page and write their "Source".
-2. Machine max rpm (chuck / bar limit) and the threading feed limit n·P (Z axis following the thread).
-3. Tap drill sizes and peck depth (broken tap or drill), then the thread rules: d − 0.1·P, depths 0.613 /
-   0.541·P, first pass 0.3 (thread out of gauge).
-4. kc1 / mc and the drive efficiency (spindle overload, stall).
-5. Chuck side = the largest Ø in DXF jobs: if the part is held otherwise, roughing ap is larger than planned.
-6. Drill-only holes (IT12 / Ra 6.3) and the groove finishing rule (Ra 1.6, 0.2 mm): size and finish of holes
+1. Machine max rpm (chuck / bar limit) and the threading feed limit n·P (Z axis following the thread): not set.
+2. Tap drill sizes (broken tap), then the thread rules still open: d − 0.1·P, depths 0.613 / 0.541·P, the
+   spring pass (thread out of gauge).
+3. mc of C45, kc of AISI 304 / 6061, and the drive efficiency (spindle overload, stall).
+4. Chuck side = the largest Ø in DXF jobs: if the part is held otherwise, roughing ap is larger than planned.
+5. Drill-only holes (IT12 / Ra 6.3) and the groove finishing rule (Ra 1.6, 0.2 mm): size and finish of holes
    and grooves.
-7. Finishing: ap_min allowance, rε default 0.4, Rz/4 (surface finish).
-8. Bar stock list and blank allowances (a blank too small), hex bar h11.
+6. Finishing: Ra feed formula, rε default 0.4, Rz/4 (surface finish); linear Vc between catalogue points.
+7. Bar stock list and blank allowances (a blank too small), hex bar h11.
+8. The graph-read feeds of T6 / T8 (B139, B144): checked by eye only.
 
 ## Tool library (2026-10-07)
 Commits a9bc72c, 4e9fce6. Plan agreed with the user, plus the "Source" field.
@@ -569,11 +577,13 @@ catalogue PDFs under `docs/catalogs/*.pdf` are git-ignored). Done so far:
   T9 (PF) finishes them; VCGT (N) only in the library. Data migration 8c2d41e7b9a3 (T5 swapped only while it
   holds the unchanged seed VCGT). Ø30 from the Ø20 drill: 14 × 0.332 became 8 × 0.581.
 - Coolant: the catalogue Vc are with coolant; assumed present (to check at stage 4, machine documentation).
-- Still to do in stage 2: thread passes from C77 (count) and the C82 infeed series (depth stays the formula,
-  "not in catalogue"); drills 860-GM Ø6/8/10 with the "drill too short" warning above 3×D; the Status
-  column in the placeholder table.
+- 9e8baff: thread passes from C77 (count; the VM insert takes the full profile's count, C82) and the C82
+  infeed series (it was already the code's); depth stays 0.613·P / 0.541·P, "not in the catalogue".
+- 7e648e7: `Tool.max_depth`; drills 860-GM Ø6 / Ø8 / Ø10 on T10–T12 (SRT B25–B26, B70, B71; 3×D, external
+  coolant); deeper than the drill reaches → "drill too short". Migration 450337eecff1 (positions only if empty).
+- The placeholder table has a Status column (verified / partly / operator decision / open).
 - DB backups: `instance/turnpilot.db.bak-2026-10-07-before-catalogue-data`, `…-before-t6-t8`,
-  `…-before-rough-boring`.
+  `…-before-rough-boring`, `…-before-drills`.
 
 ## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
 - Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
@@ -594,7 +604,7 @@ catalogue PDFs under `docs/catalogs/*.pdf` are git-ignored). Done so far:
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 713 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 724 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
