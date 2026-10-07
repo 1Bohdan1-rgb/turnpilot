@@ -337,6 +337,22 @@ def _decreasing_infeed(h: float, n: int) -> list[float]:
     return [round(b - a, 3) for a, b in zip([0.0] + cumulative, cumulative)]
 
 
+# Sandvik Coromant Turning tools 2020, C77: number of infeed passes for ISO metric threads in steel. The
+# V-profile insert takes the full profile's count (C82). C77's depths are the full profile's, so the depth stays
+# the formula. The infeed series of _decreasing_infeed is C82's (first pass ϕ = 0.3, second 1, then x − 1).
+THREAD_PASSES_C77 = {"external": {1.0: 5, 1.5: 6, 2.0: 8}, "internal": {1.5: 6}}
+THREAD_CATALOGUE_NOTE = "{n} passes: Sandvik TT 2020 C77 (count) and C82 (infeed series)"
+THREAD_DEPTH_NOTE = "profile depth {h:g} ({k:g}·P) and the spring pass: not in the catalogue"
+
+
+def catalogue_thread_passes(pitch: float, location: str = "external") -> int | None:
+    """The number of cutting passes C77 gives for this pitch, or None when the table has no such pitch."""
+    for table_pitch, passes in THREAD_PASSES_C77.get(location, {}).items():
+        if math.isclose(pitch, table_pitch):
+            return passes
+    return None
+
+
 def _equal_infeed(h: float, k: int) -> list[float]:
     """Split h into k equal passes; rounding leftovers go to the first passes (never the last)."""
     units = round(h * 1000)
@@ -1258,10 +1274,18 @@ def _plan_thread(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec,
     op.f = feature.pitch
     limit_thread_speed(op, feature.pitch, max_thread_feed)
     op.depth = thread_depth(feature.pitch)
-    infeed, method = thread_infeed(op.depth, tool.ap_max, tool.ap_min)
+    passes = catalogue_thread_passes(feature.pitch)
+    if passes:
+        infeed, method = _decreasing_infeed(op.depth, passes) + [0.0], "catalogue"
+    else:
+        infeed, method = thread_infeed(op.depth, tool.ap_max, tool.ap_min)
     op.passes = len(infeed)
     cutting = ", ".join(f"{d:g}" for d in infeed[:-1])
     op.notes.append(f"radial infeed per pass: {cutting} + spring pass")
+    if method == "catalogue":
+        op.notes.append(THREAD_CATALOGUE_NOTE.format(n=passes))
+        op.notes.append(THREAD_DEPTH_NOTE.format(h=op.depth, k=METRIC_THREAD_DEPTH_FACTOR))
+        return
     if method == "equal":
         op.notes.append("equal infeed: a decreasing series would need passes thinner than ap_min")
     if min(infeed[:-1]) < tool.ap_min:
@@ -1371,9 +1395,16 @@ def _plan_internal_thread_step(op, step, job, turret, max_rpm, max_thread_feed=N
     else:
         op.notes.insert(0, G97_THREAD_NOTE)
         op.depth = round(INTERNAL_THREAD_DEPTH_FACTOR * feature.pitch, 3)
-        infeed, _method = thread_infeed(op.depth, tool.ap_max, tool.ap_min)
+        passes = catalogue_thread_passes(feature.pitch, "internal")
+        if passes:
+            infeed = _decreasing_infeed(op.depth, passes) + [0.0]
+        else:
+            infeed, _method = thread_infeed(op.depth, tool.ap_max, tool.ap_min)
         op.passes = len(infeed)
         op.notes.append(f"radial infeed per pass: {', '.join(f'{d:g}' for d in infeed[:-1])} + spring pass")
+        if passes:
+            op.notes.append(THREAD_CATALOGUE_NOTE.format(n=passes))
+            op.notes.append(THREAD_DEPTH_NOTE.format(h=op.depth, k=INTERNAL_THREAD_DEPTH_FACTOR))
     return op
 
 

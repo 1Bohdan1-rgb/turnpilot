@@ -327,7 +327,7 @@ def test_thread_operation_shows_depth_passes_and_g97(turret):
     (op,) = plan_job(job, turret, max_rpm=4000)
     h = thread_depth(1.5)
     assert op.depth == h
-    assert op.passes == len(thread_infeed(h, 0.2, 0.05)[0])
+    assert op.passes == 6 + 1  # P1.5: 6 passes by Sandvik TT 2020 C77, then the spring pass
     assert op.ap is None
     assert G97_THREAD_NOTE in op.notes
     assert G96_NOTE not in op.notes
