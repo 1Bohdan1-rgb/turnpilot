@@ -83,6 +83,7 @@ class ToolSpec:
     ap_max: float
     insert_width: float | None = None  # grooving / parting inserts
     diameter: float | None = None  # drills: the hole they make
+    max_depth: float | None = None  # drills: the deepest hole they reach
     source: str | None = None  # where the Vc / f / ap ranges come from
     # The catalogue's recommended ap and f, and Vc at given feeds ((f, vc), ...; one point: Vc for every f).
     ap_rec: float | None = None
@@ -889,6 +890,7 @@ DRILL_NOTE = ("drill Ø{d:g}: the largest up to Ø{limit:g} (Ø{hole:g} less the
               "{a:g} mm/side)")
 DRILL_ONLY_NOTE = "drill Ø{d:g} makes the hole: tolerance and roughness need no boring"
 PECK_NOTE = "G83 peck drilling: depth {depth:g} > {k:g} × Ø{d:g}"
+DRILL_TOO_SHORT = "drill too short: the hole is {depth:g} deep, the drill reaches {max_depth:g}: use a longer drill"
 COVERED_NOTE = "drilled Ø{d:g} with feature {fid}'s hole"
 FROM_SOLID_NOTE = "no drill chosen: bored from solid? Drill the hole first"
 
@@ -1364,6 +1366,8 @@ def _plan_drilling(op, step, hole: HolePlan | None, max_rpm) -> PlannedOperation
     _note_source(op, tool)
     if hole.depth and hole.depth > PECK_DEPTH_FACTOR * tool.diameter + 1e-9:
         op.notes.append(PECK_NOTE.format(depth=hole.depth, k=PECK_DEPTH_FACTOR, d=tool.diameter))
+    if hole.depth and tool.max_depth and hole.depth > tool.max_depth + 1e-9:
+        op.warnings.append(DRILL_TOO_SHORT.format(depth=hole.depth, max_depth=tool.max_depth))
     return op
 
 

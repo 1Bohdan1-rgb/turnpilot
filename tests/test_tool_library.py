@@ -42,7 +42,8 @@ def test_source_is_saved_and_shown_in_the_library(client):
 def test_seed_tools_carry_a_source_only_when_checked_against_the_catalogue(app):
     tools = {t.name: t for t in db.session.execute(db.select(Tool)).scalars()}
     checked = ("Facing SCMT", "Rough turning CNMG (P)", "Finish turning DNMG (P)", "Grooving 3 mm",
-               "Threading 60 deg", "Parting 3 mm", "Rough boring CCMT (P)", "Boring bar CCMT")
+               "Threading 60 deg", "Parting 3 mm", "Rough boring CCMT (P)", "Boring bar CCMT",
+               "Drill 860-GM Ø6", "Drill 860-GM Ø8", "Drill 860-GM Ø10")
     assert all(tools[name].source.startswith("Sandvik") for name in checked)
     assert all(t.source is None for name, t in tools.items() if name not in checked)
 
@@ -249,3 +250,17 @@ def test_seed_vcgt_is_in_the_library_but_not_in_the_turret(app):
     assert all(slot.tool_id != vcgt.id for slot in services.get_machine().slots)
     t5 = next(s for s in services.get_machine().slots if s.position == 5)
     assert (t5.tool.name, t5.tool.type) == ("Rough boring CCMT (P)", "boring_rough")
+
+
+def test_drill_migration_writes_what_the_seed_has_on_t10_t12():
+    from turnpilot.seed import TURRET_TOOLS
+    migration = _seed_migration("450337eecff1_max_depth_of_drills_860_gm_drills_on_.py")
+    for position, d, code, page, feeds in migration.DRILLS:
+        written = migration.drill(d, code, page, feeds)
+        assert {k: v for k, v in written.items() if k != "is_retired"} == TURRET_TOOLS[position], position
+
+
+def test_seed_drills_on_t10_t12(app):
+    slots = {s.position: s.tool for s in services.get_machine().slots}
+    assert [(slots[p].name, slots[p].diameter, slots[p].max_depth) for p in (10, 11, 12)] == [
+        ("Drill 860-GM Ø6", 6, 18), ("Drill 860-GM Ø8", 8, 24), ("Drill 860-GM Ø10", 10, 30)]

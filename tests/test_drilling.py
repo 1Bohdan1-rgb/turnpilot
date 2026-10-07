@@ -42,7 +42,9 @@ def _drill(position, diameter, tool_type="drilling"):
                                           f_max=0.3, ap_min=diameter / 2, ap_max=diameter / 2, diameter=diameter))
 
 
-DRILLS = SEED + [_drill(10, 3.15, "centre_drilling")] + [_drill(11 + i, d) for i, d in enumerate((6, 8, 10, 16, 20))]
+# the seed turret without its 860-GM drills (T10-T12), with test drills of known names in their place
+NO_DRILLS = [e for e in SEED if e.tool.type != "drilling"]
+DRILLS = NO_DRILLS + [_drill(10, 3.15, "centre_drilling")] + [_drill(11 + i, d) for i, d in enumerate((6, 8, 10, 16, 20))]
 
 
 def _ops(features, turret=DRILLS, blank=40):
@@ -107,13 +109,24 @@ def test_large_bore_several_boring_passes():
     assert (rough.passes, rough.ap) == (8, 0.581)
 
 
-def test_seed_turret_warns_and_does_not_guess():
-    ops = _of(_ops([FeatureSpec(1, "bore", diameter=22, length=32)], turret=SEED), 1)
+def test_turret_without_drills_warns_and_does_not_guess():
+    ops = _of(_ops([FeatureSpec(1, "bore", diameter=22, length=32)], turret=NO_DRILLS), 1)
     centre, drill, rough, _ = ops
     assert planner.NO_CENTRE_DRILL in centre.warnings
     assert drill.tool_id is None and drill.warnings == [
         "no drill up to Ø21.3 in the turret (Ø22 less the boring allowance 0.35 mm/side): drill by hand"]
     assert rough.passes is None and planner.FROM_SOLID_NOTE in rough.notes
+
+
+def test_seed_turret_drills_860_gm_and_warns_when_too_short():
+    # the seed has 860-GM Ø6 / Ø8 / Ø10 (3×D) and no centre drill: the Ø22 bore gets the Ø10 drill, 30 deep at most
+    centre, drill, rough, _ = _of(_ops([FeatureSpec(1, "bore", diameter=22, length=32)], turret=SEED), 1)
+    assert planner.NO_CENTRE_DRILL in centre.warnings
+    assert (drill.tool_name, drill.vc, drill.f, drill.n) == ("Drill 860-GM Ø10", 125, 0.25, 3979)
+    assert drill.warnings == ["drill too short: the hole is 32 deep, the drill reaches 30: use a longer drill"]
+    assert any("cutting data ranges: Sandvik Coromant Solid round tools 2020" in n for n in drill.notes)
+    shallow = _of(_ops([FeatureSpec(1, "bore", diameter=22, length=30)], turret=SEED), 1)[1]
+    assert not shallow.warnings
 
 
 def test_no_boring_tool_no_drill_chosen():
@@ -123,7 +136,7 @@ def test_no_boring_tool_no_drill_chosen():
 
 
 def test_drill_without_a_diameter_is_not_chosen():
-    turret = SEED + [TurretEntry(11, ToolSpec(id=11, name="drill ?", type="drilling", iso_group="PMN",
+    turret = NO_DRILLS + [TurretEntry(11, ToolSpec(id=11, name="drill ?", type="drilling", iso_group="PMN",
                                               insert_code="", vc_min=20, vc_max=40, f_min=0.1, f_max=0.3,
                                               ap_min=1, ap_max=1))]
     drill = _of(_ops([FeatureSpec(1, "bore", diameter=22, length=32)], turret=turret), 1)[1]
@@ -162,10 +175,11 @@ def test_internal_chamfer_of_a_drill_only_hole_gets_its_own_pass():
 def test_bore_through_the_app(client):
     from turnpilot.models import Job, Material, Operation
     material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
-    for d, kind in ((3.15, "centre_drilling"), (20, "drilling")):
+    # the seed turret is full: the centre drill goes on T3 (M/N roughing, not used for steel), the Ø20 on T10
+    for d, kind, position in ((3.15, "centre_drilling", 3), (20, "drilling", 10)):
         client.post("/tools", data={**DRILL_FORM, "name": f"Tool {d}", "type": kind, "diameter": str(d)})
         tool = db.session.execute(db.select(Tool).filter_by(name=f"Tool {d}")).scalar_one()
-        slot = next(s for s in services.get_machine().slots if s.tool_id is None)
+        slot = next(s for s in services.get_machine().slots if s.position == position)
         slot.tool_id = tool.id
     db.session.commit()
     client.post("/jobs", data=dict(name="Bushing", material_id=material.id, quantity=1, blank_diameter=38,

@@ -59,6 +59,7 @@ class Tool(db.Model):
     ap_max = db.Column(db.Float, nullable=False)
     insert_width = db.Column(db.Float)  # mm, grooving / parting inserts
     diameter = db.Column(db.Float)  # mm, drills: the hole they make
+    max_depth = db.Column(db.Float)  # mm, drills: the deepest hole they reach (e.g. 3 × D for a 3×D drill)
     source = db.Column(db.String(300))  # where the Vc / f / ap ranges come from: catalogue, insert grade, page
     # The catalogue's recommended values: the planner takes these instead of positions in the ranges. vc_points:
     # Vc at given feeds, "0.1:455, 0.4:305, 0.8:215" (linear between them), or one Vc for every feed ("125").

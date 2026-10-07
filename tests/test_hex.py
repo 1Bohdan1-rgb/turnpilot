@@ -207,7 +207,8 @@ def test_driven_tool_can_be_added_and_used(app, client):
     client.post("/tools", data=dict(name="End mill D8", type="milling", iso_group=["P", "M", "N"], vc_min=60,
                                     vc_max=120, f_min=0.02, f_max=0.05, ap_min=0.5, ap_max=2))
     tool = db.session.execute(db.select(Tool).filter_by(type="milling")).scalar_one()
-    slot = db.session.execute(db.select(TurretSlot).filter_by(tool_id=None)).scalars().first()
+    # the seed turret is full: T3 (M/N roughing) is not used for this steel job
+    slot = db.session.execute(db.select(TurretSlot).filter_by(position=3)).scalar_one()
     slot.tool_id = tool.id
     db.session.commit()
     job_id = _job(client)

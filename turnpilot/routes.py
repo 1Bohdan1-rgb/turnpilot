@@ -154,6 +154,7 @@ def _tool_fields(form):
         iso_group=iso_group,
         insert_width=_number(form, "insert_width"),
         diameter=_number(form, "diameter"),
+        max_depth=_number(form, "max_depth"),
         source=form.get("source", "").strip()[:300] or None,
         **values,
     )

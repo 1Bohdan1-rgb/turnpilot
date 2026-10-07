@@ -63,7 +63,9 @@ def test_internal_thread_without_tools_becomes_manual_operations(app):
     ops = [op for op in planner.plan_job(_job(), turret, 4000) if op.feature_id == 3]
     drill, tap = ops
     assert drill.tool_type == "drilling" and drill.ref_diameter == 12 and drill.depth == 28
-    assert "tap drill Ø12 for M14×2" in drill.notes and planner.NO_DRILL in drill.warnings
+    # the seed turret has 860-GM drills Ø6 / Ø8 / Ø10 but no Ø12 tap drill
+    assert "tap drill Ø12 for M14×2" in drill.notes
+    assert drill.warnings == ["no Ø12 drill in the turret (tap drill for M14×2)"]
     assert tap.f == 2 and planner.NO_INTERNAL_THREAD_TOOL in tap.warnings
     assert all(op.tool_type != "threading" for op in ops)  # never the external threading tool
     assert [op.sequence for op in ops] == sorted(op.sequence for op in ops)  # drill before the thread
