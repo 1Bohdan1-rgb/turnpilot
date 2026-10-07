@@ -552,6 +552,29 @@ Commits a9bc72c, 4e9fce6. Plan agreed with the user, plus the "Source" field.
   not compared.
 - Migration 157413ef972d; DB backup `instance/turnpilot.db.bak-2026-10-07-before-tool-edit`.
 
+## Stage 2: placeholders checked against Sandvik 2020, steel P1.2 (in progress, 2026-10-07)
+Plan agreed with the user (8 answers). Source file: `docs/turnpilot_catalog_P1.2.md` (numbers and pages only;
+catalogue PDFs under `docs/catalogs/*.pdf` are git-ignored). Done so far:
+- f13984e: the catalogue file in git; its section 4 corrected to the V-profile insert 266RG-16VM01A001M.
+- 5feb133: `Tool.ap_rec / f_rec / vc_points` (migration 0558af27f2f6). With f rec the planner takes f rec
+  (finishing: from Ra), ap rec, Vc from the points at that f (linear between them, flat outside); roughing
+  passes by ap rec; finishing allowance = the finishing tool's ap rec. Tools without them: as before.
+- 8aaac04: seed T1 SCMT120408-PM GC4325, T2 CNMG120408-PM GC4325, T4 DNMG150604-PF GC4315, T9
+  CCMT09T304-PF GC4315 (pages A41, A49, A160, A278-A279, A283, A285, A289, A290), ISO P. Data migration
+  3748554069af (only unchanged seed tools). Tests build the seed turret with `conftest.seed_turret()`.
+- 144aab1: T6 N123G2-0300-0003-GM GC4325 (f from the B139 graph), T7 266RG-16VM01A001M GC1125 (Vc 195,
+  pitch 1-2), T8 QD-NG-0300-0002-CM GC1125 (f from the B144 graph); T4 renamed "Finish turning DNMG (P)".
+  Data migration 5fb0e3d2a1c4. The T7 ap range is still the placeholder infeed range.
+- 1889cb6, 3522d05: tool type `boring_rough`; seed T5 = CCMT09T304-PM GC4325 (A41, A289, A279) roughs bores,
+  T9 (PF) finishes them; VCGT (N) only in the library. Data migration 8c2d41e7b9a3 (T5 swapped only while it
+  holds the unchanged seed VCGT). Ø30 from the Ø20 drill: 14 × 0.332 became 8 × 0.581.
+- Coolant: the catalogue Vc are with coolant; assumed present (to check at stage 4, machine documentation).
+- Still to do in stage 2: thread passes from C77 (count) and the C82 infeed series (depth stays the formula,
+  "not in catalogue"); drills 860-GM Ø6/8/10 with the "drill too short" warning above 3×D; the Status
+  column in the placeholder table.
+- DB backups: `instance/turnpilot.db.bak-2026-10-07-before-catalogue-data`, `…-before-t6-t8`,
+  `…-before-rough-boring`.
+
 ## DXF blind check: stop rule (set 2026-10-06, BEFORE the new files are received)
 - Data: new KOMPAS DXF files the system has not seen (not деталь 1, НД 012, Завіса 36). Expected
   answers are written by the user by hand before the run.
@@ -571,7 +594,7 @@ Commits a9bc72c, 4e9fce6. Plan agreed with the user, plus the "Source" field.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 685 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 713 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

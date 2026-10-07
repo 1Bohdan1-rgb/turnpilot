@@ -41,6 +41,15 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   boring bar enters, a flat bottom.
 - **Tool selection:** only tools loaded in the turret, matched by operation type and material ISO
   group (P/M/N). If none fits, the operation is kept with a clear warning and cannot be approved.
+- **Catalogue values:** a tool may carry the catalogue's recommended ap and f and Vc at given feeds
+  ("0.1:455, 0.4:305, 0.8:215", linear between the points). The planner then uses f rec (finishing: from
+  Ra), ap rec and Vc at that f instead of 25% / 75% positions in the ranges; roughing passes go by ap rec,
+  and the finishing allowance is the finishing tool's ap rec. The seed tools T1, T2, T4-T9 carry the
+  Sandvik Coromant 2020 values for steel P1.2 with their pages (`docs/turnpilot_catalog_P1.2.md`), ISO P
+  only; T3 and the VCGT (N, in the library only) are placeholders.
+- **Rough and finish boring:** a `boring_rough` tool (seed T5, CCMT09T304-PM) roughs a bore in passes of
+  its ap rec; the `boring` tool (T9, CCMT09T304-PF) takes the finishing pass and sets the drill. Without a
+  `boring_rough` tool the boring bar roughs too, with a note.
 - **Tool library** (Machine page): add, edit (everything but the type) and delete tools. A tool in the
   turret is not deleted until it is taken off its position; a tool used by operations is retired instead
   (out of the library and the turret, kept for their record). The optional "Source" of the Vc / f / ap
