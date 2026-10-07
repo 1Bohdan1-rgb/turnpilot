@@ -118,7 +118,8 @@ def test_fine_ra_wide_groove_plunges_leave_an_allowance_then_a_finishing_pass():
     assert "leaves 0.2 mm on the walls and the bottom for finishing" in plunges.notes
     assert finish.depth == 2.0 and "finish the bottom and both walls: 0.2 mm" in finish.notes
     assert finish.tool_id == plunges.tool_id and finish.n and finish.f and not finish.warnings
-    assert finish.vc > plunges.vc  # finishing data from the tool's range
+    # the catalogue gives one start feed for the insert (B139, graph): plunges and finishing at the same f and Vc
+    assert (finish.f, finish.vc) == (plunges.f, plunges.vc) == (0.07, 307.2)
 
 
 def test_fine_ra_groove_of_the_insert_width_has_no_room_to_finish():

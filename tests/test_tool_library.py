@@ -41,7 +41,8 @@ def test_source_is_saved_and_shown_in_the_library(client):
 
 def test_seed_tools_carry_a_source_only_when_checked_against_the_catalogue(app):
     tools = {t.name: t for t in db.session.execute(db.select(Tool)).scalars()}
-    checked = ("Facing SCMT", "Rough turning CNMG (P)", "Finish turning DNMG (P/M)", "Boring bar CCMT")
+    checked = ("Facing SCMT", "Rough turning CNMG (P)", "Finish turning DNMG (P)", "Grooving 3 mm",
+               "Threading 60 deg", "Parting 3 mm", "Boring bar CCMT")
     assert all(tools[name].source.startswith("Sandvik Coromant Turning tools 2020") for name in checked)
     assert all(t.source is None for name, t in tools.items() if name not in checked)
 
@@ -185,10 +186,10 @@ def test_operations_without_a_recorded_time_get_no_banner(client):
 
 # --- data migration 3748554069af: the seed tools of an existing database -----------------------------
 
-def _seed_migration():
+def _seed_migration(filename="3748554069af_seed_tools_t1_t2_t4_t9_from_the_sandvik_.py"):
     import importlib.util
     from pathlib import Path
-    path = Path(__file__).parents[1] / "migrations" / "versions" / "3748554069af_seed_tools_t1_t2_t4_t9_from_the_sandvik_.py"
+    path = Path(__file__).parents[1] / "migrations" / "versions" / filename
     spec = importlib.util.spec_from_file_location("seed_migration", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -199,8 +200,9 @@ def test_seed_migration_writes_what_the_seed_has():
     from turnpilot.seed import TURRET_TOOLS
     migration = _seed_migration()
     seed = {tool["name"]: tool for tool in TURRET_TOOLS.values()}
+    renamed = {"Finish turning DNMG (P/M)": "Finish turning DNMG (P)"}  # by migration 5fb0e3d2a1c4
     for name, (_old, new) in migration.TOOLS.items():
-        assert migration._same(seed[name], new), name
+        assert migration._same(seed[renamed.get(name, name)], new), name
 
 
 def test_seed_migration_leaves_an_edited_tool():
@@ -209,3 +211,22 @@ def test_seed_migration_leaves_an_edited_tool():
     assert migration._same(dict(old), old)
     assert not migration._same({**old, "vc_max": 280}, old)
     assert not migration._same({**old, "source": "my catalogue"}, old)
+
+
+T678 = "5fb0e3d2a1c4_seed_tools_t6_t7_t8_from_the_sandvik_.py"
+
+
+def test_seed_migration_t6_t7_t8_writes_what_the_seed_has():
+    from turnpilot.seed import TURRET_TOOLS
+    migration = _seed_migration(T678)
+    unset = dict(insert_width=None, ap_rec=None, f_rec=None, vc_points=None, source=None)
+    seed = {tool["name"]: {**unset, **tool} for tool in TURRET_TOOLS.values()}
+    for name, (_old, new) in migration.TOOLS.items():
+        assert migration._same(seed[name], new), name
+    assert migration.RENAME[1] in seed
+
+
+def test_seed_migration_t6_t7_t8_leaves_an_edited_tool():
+    migration = _seed_migration(T678)
+    old = migration.TOOLS["Grooving 3 mm"][0]
+    assert migration._same(dict(old), old) and not migration._same({**old, "f_max": 0.2}, old)

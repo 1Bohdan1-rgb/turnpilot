@@ -43,21 +43,21 @@ def _thread_op(limit, features=M24, turret=SEED, max_rpm=4000, tool_types=("thre
 
 def test_nd012_m24_without_a_limit_asks_to_check_n_p():
     (op,) = _thread_op(None)
-    assert (op.n, op.f) == (1757, 1.5)  # as before: n·P = 2635.5
-    assert op.warnings == ["check n·P = 2635.5 mm/min for your machine: no threading feed limit is set on the "
+    assert (op.n, op.f) == (2586, 1.5)  # Vc 195 (TT C73) on Ø24: n·P = 3879
+    assert op.warnings == ["check n·P = 3879 mm/min for your machine: no threading feed limit is set on the "
                            "Machine page"]
 
 
 def test_limit_not_exceeded_keeps_n_with_a_note():
-    (op,) = _thread_op(3000)
-    assert op.n == 1757 and not op.warnings
-    assert "Z feed n·P 2635.5 mm/min" in op.notes
+    (op,) = _thread_op(4000)
+    assert op.n == 2586 and not op.warnings
+    assert "Z feed n·P 3879 mm/min" in op.notes
 
 
 def test_limit_exceeded_reduces_n():
     (op,) = _thread_op(2000)
     assert op.n == 1333 and op.n * op.f <= 2000 and not op.warnings
-    assert "n reduced to 1333 rpm: n·P 1999.5 ≤ 2000 mm/min (was 1757 rpm, n·P 2635.5)" in op.notes
+    assert "n reduced to 1333 rpm: n·P 1999.5 ≤ 2000 mm/min (was 2586 rpm, n·P 3879)" in op.notes
     assert planner.G97_THREAD_NOTE == op.notes[0]  # still first
 
 
@@ -65,7 +65,7 @@ def test_detal_1_m22_with_a_limit():
     features = (FeatureSpec(1, "od_turn", diameter=22, length=21), FeatureSpec(2, "thread", diameter=22, length=21,
                                                                                 pitch=1.5))
     (op,) = _thread_op(2000, features)
-    assert op.n == 1333 and any("(was 1917 rpm, n·P 2875.5)" in n for n in op.notes)
+    assert op.n == 1333 and any("(was 2821 rpm, n·P 4231.5)" in n for n in op.notes)
 
 
 def test_max_rpm_first_then_the_thread_feed():
@@ -84,7 +84,7 @@ def test_thread_without_pitch_is_not_checked():
 
 def test_limit_below_one_revolution_is_a_warning():
     (op,) = _thread_op(1)
-    assert op.n == 1757 and "below one revolution per minute" in op.warnings[0]
+    assert op.n == 2586 and "below one revolution per minute" in op.warnings[0]
 
 
 def _internal_turret(tool_type):
@@ -127,8 +127,8 @@ def test_limit_from_the_machine_page_through_the_app(client):
         return db.session.execute(db.select(Operation).filter_by(tool_type="threading", is_archived=False)).scalar_one()
 
     op = thread_op()
-    assert op.n == 1757 and "check n·P = 2635.5 mm/min" in op.warning
-    assert "check n·P = 2635.5 mm/min" in client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
+    assert op.n == 2586 and "check n·P = 3879 mm/min" in op.warning
+    assert "check n·P = 3879 mm/min" in client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
     client.post("/machine", data={**PROFILE, "max_thread_feed": "2000"})
     op = thread_op()
     assert op.n == 1333 and op.warning is None and "n reduced to 1333 rpm" in op.note
