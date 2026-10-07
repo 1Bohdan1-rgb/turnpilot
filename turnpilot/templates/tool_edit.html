@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Edit tool{% endblock %}
+{% block content %}
+<h1>Edit tool: {{ tool.name }}</h1>
+<p class="muted">Type: <strong>{{ tool.type }}</strong> (not editable: operations already made with this tool keep
+  their meaning). Jobs calculated with this tool before the change show a note until they are recalculated.</p>
+<form method="post" class="card grid-form">
+  <label>Name <input name="name" value="{{ tool.name }}" required></label>
+  <label>Insert code <input name="insert_code" value="{{ tool.insert_code or '' }}"></label>
+  <label>Grade <input name="grade" value="{{ tool.grade or '' }}"></label>
+  <fieldset>
+    <legend>ISO groups</legend>
+    {% for g in iso_groups %}<label class="inline"><input type="checkbox" name="iso_group" value="{{ g }}"
+      {% if g in tool.iso_group %}checked{% endif %}> {{ g }}</label>{% endfor %}
+  </fieldset>
+  {% for key in ("vc_min", "vc_max", "f_min", "f_max", "ap_min", "ap_max") %}
+  <label>{{ key|replace("_", " ") }} <input name="{{ key }}" type="number" step="any" value="{{ tool[key] }}" required></label>
+  {% endfor %}
+  <label>Insert width, mm (grooving/parting)
+    <input name="insert_width" type="number" step="any" min="0" value="{{ tool.insert_width if tool.insert_width is not none else '' }}"></label>
+  <label>Diameter, mm (drills)
+    <input name="diameter" type="number" step="any" min="0" value="{{ tool.diameter if tool.diameter is not none else '' }}"></label>
+  <label>Source of Vc / f / ap
+    <input name="source" maxlength="300" value="{{ tool.source or '' }}" placeholder="catalogue, insert grade, page"></label>
+  <div class="actions">
+    <button type="submit" class="primary">Save</button>
+    <a href="{{ url_for('main.machine') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

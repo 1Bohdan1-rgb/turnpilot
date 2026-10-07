@@ -50,6 +50,7 @@ def tool_spec(tool):
         ap_max=tool.ap_max,
         insert_width=tool.insert_width,
         diameter=tool.diameter,
+        source=tool.source,
     )
 
 

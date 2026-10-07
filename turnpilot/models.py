@@ -58,6 +58,11 @@ class Tool(db.Model):
     ap_max = db.Column(db.Float, nullable=False)
     insert_width = db.Column(db.Float)  # mm, grooving / parting inserts
     diameter = db.Column(db.Float)  # mm, drills: the hole they make
+    source = db.Column(db.String(300))  # where the Vc / f / ap ranges come from: catalogue, insert grade, page
+    # A tool used by operations is never deleted (the operations keep their audit): it is retired instead,
+    # out of the library and the turret.
+    is_retired = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
 
 
 class TurretSlot(db.Model):
@@ -178,6 +183,7 @@ class Operation(db.Model):
     status = db.Column(db.String(10), nullable=False, default="proposed")
     # Each "Calculate" creates a new version; older operations are archived, never deleted.
     calculation_version = db.Column(db.Integer, nullable=False, default=1)
+    created_at = db.Column(db.DateTime, default=_now)  # empty for operations calculated before it was recorded
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
 
     job = db.relationship("Job", back_populates="operations")

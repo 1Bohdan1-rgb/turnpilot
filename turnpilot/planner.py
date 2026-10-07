@@ -83,6 +83,7 @@ class ToolSpec:
     ap_max: float
     insert_width: float | None = None  # grooving / parting inserts
     diameter: float | None = None  # drills: the hole they make
+    source: str | None = None  # where the Vc / f / ap ranges come from
 
 
 @dataclass(frozen=True)
@@ -1210,6 +1211,12 @@ def _plan_parting(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, jo
         op.notes.append(PARTING_CENTER_NOTE)
 
 
+def _note_source(op: PlannedOperation, tool: ToolSpec) -> None:
+    """The source of the tool's cutting data ranges, next to the cutting data."""
+    if tool.source:
+        op.notes.append(f"cutting data ranges: {tool.source}")
+
+
 def _plan_centring(op, job, turret, max_rpm) -> PlannedOperation:
     """One centring for all the holes on the axis."""
     op.notes.append("centre the holes on the axis")
@@ -1219,6 +1226,7 @@ def _plan_centring(op, job, turret, max_rpm) -> PlannedOperation:
         return op
     op.tool_id, op.tool_name, op.turret_position = entry.tool.id, entry.tool.name, entry.position
     op.vc, op.f, _ = cutting_data(entry.tool, "finish")
+    _note_source(op, entry.tool)
     if entry.tool.diameter:
         op.ref_diameter = entry.tool.diameter
         op.n, _ = spindle_speed(op.vc, entry.tool.diameter, max_rpm)
@@ -1250,6 +1258,7 @@ def _plan_drilling(op, step, hole: HolePlan | None, max_rpm) -> PlannedOperation
     op.tool_id, op.tool_name, op.turret_position = tool.id, tool.name, hole.entry.position
     op.vc, op.f, _ = cutting_data(tool, "finish")
     op.n, _ = spindle_speed(op.vc, tool.diameter, max_rpm)
+    _note_source(op, tool)
     if hole.depth and hole.depth > PECK_DEPTH_FACTOR * tool.diameter + 1e-9:
         op.notes.append(PECK_NOTE.format(depth=hole.depth, k=PECK_DEPTH_FACTOR, d=tool.diameter))
     return op
@@ -1276,6 +1285,7 @@ def _plan_internal_thread_step(op, step, job, turret, max_rpm, max_thread_feed=N
     op.tool_id, op.tool_name, op.turret_position = tool.id, tool.name, entry.position
     op.vc = round((tool.vc_min + tool.vc_max) / 2, 1)
     op.n, _ = spindle_speed(op.vc, feature.diameter, max_rpm)
+    _note_source(op, tool)
     limit_thread_speed(op, feature.pitch, max_thread_feed)  # a tap (G84) and an internal threading bar alike
     if tool_type == "tapping":
         op.notes.append(TAPPING_NOTE)
@@ -1361,6 +1371,7 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     # The Ra feed formula only applies to nose-radius tools.
     uses_ra = step.tool_type in ("turning_finish", "boring")
     op.vc, op.f, op.ap = cutting_data(tool, step.mode, feature.ra if uses_ra else None)
+    _note_source(op, tool)
 
     op.ref_diameter = _reference_diameter(step, job, start)
     op.n, limited = spindle_speed(op.vc, op.ref_diameter, max_rpm)

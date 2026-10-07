@@ -92,7 +92,7 @@
   <table>
     <thead>
       <tr><th>Name</th><th>Type</th><th>Insert</th><th>Grade</th><th>ISO</th>
-          <th>Vc, m/min</th><th>f, mm/rev</th><th>ap, mm</th><th>Width, mm</th><th>Ø, mm</th></tr>
+          <th>Vc, m/min</th><th>f, mm/rev</th><th>ap, mm</th><th>Width, mm</th><th>Ø, mm</th><th>Source</th><th></th></tr>
     </thead>
     <tbody>
     {% for tool in tools %}
@@ -104,11 +104,21 @@
         <td>{{ tool.ap_min }}–{{ tool.ap_max }}</td>
         <td>{{ tool.insert_width if tool.insert_width is not none else "" }}</td>
         <td>{{ tool.diameter if tool.diameter is not none else "" }}</td>
+        <td class="small">{{ tool.source or "" }}</td>
+        <td class="row-actions">
+          <a href="{{ url_for('main.edit_tool', tool_id=tool.id) }}">Edit</a>
+          <form method="post" action="{{ url_for('main.delete_tool', tool_id=tool.id) }}" class="inline-form"
+                onsubmit="return confirm('Delete {{ tool.name|e }}? A tool used by operations is retired instead.');">
+            <button type="submit" class="small">Delete</button>
+          </form>
+        </td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  <p class="muted">Cutting data ranges in the seed are placeholders. Check them against the tool catalogue.</p>
+  <p class="muted">Cutting data ranges in the seed are placeholders (NOT validated). Check them against the tool
+    catalogue and write where they come from in "Source". A tool in the turret cannot be deleted; one used by
+    operations is retired instead (kept for their record).</p>
 </div>
 
 <h3>Add tool</h3>
@@ -131,6 +141,7 @@
   <label>ap max <input name="ap_max" type="number" step="any" required></label>
   <label>Insert width, mm (grooving/parting) <input name="insert_width" type="number" step="any" min="0"></label>
   <label>Diameter, mm (drills) <input name="diameter" type="number" step="any" min="0"></label>
+  <label>Source of Vc / f / ap <input name="source" maxlength="300" placeholder="catalogue, insert grade, page"></label>
   <button type="submit">Add tool</button>
 </form>
 {% endblock %}

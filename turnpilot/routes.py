@@ -33,6 +33,7 @@ from .models import (
     Material,
     Operation,
     Tool,
+    TurretSlot,
     db,
 )
 
@@ -114,7 +115,7 @@ def machine():
             flash(str(e), "error")
         return redirect(url_for("main.machine"))
 
-    tools = db.session.execute(db.select(Tool).order_by(Tool.name)).scalars().all()
+    tools = db.session.execute(db.select(Tool).filter_by(is_retired=False).order_by(Tool.name)).scalars().all()
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
     hex_sizes = services.hex_bar_sizes(machine, current_app.config)
     return render_template(
@@ -124,39 +125,88 @@ def machine():
     )
 
 
+def _tool_fields(form):
+    """The editable fields of a tool from its form (not its type) or raise FormError."""
+    name = form.get("name", "").strip()
+    iso_group = "".join(g for g in ISO_GROUPS if g in form.getlist("iso_group"))
+    if not name:
+        raise FormError("Tool name is required")
+    if not iso_group:
+        raise FormError("Select at least one ISO group")
+    values = {k: _number(form, k, required=True) for k in ("vc_min", "vc_max", "f_min", "f_max", "ap_min", "ap_max")}
+    for lo, hi in (("vc_min", "vc_max"), ("f_min", "f_max"), ("ap_min", "ap_max")):
+        if values[lo] > values[hi]:
+            raise FormError(f"{lo} must not exceed {hi}")
+    return dict(
+        name=name,
+        insert_code=form.get("insert_code", "").strip(),
+        grade=form.get("grade", "").strip(),
+        iso_group=iso_group,
+        insert_width=_number(form, "insert_width"),
+        diameter=_number(form, "diameter"),
+        source=form.get("source", "").strip()[:300] or None,
+        **values,
+    )
+
+
 @bp.route("/tools", methods=["POST"])
 def add_tool():
     form = request.form
     try:
-        name = form.get("name", "").strip()
         tool_type = form.get("type")
-        iso_group = "".join(g for g in ISO_GROUPS if g in form.getlist("iso_group"))
-        if not name:
-            raise FormError("Tool name is required")
         if tool_type not in TOOL_TYPES:
             raise FormError("Unknown tool type")
-        if not iso_group:
-            raise FormError("Select at least one ISO group")
-        values = {k: _number(form, k, required=True) for k in ("vc_min", "vc_max", "f_min", "f_max", "ap_min", "ap_max")}
-        for lo, hi in (("vc_min", "vc_max"), ("f_min", "f_max"), ("ap_min", "ap_max")):
-            if values[lo] > values[hi]:
-                raise FormError(f"{lo} must not exceed {hi}")
-        db.session.add(
-            Tool(
-                name=name,
-                type=tool_type,
-                insert_code=form.get("insert_code", "").strip(),
-                grade=form.get("grade", "").strip(),
-                iso_group=iso_group,
-                insert_width=_number(form, "insert_width"),
-                diameter=_number(form, "diameter"),
-                **values,
-            )
-        )
+        fields = _tool_fields(form)
+        db.session.add(Tool(type=tool_type, **fields))
         db.session.commit()
-        flash(f"Tool '{name}' added to the library. Assign it to a turret position.")
+        flash(f"Tool '{fields['name']}' added to the library. Assign it to a turret position.")
     except FormError as e:
         flash(str(e), "error")
+    return redirect(url_for("main.machine"))
+
+
+def _active_tool_or_404(tool_id):
+    tool = db.get_or_404(Tool, tool_id)
+    if tool.is_retired:
+        abort(404)
+    return tool
+
+
+@bp.route("/tools/<int:tool_id>/edit", methods=["GET", "POST"])
+def edit_tool(tool_id):
+    """Everything but the type: a new type would change what the operations already made with it mean."""
+    tool = _active_tool_or_404(tool_id)
+    if request.method == "POST":
+        try:
+            for key, value in _tool_fields(request.form).items():
+                setattr(tool, key, value)
+            db.session.commit()
+            flash(f"Tool '{tool.name}' saved. Jobs calculated with it before show a note until recalculated.")
+            return redirect(url_for("main.machine"))
+        except FormError as e:
+            db.session.rollback()
+            flash(str(e), "error")
+    return render_template("tool_edit.html", tool=tool, iso_groups=ISO_GROUPS)
+
+
+@bp.route("/tools/<int:tool_id>/delete", methods=["POST"])
+def delete_tool(tool_id):
+    """Out of the turret first. A tool no operation used is deleted; one that was used is retired (its
+    operations keep it for the audit)."""
+    tool = _active_tool_or_404(tool_id)
+    slots = db.session.execute(db.select(TurretSlot).filter_by(tool_id=tool.id)).scalars().all()
+    if slots:
+        positions = ", ".join(slot.label for slot in slots)
+        flash(f"Tool '{tool.name}' is in the turret at {positions}: remove it from there first.", "error")
+        return redirect(url_for("main.machine"))
+    used = db.session.execute(db.select(db.func.count(Operation.id)).filter_by(tool_id=tool.id)).scalar()
+    if used:
+        tool.is_retired = True
+        flash(f"Tool '{tool.name}' is used by {used} operation(s): retired (kept for their record).")
+    else:
+        db.session.delete(tool)
+        flash(f"Tool '{tool.name}' deleted.")
+    db.session.commit()
     return redirect(url_for("main.machine"))
 
 
