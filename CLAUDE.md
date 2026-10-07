@@ -38,6 +38,26 @@ Read ≥ 90% of the fields in each of 3 runs, on 3–6 part types (shaft, bushin
 with 2–3 real drawings per type that the system has not seen (hold-out). Tuning on a drawing makes it
 in-sample: keep the hold-out drawings untouched until they are measured.
 
+## Vision and roadmap (set 2026-10-07)
+Product goal: TurnPilot reads the drawing correctly → chooses the cutting data and the tools correctly →
+builds the machining route correctly → prepares the process for running. Running always comes after the
+operator has checked it: a person presses "Start".
+
+Principle: no invented number. Every number is stored with its source (machine documentation, tool
+catalogue, handbook, ISO), and the operator or the process engineer confirms it.
+
+Stages, in this order:
+1. Edit and delete tools on the Machine page.
+2. Check every placeholder constant (see "Placeholders and assumptions") against the catalogue and the
+   machinist's experience.
+3. Blind check of the DXF input on new files (see "DXF blind check: stop rule").
+4. Machine documentation: upload the PDF → the model reads the data → the operator confirms it on a review
+   screen.
+5. Cutting data from a catalogue or handbook: the catalogue is uploaded once → the model extracts the table →
+   a person confirms it → the planner takes its numbers only from that table, with the source in the note.
+6. G-code from the part zero (Z0 on the end face, X0 on the axis) from the DXF contour coordinates: the outer
+   profile first, one control, simulation required.
+
 ## Number check, stage 1 (2026-09-30)
 - `pdf_text.py` reads the numbers of a CAD PDF with vector text:
   - KOMPAS Symbol_A codes are mapped (Ç = Ø, Å = °), × is written as •, and Cyrillic 7Н becomes 7H;
