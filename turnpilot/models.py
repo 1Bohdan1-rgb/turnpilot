@@ -138,6 +138,16 @@ class Job(db.Model):
     def last_calculation_version(self):
         return max((op.calculation_version for op in self.operations), default=0)
 
+    @property
+    def tools_changed_since_calculation(self):
+        """Tools of the current operations edited or retired after those operations were calculated (operations
+        calculated before their time was recorded are not compared)."""
+        changed = {
+            op.tool for op in self.current_operations
+            if op.tool and op.tool.updated_at and op.created_at and op.tool.updated_at > op.created_at
+        }
+        return sorted(changed, key=lambda t: t.name)
+
 
 class Feature(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -130,3 +130,51 @@ def test_operation_note_shows_the_source(client):
 
 def test_turret_slots_never_hold_a_retired_tool(app):
     assert all(not s.tool or not s.tool.is_retired for s in db.session.execute(db.select(TurretSlot)).scalars())
+
+
+# --- note on jobs calculated before a tool changed -------------------------------------------------
+
+BANNER = "Tool data changed after this calculation"
+
+
+def test_banner_after_a_tool_edit_until_recalculated(client):
+    tool = _add(client)
+    _put_in_turret(tool, 10)
+    job, _ = _job_with_an_operation_of(client, tool)
+    assert BANNER not in client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
+    client.post(f"/tools/{tool.id}/edit", data=_edit_form(tool, vc_max="35"))
+    page = client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
+    assert BANNER in page and "Drill 20." in page
+    client.post(f"/jobs/{job.id}/calculate")
+    assert BANNER not in client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
+
+
+def test_no_banner_when_another_tool_changes(client):
+    tool = _add(client)
+    _put_in_turret(tool, 10)
+    job, _ = _job_with_an_operation_of(client, tool)
+    other = _add(client, name="Unused drill", diameter="5")
+    client.post(f"/tools/{other.id}/edit", data=_edit_form(other, vc_max="35"))
+    assert BANNER not in client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
+
+
+def test_banner_names_a_retired_tool(client):
+    tool = _add(client)
+    _put_in_turret(tool, 10)
+    job, _ = _job_with_an_operation_of(client, tool)
+    next(s for s in services.get_machine().slots if s.position == 10).tool_id = None
+    db.session.commit()
+    client.post(f"/tools/{tool.id}/delete")
+    page = client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
+    assert BANNER in page and "Drill 20 (retired)" in page
+
+
+def test_operations_without_a_recorded_time_get_no_banner(client):
+    tool = _add(client)
+    _put_in_turret(tool, 10)
+    job, op = _job_with_an_operation_of(client, tool)
+    for o in job.current_operations:
+        o.created_at = None  # calculated before the time was recorded
+    db.session.commit()
+    client.post(f"/tools/{tool.id}/edit", data=_edit_form(tool, vc_max="35"))
+    assert BANNER not in client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)

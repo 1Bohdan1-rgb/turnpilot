@@ -9,6 +9,15 @@
   {% if job.archived_operations %}· <a href="{{ url_for('main.history', job_id=job.id) }}">calculation history</a>{% endif %}
 </p>
 {% if job.current_operations %}<p class="muted small">Calculation version {{ job.last_calculation_version }}</p>{% endif %}
+{% set changed = job.tools_changed_since_calculation %}
+{% if changed %}
+<div class="flash flash-error tools-changed" role="alert">
+  <strong>Tool data changed after this calculation:</strong>
+  {% for t in changed %}{{ t.name }}{% if t.is_retired %} (retired){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.
+  The cutting data below were calculated with the old values: press <strong>Calculate</strong> on the
+  <a href="{{ url_for('main.job_detail', job_id=job.id) }}">job page</a> to recalculate.
+</div>
+{% endif %}
 
 {% if not job.current_operations %}
 <p class="muted">No operations yet. Press "Calculate" on the job page.</p>
