@@ -541,6 +541,98 @@ def store_catalogue(upload, title, instance_path):
     return document
 
 
+class CuttingDataError(ValueError):
+    pass
+
+
+def conflicting_rows(row, confirmed):
+    """The confirmed rows about the same thing (same key) as a row."""
+    return [c for c in confirmed if c.id != row.id and cutting_data.row_key(c) == cutting_data.row_key(row)]
+
+
+def _confirm(row, values, replace_ticked, confirmed, now):
+    """Confirm one row with the values the operator left or changed. A confirmed row about the same thing with
+    other values is replaced only when the operator ticked it; with the same values it is replaced silently."""
+    edits = cutting_data.changes(row, values)
+    for key, value in values.items():
+        setattr(row, key, value)
+    others = conflicting_rows(row, confirmed)
+    if any(not cutting_data.same_values(o, row) for o in others) and not replace_ticked:
+        raise CuttingDataError(f"{row.insert_code or row.grade} ({row.material_group}): a confirmed row gives other "
+                               "values; tick \"replace\" to use this one instead")
+    for other in others:
+        other.status = "replaced"
+    if edits:
+        row.origin = "operator"
+        row.note = ((row.note + "; ") if row.note else "") + "changed by the operator: " + ", ".join(edits)
+        row.note = row.note[:300]
+    row.status, row.confirmed_at = "confirmed", now
+    confirmed.append(row)
+
+
+def review_cutting_data(rows, form):
+    """The operator's decision on each row to check: confirm (with the values as left or changed), reject, or
+    leave. Returns (confirmed, rejected). Raises CuttingDataError: nothing is written then (the caller rolls back)."""
+    confirmed = db.session.execute(db.select(CuttingDataRow).filter_by(status="confirmed")).scalars().all()
+    now = datetime.now(timezone.utc)
+    counts = {"confirm": 0, "reject": 0}
+    for row in rows:
+        decision = form.get(f"decision-{row.id}", "")
+        if decision == "reject":
+            row.status = "rejected"
+        elif decision == "confirm":
+            try:
+                values = cutting_data.values_from_form(form, f"{row.id}-", row.kind)
+            except ValueError as e:
+                raise CuttingDataError(f"{row.insert_code or row.grade} ({row.material_group}): {e}") from None
+            _confirm(row, values, bool(form.get(f"replace-{row.id}")), confirmed, now)
+        else:
+            continue
+        counts[decision] += 1
+    return counts["confirm"], counts["reject"]
+
+
+def add_cutting_data_by_hand(form):
+    """A row the operator enters (e.g. a value read off a graph): confirmed by entering it. Raises CuttingDataError."""
+    kind = form.get("kind")
+    if kind not in ("geometry", "grade_vc"):
+        raise CuttingDataError("Kind: geometry or grade_vc")
+    catalogue, group = (form.get("catalogue") or "").strip(), (form.get("material_group") or "").strip()
+    page = (form.get("page") or "").strip()
+    if not catalogue or not page or not group:
+        raise CuttingDataError("Catalogue, page and material group are required: every number keeps its source")
+    row = CuttingDataRow(kind=kind, catalogue=catalogue[:200], page=page[:60], material_group=group[:20],
+                         origin="operator", from_graph=bool(form.get("from_graph")),
+                         note=(form.get("note") or "").strip()[:300] or None)
+    if kind == "geometry":
+        row.insert_code = re.sub(r"\s+", "", form.get("insert_code") or "")[:60]
+        if not row.insert_code:
+            raise CuttingDataError("Insert / drill code is required")
+    else:
+        row.grade, row.application = (form.get("grade") or "").strip()[:30], form.get("application")
+        if not row.grade or row.application not in cutting_data.APPLICATION_BY_TOOL_TYPE.values():
+            raise CuttingDataError("Grade and application are required")
+    try:
+        values = cutting_data.values_from_form(form, "", kind)
+    except ValueError as e:
+        raise CuttingDataError(str(e)) from None
+    confirmed = db.session.execute(db.select(CuttingDataRow).filter_by(status="confirmed")).scalars().all()
+    for key, value in values.items():
+        setattr(row, key, value)
+    db.session.add(row)
+    _confirm(row, {}, bool(form.get("replace")), confirmed, datetime.now(timezone.utc))
+    return row
+
+
+def tool_catalogue_status(tools, groups, rows):
+    """{tool id: [(group, has ap / f row, has Vc row)]} for the tool library: which tools have confirmed rows."""
+    return {
+        t.id: [(g, cutting_data.geometry_row(rows, t.insert_code, g) is not None,
+                cutting_data.grade_row(rows, t.grade, t.type, g) is not None) for g in groups]
+        for t in tools if cutting_data.application_for(t.type)
+    }
+
+
 def read_catalogue_document(document, instance_path, config, client=None):
     """One paid call on the picked pages. The rows the code takes become rows to check (status "read", with this
     document); the earlier unconfirmed rows of this document are set aside (rejected, never used)."""

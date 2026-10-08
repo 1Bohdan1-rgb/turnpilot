@@ -131,8 +131,11 @@ def machine():
     tools = db.session.execute(db.select(Tool).filter_by(is_retired=False).order_by(Tool.name)).scalars().all()
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
     hex_sizes = services.hex_bar_sizes(machine, current_app.config)
+    groups = sorted({m.catalogue_group for m in materials if m.catalogue_group})
+    catalogue_status = services.tool_catalogue_status(tools, groups, services.confirmed_rows())
     return render_template(
         "machine.html", machine=machine, tools=tools, materials=materials, tool_types=TOOL_TYPES,
+        catalogue_status=catalogue_status,
         iso_groups=ISO_GROUPS, machine_fields=MACHINE_FIELDS, format_value=format_value,
         hex_bar_sizes=", ".join(f"{s:g}" for s in hex_sizes),
     )
@@ -249,7 +252,51 @@ def cutting_data():
         CuttingDataRow.id)).scalars().all()
     by_status = {status: [r for r in rows if r.status == status] for status in ("confirmed", "read", "rejected", "replaced")}
     return render_template("cutting_data.html", by_status=by_status, cd=cd,
-                           hand_typed=services.hand_typed_files(_docs_dir()))
+                           hand_typed=services.hand_typed_files(_docs_dir()),
+                           applications=sorted(set(cd.APPLICATION_BY_TOOL_TYPE.values())))
+
+
+def _rows_to_check(document_id=None):
+    query = db.select(CuttingDataRow).filter_by(status="read")
+    if document_id:
+        query = query.filter_by(document_id=document_id)
+    return db.session.execute(query.order_by(CuttingDataRow.kind, CuttingDataRow.insert_code, CuttingDataRow.grade,
+                                             CuttingDataRow.id)).scalars().all()
+
+
+@bp.route("/cutting-data/review", methods=["GET", "POST"])
+def cutting_data_review():
+    """The operator checks each row against the catalogue page: confirm (as read or changed), reject, or leave."""
+    document_id = request.args.get("document", type=int)
+    rows = _rows_to_check(document_id)
+    if request.method == "POST":
+        try:
+            confirmed, rejected = services.review_cutting_data(rows, request.form)
+        except services.CuttingDataError as e:
+            db.session.rollback()
+            flash(f"{e}. Nothing was saved.", "error")
+            return redirect(url_for("main.cutting_data_review", document=document_id))
+        db.session.commit()
+        flash(f"{confirmed} row(s) confirmed, {rejected} rejected.")
+        return redirect(url_for("main.cutting_data_review", document=document_id) if _rows_to_check(document_id)
+                        else url_for("main.cutting_data"))
+    confirmed = db.session.execute(db.select(CuttingDataRow).filter_by(status="confirmed")).scalars().all()
+    items = [dict(row=r, checks=cd.row_checks(r), others=services.conflicting_rows(r, confirmed)) for r in rows]
+    return render_template("cutting_data_review.html", items=items, cd=cd, document_id=document_id)
+
+
+@bp.route("/cutting-data/add", methods=["POST"])
+def add_cutting_data():
+    """A row entered by the operator (e.g. a value read off a graph), with its catalogue and page."""
+    try:
+        row = services.add_cutting_data_by_hand(request.form)
+    except services.CuttingDataError as e:
+        db.session.rollback()
+        flash(f"{e}. Nothing was saved.", "error")
+        return redirect(url_for("main.cutting_data"))
+    db.session.commit()
+    flash(f"Row {row.insert_code or row.grade} ({row.material_group}) entered and confirmed.")
+    return redirect(url_for("main.cutting_data"))
 
 
 def _docs_dir():
@@ -365,7 +412,7 @@ def read_catalogue(document_id):
     if document.status != "read":
         flash(f"The catalogue could not be read: {document.error}", "error")
         return redirect(url_for("main.catalogue_pages", document_id=document.id))
-    return redirect(url_for("main.cutting_data"))
+    return redirect(url_for("main.cutting_data_review", document=document.id))
 
 
 @bp.route("/cutting-data/catalogues/<int:document_id>/file")

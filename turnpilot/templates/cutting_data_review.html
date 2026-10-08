@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Check cutting data{% endblock %}
+{% block content %}
+<h1>Check the cutting data</h1>
+<p class="muted">{{ items|length }} row(s) to check · <a href="{{ url_for('main.cutting_data') }}">all cutting data</a>
+  {% if document_id %}· <a href="{{ url_for('main.catalogue_pages', document_id=document_id) }}">the catalogue's pages</a>{% endif %}</p>
+<p class="muted small">Check each row against its catalogue page and choose: confirm (as read, or with the values you
+  correct: a changed row is recorded as the operator's), reject, or leave it for later. Only confirmed rows reach the
+  planner. <span class="badge badge-check">check</span>: the code could not find the quote or a number on the page,
+  or the value comes from a graph. When a confirmed row gives other values for the same insert or grade, tick
+  "replace" to use the new one; otherwise nothing is saved.</p>
+
+{% if items %}
+<form method="post">
+  <div class="table-wrap">
+  <table class="card cutting-data-review">
+    <thead><tr><th>Decision</th><th>Row</th><th>Values</th><th>Source</th><th>Confirmed now</th></tr></thead>
+    <tbody>
+    {% for item in items %}
+      {% set r = item.row %}
+      <tr class="{% if item.checks %}has-check{% endif %}">
+        <td class="small">
+          <label class="inline"><input type="radio" name="decision-{{ r.id }}" value="" checked> leave</label><br>
+          <label class="inline"><input type="radio" name="decision-{{ r.id }}" value="confirm"> confirm</label><br>
+          <label class="inline"><input type="radio" name="decision-{{ r.id }}" value="reject"> reject</label>
+        </td>
+        <td>{{ r.kind }}<br><strong>{{ r.insert_code or r.grade }}</strong>{% if r.application %} · {{ r.application }}{% endif %}
+          <br>group {{ r.material_group }}
+          {% if item.checks %}<span class="badge badge-check" title="{{ item.checks|join('; ') }}">check</span>{% endif %}
+          {% for c in item.checks %}<div class="warning small">{{ c }}</div>{% endfor %}</td>
+        <td class="small">
+          {% if r.kind == "geometry" %}
+            {% for name in ("ap_min", "ap_rec", "ap_max", "f_min", "f_rec", "f_max") %}
+              <label class="inline">{{ name }} <input name="{{ r.id }}-{{ name }}" value="{{ cd._fmt(r[name]) }}" size="5"></label>
+              {% if name == "ap_max" %}<br>{% endif %}
+            {% endfor %}
+          {% else %}
+            <label class="inline">Vc(f) <input name="{{ r.id }}-vc_points" value="{{ r.vc_points or '' }}" size="28"></label><br>
+            <label class="inline">vc_min <input name="{{ r.id }}-vc_min" value="{{ cd._fmt(r.vc_min) }}" size="5"></label>
+            <label class="inline">vc_max <input name="{{ r.id }}-vc_max" value="{{ cd._fmt(r.vc_max) }}" size="5"></label>
+            <label class="inline">coolant
+              <select name="{{ r.id }}-coolant">
+                <option value="" {% if r.coolant is none %}selected{% endif %}>not stated</option>
+                <option value="yes" {% if r.coolant is true %}selected{% endif %}>yes</option>
+                <option value="no" {% if r.coolant is false %}selected{% endif %}>no</option>
+              </select></label>
+          {% endif %}
+        </td>
+        <td class="small">{{ r.catalogue }}{% if r.page %}, p. {{ r.page }}{% endif %}
+          {% if r.pdf_page and r.document_id %} (<a href="{{ url_for('main.catalogue_file', document_id=r.document_id) }}#page={{ r.pdf_page }}" target="_blank">PDF p. {{ r.pdf_page }}</a>){% endif %}
+          {% if r.quote %}<div class="muted">“{{ r.quote }}”</div>{% endif %}
+          <div class="muted">{{ r.origin }}{% if r.note %}: {{ r.note }}{% endif %}</div></td>
+        <td class="small">
+          {% for o in item.others %}
+            {{ cd.describe(o) }}<br><span class="muted">{{ o.catalogue }}{% if o.page %}, p. {{ o.page }}{% endif %}</span>
+            {% if not cd.same_values(o, r) %}<br><label class="inline"><input type="checkbox" name="replace-{{ r.id }}" value="1"> replace it</label>
+            {% else %}<br><span class="muted">same values</span>{% endif %}
+          {% else %}<span class="muted">—</span>{% endfor %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="actions">
+    <button type="submit" class="primary">Save the decisions</button>
+    <a href="{{ url_for('main.cutting_data') }}">Cancel</a>
+  </div>
+</form>
+{% else %}
+<p class="card muted">Nothing to check.</p>
+{% endif %}
+{% endblock %}

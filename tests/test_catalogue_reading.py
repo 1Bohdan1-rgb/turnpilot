@@ -130,6 +130,7 @@ def fake(app, *rows):
 def test_estimate_is_shown_and_no_call_without_the_tick(app, client, document):
     page = client.get(f"/cutting-data/catalogues/{document.id}").get_data(as_text=True)
     assert "1 API call</strong> to test-model" in page and "input tokens" in page
+    assert "<title>Catalogue pages · TurnPilot</title>" in page
     fake_client = fake(app, geometry())
     response = client.post(f"/cutting-data/catalogues/{document.id}/read", follow_redirects=True)
     assert "Tick that you start a paid reading" in response.get_data(as_text=True)

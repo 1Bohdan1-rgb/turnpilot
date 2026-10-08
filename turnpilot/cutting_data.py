@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import re
 
-from .planner import parse_vc_points
+from .planner import format_vc_points, parse_vc_points
 
 # The catalogue's Vc tables are per application: a grade has other Vc for grooving than for turning.
 APPLICATION_BY_TOOL_TYPE = {
@@ -78,6 +78,54 @@ VALUE_FIELDS = ("ap_min", "ap_rec", "ap_max", "f_min", "f_rec", "f_max", "vc_min
 
 def same_values(a, b) -> bool:
     return all(getattr(a, k) == getattr(b, k) for k in VALUE_FIELDS)
+
+
+GEOMETRY_FIELDS = ("ap_min", "ap_rec", "ap_max", "f_min", "f_rec", "f_max")
+GRADE_FIELDS = ("vc_min", "vc_max", "vc_points", "coolant")
+
+
+def values_from_form(form, prefix: str, kind: str) -> dict:
+    """A row's values from a form (fields "<prefix><name>"), checked: positive numbers, min <= rec <= max, Vc(f)
+    points in the planner's format. Raises ValueError."""
+    values = {}
+    for name in GEOMETRY_FIELDS if kind == "geometry" else ("vc_min", "vc_max"):
+        raw = (form.get(prefix + name) or "").strip().replace(",", ".")
+        try:
+            values[name] = float(raw) if raw else None
+        except ValueError:
+            raise ValueError(f"{name}: '{raw}' is not a number") from None
+        if values[name] is not None and values[name] <= 0:
+            raise ValueError(f"{name} must be greater than zero")
+    if kind == "grade_vc":
+        try:
+            points = parse_vc_points(form.get(prefix + "vc_points"))
+        except ValueError as e:
+            raise ValueError(f"Vc(f): {e} (write e.g. 0.1:455, 0.4:305, 0.8:215, or one Vc)") from None
+        values["vc_points"] = format_vc_points(points) or None
+        values["coolant"] = {"yes": True, "no": False}.get(form.get(prefix + "coolant"))
+        if not values["vc_points"] and values["vc_min"] is None and values["vc_max"] is None:
+            raise ValueError("no Vc given")
+    elif all(v is None for v in values.values()):
+        raise ValueError("no ap or f given")
+    for name in ("ap", "f", "vc"):
+        chain = [values.get(f"{name}_{k}") for k in ("min", "rec", "max")]
+        chain = [v for v in chain if v is not None]
+        if chain != sorted(chain):
+            raise ValueError(f"{name}: min / rec / max are not in order")
+    return values
+
+
+def changes(row, values: dict) -> list[str]:
+    """"ap_rec 3 → 2" for every value that differs from the row's."""
+    return [f"{k} {_show(getattr(row, k))} → {_show(v)}" for k, v in values.items() if getattr(row, k) != v]
+
+
+def _show(value) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return f"{value:g}" if isinstance(value, float) else str(value)
 
 
 def _fmt(value) -> str:
