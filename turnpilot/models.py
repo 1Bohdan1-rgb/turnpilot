@@ -173,6 +173,86 @@ class Material(db.Model):
     kc1 = db.Column(db.Float)
     mc = db.Column(db.Float)
     kc_source = db.Column(db.String(200))
+    # The tool maker's material group (e.g. Sandvik Coromant "P1.2"): the planner takes the cutting data of the
+    # confirmed catalogue rows of this group. Empty: not known, no catalogue data.
+    catalogue_group = db.Column(db.String(20))
+
+
+CUTTING_DATA_KINDS = ("geometry", "grade_vc")  # ap / f of an insert or drill; Vc of a grade
+CUTTING_DATA_APPLICATIONS = ("turning", "grooving", "parting", "threading", "drilling")
+CUTTING_DATA_ORIGINS = ("hand_typed", "model", "operator")
+CUTTING_DATA_STATUSES = ("read", "confirmed", "rejected", "replaced")
+
+
+class CatalogueDocument(db.Model):
+    """An uploaded tool maker's catalogue (PDF, in instance/catalogues/, never in git) and its readings."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_filename = db.Column(db.String(100), nullable=False)  # in instance/catalogues/
+    title = db.Column(db.String(200))  # e.g. "Sandvik Coromant Turning tools 2020"
+    sha256 = db.Column(db.String(64), nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=False)
+    pages = db.Column(db.Integer, nullable=False)
+    text_pages = db.Column(db.Integer, nullable=False)
+    selected_pages = db.Column(db.String(200))  # PDF page numbers to read: "280, 281"
+    material_groups = db.Column(db.String(100))  # the groups to record, e.g. "P1.2"
+    codes = db.Column(db.Text)  # the insert codes / grades to record (the tools the shop has), one per line
+    created_at = db.Column(db.DateTime, default=_now, nullable=False)
+    # The last reading (one paid call, started by the operator); its rows are CuttingDataRow with this document.
+    status = db.Column(db.String(12), nullable=False, default="uploaded", server_default="uploaded")  # uploaded/read/failed
+    model = db.Column(db.String(100))
+    prompt_version = db.Column(db.String(20))
+    read_pages = db.Column(db.String(200))
+    raw_response = db.Column(db.Text)
+    not_taken = db.Column(db.Text)  # JSON: rows the code did not take, with the reason
+    error = db.Column(db.Text)
+    read_at = db.Column(db.DateTime)
+
+    @property
+    def selected(self):
+        return [int(p) for p in (self.selected_pages or "").replace(" ", "").split(",") if p]
+
+
+class CuttingDataRow(db.Model):
+    """One row of a catalogue's cutting data, with its source. The planner uses confirmed rows only.
+
+    geometry: ap / f (min, recommended, max) of an insert or drill code, for a material group or an ISO letter.
+    grade_vc: Vc of a grade for an application and a material group: Vc at given feeds (vc_points) and/or a
+    range (vc_min .. vc_max, the start value as one point).
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(10), nullable=False)
+    catalogue = db.Column(db.String(200), nullable=False)  # the catalogue's name and edition
+    document_id = db.Column(db.Integer, db.ForeignKey("catalogue_document.id",
+                                                      name="fk_cutting_data_row_document_id"))
+    insert_code = db.Column(db.String(60))  # geometry
+    grade = db.Column(db.String(30))  # grade_vc
+    application = db.Column(db.String(12))  # grade_vc: CUTTING_DATA_APPLICATIONS
+    material_group = db.Column(db.String(20), nullable=False)  # "P1.2", or an ISO letter "P" for geometry
+    ap_min = db.Column(db.Float)
+    ap_rec = db.Column(db.Float)
+    ap_max = db.Column(db.Float)
+    f_min = db.Column(db.Float)
+    f_rec = db.Column(db.Float)
+    f_max = db.Column(db.Float)
+    vc_min = db.Column(db.Float)
+    vc_max = db.Column(db.Float)
+    vc_points = db.Column(db.String(200))  # as Tool.vc_points: "0.1:455, 0.4:305, 0.8:215" or "125"
+    coolant = db.Column(db.Boolean)  # the catalogue gives the Vc with coolant
+    from_graph = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    page = db.Column(db.String(60))  # the page as printed in the catalogue, e.g. "A283"
+    pdf_page = db.Column(db.Integer)  # the PDF page it was read from
+    quote = db.Column(db.Text)
+    origin = db.Column(db.String(12), nullable=False)  # CUTTING_DATA_ORIGINS
+    status = db.Column(db.String(10), nullable=False, default="read", server_default="read")
+    checks = db.Column(db.Text)  # JSON list: why the row needs a look ("check" badges)
+    note = db.Column(db.String(300))
+    created_at = db.Column(db.DateTime, default=_now, nullable=False)
+    confirmed_at = db.Column(db.DateTime)
+
+    document = db.relationship("CatalogueDocument")
 
 
 class Job(db.Model):

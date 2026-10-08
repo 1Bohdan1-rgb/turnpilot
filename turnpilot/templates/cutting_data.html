@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Cutting data{% endblock %}
+{% block content %}
+<h1>Cutting data from catalogues</h1>
+<p class="muted small">The planner takes ap, f and Vc from the <strong>confirmed</strong> rows: an insert's or a
+  drill's ap / f by its code, a grade's Vc by the grade, the application (turning, grooving, parting, threading,
+  drilling) and the material's catalogue group (Machine page, Materials). Every number keeps its catalogue and
+  page, and the operator confirms it. A tool without confirmed rows for the job's material uses its own values,
+  and its operations ask you to check them.</p>
+
+{% macro rows_table(rows, title) %}
+{% if rows %}
+<h2>{{ title }} ({{ rows|length }})</h2>
+<div class="table-wrap">
+<table class="card cutting-data">
+  <thead><tr><th>Kind</th><th>Insert / drill</th><th>Grade</th><th>Application</th><th>Group</th>
+    <th>ap min–rec–max</th><th>f min–rec–max</th><th>Vc</th><th>Source</th><th>Origin</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    {% set checks = cd.row_checks(r) %}
+    <tr>
+      <td>{{ r.kind }}</td>
+      <td>{{ r.insert_code or "" }}</td>
+      <td>{{ r.grade or "" }}</td>
+      <td>{{ r.application or "" }}</td>
+      <td>{{ r.material_group }}</td>
+      <td>{{ cd.triple(r.ap_min, r.ap_rec, r.ap_max) }}</td>
+      <td>{{ cd.triple(r.f_min, r.f_rec, r.f_max) }}{% if r.from_graph %} <span class="badge badge-check" title="read from a graph: check by eye">graph</span>{% endif %}</td>
+      <td>{% if r.vc_points %}Vc(f) {{ r.vc_points }}{% endif %}{% if r.vc_min is not none or r.vc_max is not none %}<br>{{ cd.triple(r.vc_min, None, r.vc_max) }}{% endif %}
+        {% if r.coolant %}<span class="small muted">with coolant</span>{% endif %}</td>
+      <td class="small">{{ r.catalogue }}{% if r.page %}, p. {{ r.page }}{% endif %}{% if r.pdf_page %} (PDF p. {{ r.pdf_page }}){% endif %}
+        {% if r.quote %}<div class="muted">“{{ r.quote }}”</div>{% endif %}
+        {% for c in checks %}<div class="warning">{{ c }}</div>{% endfor %}</td>
+      <td class="small">{{ r.origin }}{% if r.confirmed_at %}<br>confirmed {{ r.confirmed_at.strftime("%Y-%m-%d") }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endmacro %}
+
+{{ rows_table(by_status.read, "To check") }}
+{{ rows_table(by_status.confirmed, "Confirmed: used by the planner") }}
+{{ rows_table(by_status.rejected, "Rejected") }}
+{{ rows_table(by_status.replaced, "Replaced by a newer confirmed row") }}
+{% if not (by_status.read or by_status.confirmed or by_status.rejected or by_status.replaced) %}
+<p class="card muted">No cutting data yet.</p>
+{% endif %}
+{% endblock %}

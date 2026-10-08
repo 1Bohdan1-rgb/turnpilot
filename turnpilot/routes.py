@@ -14,7 +14,7 @@ from flask import (
     url_for,
 )
 
-from . import drawing_reader, number_check, passport_reader, planner, services
+from . import cutting_data as cd, drawing_reader, number_check, passport_reader, planner, services
 from .extraction_schema import (
     RADIUS_TYPES,
     START_DIAMETER_TYPES,
@@ -26,6 +26,7 @@ from .machine_spec import MACHINE_FIELDS, SOURCE_OPERATOR, format_value, parse_v
 from .models import (
     BLANK_SHAPES,
     FEATURE_TYPES,
+    CuttingDataRow,
     DrawingExtraction,
     ISO_GROUPS,
     TOOL_TYPES,
@@ -111,6 +112,7 @@ def machine():
                     if material.mc is not None and material.mc >= 1:
                         raise FormError(f"{material.name}: mc is an exponent below 1 (e.g. 0.25)")
                     material.kc_source = (request.form.get(prefix + "kc_source") or "").strip()[:200] or None
+                    material.catalogue_group = (request.form.get(prefix + "catalogue_group") or "").strip()[:20] or None
                 flash("Materials saved.")
             elif request.form.get("action") == "turret":
                 for slot in machine.slots:
@@ -234,6 +236,16 @@ def confirm_passport(document_id):
 def passport_file(document_id):
     document = db.get_or_404(MachineDocument, document_id)
     return send_from_directory(services.machine_docs_dir(current_app.instance_path), document.stored_filename)
+
+
+@bp.route("/cutting-data")
+def cutting_data():
+    """The catalogue cutting data: confirmed rows (the planner uses these), rows to check, rejected ones."""
+    rows = db.session.execute(db.select(CuttingDataRow).order_by(
+        CuttingDataRow.kind, CuttingDataRow.material_group, CuttingDataRow.insert_code, CuttingDataRow.grade,
+        CuttingDataRow.id)).scalars().all()
+    by_status = {status: [r for r in rows if r.status == status] for status in ("confirmed", "read", "rejected", "replaced")}
+    return render_template("cutting_data.html", by_status=by_status, cd=cd)
 
 
 def _tool_fields(form):

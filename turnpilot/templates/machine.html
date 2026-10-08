@@ -48,7 +48,7 @@
 <form method="post" class="card">
   <input type="hidden" name="action" value="materials">
   <table>
-    <thead><tr><th>Material</th><th>ISO</th><th>kc1, N/mm²</th><th>mc</th><th>Source of kc1 / mc</th></tr></thead>
+    <thead><tr><th>Material</th><th>ISO</th><th>kc1, N/mm²</th><th>mc</th><th>Source of kc1 / mc</th><th>Catalogue group</th></tr></thead>
     <tbody>
     {% for m in materials %}
       <tr>
@@ -57,6 +57,7 @@
         <td><input name="m{{ m.id }}-kc1" type="number" step="any" min="0" value="{{ m.kc1 if m.kc1 is not none else '' }}"></td>
         <td><input name="m{{ m.id }}-mc" type="number" step="any" min="0" max="1" value="{{ m.mc if m.mc is not none else '' }}"></td>
         <td><input name="m{{ m.id }}-kc_source" value="{{ m.kc_source or '' }}" size="60"></td>
+        <td><input name="m{{ m.id }}-catalogue_group" value="{{ m.catalogue_group or '' }}" size="6" maxlength="20" placeholder="e.g. P1.2"></td>
       </tr>
     {% endfor %}
     </tbody>
@@ -64,7 +65,9 @@
   <p class="muted small">Specific cutting force kc = kc1 · hm<sup>−mc</sup> (hm = feed for a 90° entering angle),
     as the tool maker's catalogue gives it for the material group. The cutting power of roughing is
     Pc = Vc · ap · f · kc / 60000 kW. A material without kc1 and mc is not checked. The seed values are
-    placeholders: replace them with your catalogue's.</p>
+    placeholders: replace them with your catalogue's. The catalogue group (e.g. Sandvik Coromant P1.2) picks the
+    confirmed rows of the <a href="{{ url_for('main.cutting_data') }}">cutting data</a> for this material; without
+    one, every operation uses the tool's own values and asks you to check them.</p>
   <button type="submit">Save materials</button>
 </form>
 
