@@ -61,8 +61,8 @@ Stages, in this order:
    reading only with the user's "так" and the number of calls.
 5. Cutting data from a catalogue or handbook: the catalogue is uploaded once → the model extracts the table →
    a person confirms it → the planner takes its numbers only from that table, with the source in the note.
-   **Built 2026-10-08** (see "Stage 5: cutting data from catalogues"): the in-sample reading measurement (step 7)
-   waits for the user's "так"; the hold-out waits for the user's expected answer.
+   **Built 2026-10-08** (see "Stage 5: cutting data from catalogues"): in-sample reading 66 / 66 numbers right
+   (2 calls); the hold-out waits for the user's expected answer.
 6. G-code from the part zero (Z0 on the end face, X0 on the axis) from the DXF contour coordinates: the outer
    profile first, one control, simulation required.
 
@@ -687,12 +687,22 @@ cutting-data`). The files frozen by `dxf-blind-freeze` are untouched.
   passes silently: only the operator's review catches it.
 - Review screen `/cutting-data/review`: confirm / correct (→ origin operator, changes in the note) / reject; a
   confirmed row with other values is replaced only with the "replace" tick. Hand entry with catalogue and page.
-- `tools/eval_catalogue.py` (prepared, NOT run): `--read PDF PAGES` per catalogue (TT and SRT are two PDFs, so the
+- `tools/eval_catalogue.py`: `--read PDF PAGES` per catalogue (TT and SRT are two PDFs, so the
   8 P1.2 pages are 2 calls), expected = the hand-typed file's rows on the read pages, score per number, wrong
-  numbers marked with the code's check or SILENT; `--estimate` makes no call. In-sample label: the prompt was
-  written knowing the file's table structure. Criterion proposed: ≥ 95% numbers right.
+  numbers marked with the code's check or SILENT; `--estimate` makes no call. Criterion proposed: ≥ 95% numbers
+  right.
+- **Step 7 (a), in-sample, run 2026-10-08 with the user's "так" (2 calls, claude-sonnet-5, prompt catalogue:03f9554d):**
+  TT 2020 pages A278, A279, A283, A285, A289, A290 (PDF 282, 283, 287, 289, 293, 294) and SRT 2020 B70, B71 (PDF 270,
+  271); the PDFs have no page labels, so the pages were given as "282=A278". **66 / 66 numbers right (100%)**,
+  14 of 14 expected rows read, no extra rows, nothing dropped by the code, 0 wrong numbers. The two Vc rows (GC4325,
+  GC4315) got "the quote is not on page": the model's quote is not a contiguous run of the page's text layer (a
+  table). Tokens: input 53 772 + 17 024, output 5 029 + 7 425 (≈ $0.27). The estimate shown before (~37 000
+  input) was about half the real input: the page images cost more than estimated (to recalibrate).
+  Report `instance/eval_catalogue_p12.md`, runs `instance/eval_catalogue_p12.runs.json`. In-sample: one run, one
+  material group, the expected answer is the file the prompt's structure was written from. Hold-out (b) waits for
+  the user's expected answer.
 - Demo DB: the P1.2 file was imported once (24 rows "read", none confirmed): until the operator confirms them,
-  every operation shows "(check)". The catalogue PDFs are not uploaded yet.
+  every operation shows "(check)". The catalogue PDFs are uploaded (CatalogueDocument 1 TT, 2 SRT).
 
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
