@@ -1,3 +1,4 @@
+import os
 import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -245,7 +246,24 @@ def cutting_data():
         CuttingDataRow.kind, CuttingDataRow.material_group, CuttingDataRow.insert_code, CuttingDataRow.grade,
         CuttingDataRow.id)).scalars().all()
     by_status = {status: [r for r in rows if r.status == status] for status in ("confirmed", "read", "rejected", "replaced")}
-    return render_template("cutting_data.html", by_status=by_status, cd=cd)
+    return render_template("cutting_data.html", by_status=by_status, cd=cd,
+                           hand_typed=services.hand_typed_files(_docs_dir()))
+
+
+def _docs_dir():
+    return os.path.join(os.path.dirname(current_app.root_path), "docs")
+
+
+@bp.route("/cutting-data/import", methods=["POST"])
+def import_cutting_data():
+    """Rows of a hand-typed catalogue file (docs/) as rows to check: nothing is used before it is confirmed."""
+    try:
+        added, already = services.import_hand_typed(_docs_dir(), request.form.get("filename", ""))
+    except (services.UploadError, ValueError) as e:
+        flash(str(e), "error")
+    else:
+        flash(f"{added} row(s) to check added; {already} already there.")
+    return redirect(url_for("main.cutting_data"))
 
 
 def _tool_fields(form):

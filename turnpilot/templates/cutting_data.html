@@ -8,6 +8,15 @@
   page, and the operator confirms it. A tool without confirmed rows for the job's material uses its own values,
   and its operations ask you to check them.</p>
 
+{% if hand_typed %}
+<form method="post" action="{{ url_for('main.import_cutting_data') }}" class="card">
+  <p class="small">Import a hand-typed catalogue file (numbers and pages typed from the catalogue): its rows come
+    in as rows to check, like a reading.</p>
+  <select name="filename">{% for name in hand_typed %}<option>{{ name }}</option>{% endfor %}</select>
+  <button type="submit">Import</button>
+</form>
+{% endif %}
+
 {% macro rows_table(rows, title) %}
 {% if rows %}
 <h2>{{ title }} ({{ rows|length }})</h2>

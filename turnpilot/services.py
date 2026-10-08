@@ -7,9 +7,11 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from . import drawing_reader, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
+from . import catalogue_file, cutting_data, drawing_reader, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
-from .models import DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, TurretSlot, db
+from .models import (
+    CuttingDataRow, DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, TurretSlot, db,
+)
 
 # Extra names a material may appear under on a drawing (compared after normalization).
 MATERIAL_ALIASES = {
@@ -439,6 +441,35 @@ def read_passport_document(document, instance_path, config, client=None):
         document.reading = passport_reader.reading_to_json(values)
     db.session.commit()
     return document
+
+
+def hand_typed_files(docs_dir):
+    """The hand-typed catalogue files that can be imported: docs/turnpilot_catalog_*.md."""
+    if not os.path.isdir(docs_dir):
+        return []
+    return sorted(n for n in os.listdir(docs_dir) if re.fullmatch(r"turnpilot_catalog_[\w.-]+\.md", n))
+
+
+def import_hand_typed(docs_dir, filename):
+    """Add the rows of a hand-typed catalogue file as rows to check (status "read"). A row already there with the
+    same values from the same file is not added again. Returns (added, already there)."""
+    if filename not in hand_typed_files(docs_dir):
+        raise UploadError(f"No such file: {filename}")
+    with open(os.path.join(docs_dir, filename), encoding="utf-8") as f:
+        parsed = catalogue_file.parse_hand_typed(f.read(), filename)
+    existing = db.session.execute(db.select(CuttingDataRow).filter_by(origin="hand_typed")).scalars().all()
+    added = already = 0
+    for data in parsed:
+        checks = data.pop("checks")
+        row = CuttingDataRow(status="read", checks=json.dumps(checks, ensure_ascii=False) if checks else None, **data)
+        if any(cutting_data.row_key(e) == cutting_data.row_key(row) and cutting_data.same_values(e, row)
+               and e.note == row.note for e in existing):
+            already += 1
+            continue
+        db.session.add(row)
+        added += 1
+    db.session.commit()
+    return added, already
 
 
 def drawings_dir(instance_path):
