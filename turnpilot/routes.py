@@ -22,6 +22,7 @@ from .extraction_schema import (
     hex_across_flats,
     normalize_tolerance,
 )
+from .machine_spec import MACHINE_FIELDS, SOURCE_OPERATOR, format_value, parse_value
 from .models import (
     BLANK_SHAPES,
     FEATURE_TYPES,
@@ -78,14 +79,20 @@ def machine():
         try:
             if request.form.get("action") == "profile":
                 machine.name = request.form.get("name", "").strip() or machine.name
-                machine.max_rpm = _number(request.form, "max_rpm", int, required=True)
-                machine.power_kw = _number(request.form, "power_kw", required=True)
-                machine.max_diameter = _number(request.form, "max_diameter", required=True)
-                machine.max_thread_feed = _number(request.form, "max_thread_feed")  # empty: not known
-                efficiency = _number(request.form, "drive_efficiency")  # empty: not known
-                if efficiency is not None and efficiency > 1:
-                    raise FormError("Drive efficiency is a share of the power: 0 to 1 (e.g. 0.8)")
-                machine.drive_efficiency = efficiency
+                # a field the form does not send is kept; a changed one is recorded as the operator's
+                for field in MACHINE_FIELDS:
+                    if field.name not in request.form:
+                        continue
+                    try:
+                        value = parse_value(field, request.form.get(field.name))
+                        if value != getattr(machine, field.name):
+                            services.set_machine_value(machine, field.name, value, SOURCE_OPERATOR)
+                    except ValueError as e:
+                        raise FormError(str(e)) from None
+                try:
+                    services.check_machine(machine)
+                except services.MachineError as e:
+                    raise FormError(str(e)) from None
                 flash("Machine profile saved.")
             elif request.form.get("action") == "stock":
                 text = request.form.get("hex_bar_sizes", "").strip()
@@ -120,7 +127,7 @@ def machine():
     hex_sizes = services.hex_bar_sizes(machine, current_app.config)
     return render_template(
         "machine.html", machine=machine, tools=tools, materials=materials, tool_types=TOOL_TYPES,
-        iso_groups=ISO_GROUPS,
+        iso_groups=ISO_GROUPS, machine_fields=MACHINE_FIELDS, format_value=format_value,
         hex_bar_sizes=", ".join(f"{s:g}" for s in hex_sizes),
     )
 

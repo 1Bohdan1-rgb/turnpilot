@@ -2,26 +2,33 @@
 {% block title %}Machine{% endblock %}
 {% block content %}
 <h1>Machine profile</h1>
-<form method="post" class="card grid-form">
+<form method="post" class="card grid-form machine-profile">
   <input type="hidden" name="action" value="profile">
   <label>Name <input name="name" value="{{ machine.name }}" required></label>
-  <label>Max RPM <input name="max_rpm" type="number" min="1" value="{{ machine.max_rpm }}" required></label>
-  <label>Power, kW <input name="power_kw" type="number" step="0.1" min="0.1" value="{{ machine.power_kw }}" required></label>
-  <label>Max diameter, mm <input name="max_diameter" type="number" step="0.1" min="1" value="{{ machine.max_diameter }}" required></label>
-  <label>Max Z feed when threading (n·P), mm/min
-    <input name="max_thread_feed" type="number" step="any" min="0" value="{{ machine.max_thread_feed if machine.max_thread_feed is not none else '' }}"
-           placeholder="not set">
-  </label>
-  <p class="muted small">When threading the feed is the pitch, so the Z axis moves at n·P mm/min. With a limit
-    here the speed of thread operations is reduced to stay within it; without one every thread operation asks
-    you to check n·P for this machine.</p>
-  <label>Drive efficiency (0–1)
-    <input name="drive_efficiency" type="number" step="any" min="0" max="1"
-           value="{{ machine.drive_efficiency if machine.drive_efficiency is not none else '' }}" placeholder="not set">
-  </label>
-  <p class="muted small">The spindle delivers power × efficiency (see the machine's documentation; often
-    0.75–0.85). Roughing passes are made thinner when the cutting power would exceed it; without it every
-    roughing operation asks you to check the power.</p>
+  {% for f in machine_fields %}
+    {% set value = machine[f.name] %}
+    {% set src = machine.source_of(f.name) %}
+    <label>{{ f.label }}{% if f.unit %}, {{ f.unit }}{% endif %}
+      {% if f.kind == "bool" %}
+        <select name="{{ f.name }}">
+          <option value="" {% if value is none %}selected{% endif %}>not known</option>
+          <option value="yes" {% if value is true %}selected{% endif %}>yes</option>
+          <option value="no" {% if value is false %}selected{% endif %}>no</option>
+        </select>
+      {% elif f.kind == "text" %}
+        <input name="{{ f.name }}" value="{{ value or '' }}" maxlength="100" placeholder="not known">
+      {% else %}
+        <input name="{{ f.name }}" type="number" step="{{ '1' if f.kind == 'int' else 'any' }}" min="0"
+               value="{{ format_value(f, value) }}" placeholder="not known" {% if f.required %}required{% endif %}>
+      {% endif %}
+      <span class="small muted">{{ src.label if src else "seed" }}{% if src and src.quote %}: “{{ src.quote }}”{% endif %}{% if f.help %} · {{ f.help }}{% endif %}</span>
+    </label>
+  {% endfor %}
+  <p class="muted small">Nothing here is guessed: an empty field is not known. When threading the feed is the
+    pitch, so the Z axis moves at n·P mm/min; with a threading limit, thread operations keep within it,
+    without one they ask you to check n·P. The spindle delivers power × efficiency; without the efficiency
+    every roughing operation asks you to check the power. A value you change here is recorded as entered by
+    the operator; values read from the passport show its page.</p>
   <button type="submit">Save profile</button>
 </form>
 

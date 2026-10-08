@@ -7,9 +7,9 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from . import drawing_reader, dxf_input, dxf_reader, pdf_text, planner
+from . import drawing_reader, dxf_input, dxf_reader, machine_spec, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
-from .models import DrawingExtraction, Edit, Machine, Operation, TurretSlot, db
+from .models import DrawingExtraction, Edit, Machine, MachineSpecSource, Operation, TurretSlot, db
 
 # Extra names a material may appear under on a drawing (compared after normalization).
 MATERIAL_ALIASES = {
@@ -33,6 +33,58 @@ class UploadError(ValueError):
 
 def get_machine():
     return db.session.execute(db.select(Machine).order_by(Machine.id)).scalars().first()
+
+
+class MachineError(ValueError):
+    pass
+
+
+MAX_TURRET_POSITIONS = 48
+
+
+def set_turret_positions(machine, count):
+    """Add empty positions up to count, or remove the last ones; a position holding a tool is not removed."""
+    if not 1 <= count <= MAX_TURRET_POSITIONS:
+        raise MachineError(f"Turret positions: 1 to {MAX_TURRET_POSITIONS}")
+    have = {slot.position for slot in machine.slots}
+    for position in range(1, count + 1):
+        if position not in have:
+            machine.slots.append(TurretSlot(position=position))
+    extra = [slot for slot in machine.slots if slot.position > count]
+    busy = [slot.label for slot in extra if slot.tool_id is not None]
+    if busy:
+        raise MachineError(f"{', '.join(busy)} hold tools: take them off before reducing the turret to {count}")
+    for slot in extra:
+        machine.slots.remove(slot)
+    machine.turret_positions = count
+
+
+def set_machine_value(machine, name, value, source, page=None, quote=None, document_id=None):
+    """Set a machine field and record where its value comes from (machine_spec.SOURCE_*). A "not in passport"
+    source records the fact only: the value the machine has is kept."""
+    field = machine_spec.FIELDS_BY_NAME[name]
+    if source != machine_spec.SOURCE_NOT_IN_PASSPORT:
+        if value is None and field.required:
+            raise MachineError(f"{field.label} is required")
+        if name == "turret_positions":
+            set_turret_positions(machine, value)
+        else:
+            setattr(machine, name, value)
+    row = machine.source_of(name)
+    if row is None:
+        row = MachineSpecSource(field=name)
+        machine.sources.append(row)
+    row.value = machine_spec.format_value(field, value) or None
+    row.source, row.page, row.quote, row.document_id = source, page, quote, document_id
+    row.confirmed_at = datetime.now(timezone.utc)
+
+
+def check_machine(machine):
+    """Rules across fields; raises MachineError."""
+    if machine.drive_efficiency is not None and machine.drive_efficiency > 1:
+        raise MachineError("Drive efficiency is a share of the power: 0 to 1 (e.g. 0.8)")
+    if machine.min_rpm is not None and machine.min_rpm > machine.max_rpm:
+        raise MachineError("Min spindle speed is above the max")
 
 
 def tool_spec(tool):

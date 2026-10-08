@@ -1,4 +1,6 @@
 """Thread speed check: the Z axis moves at n·P when threading; the machine's limit, or a warning without one."""
+import re
+
 from conftest import seed_turret
 from turnpilot import services
 from turnpilot.models import db
@@ -13,7 +15,9 @@ def test_seed_machine_has_no_thread_feed_limit(app):
 def test_machine_page_saves_and_clears_the_limit(client):
     client.post("/machine", data={**PROFILE, "max_thread_feed": "2000"})
     assert services.get_machine().max_thread_feed == 2000
-    assert 'name="max_thread_feed" type="number" step="any" min="0" value="2000.0"' in client.get("/machine").get_data(as_text=True)
+    page = client.get("/machine").get_data(as_text=True)
+    assert re.search(r'name="max_thread_feed"[^>]*value="2000"', page)
+    assert "entered by the operator" in page  # its source
     client.post("/machine", data={**PROFILE, "max_thread_feed": ""})
     assert services.get_machine().max_thread_feed is None
 

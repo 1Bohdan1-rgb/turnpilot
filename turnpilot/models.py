@@ -38,10 +38,53 @@ class Machine(db.Model):
     drive_efficiency = db.Column(db.Float)
     # Hex bar sizes across flats in stock, "8, 10, 11"; empty: HEX_BAR_SIZES from the config.
     hex_bar_sizes = db.Column(db.String(200))
+    # From the machine documentation (machine_spec.MACHINE_FIELDS); empty: not known, nothing is guessed.
+    min_rpm = db.Column(db.Integer)
+    power_s6_kw = db.Column(db.Float)  # shown only: the power check takes power_kw (S1)
+    max_turning_length = db.Column(db.Float)
+    max_bar_diameter = db.Column(db.Float)  # the bar that passes through the spindle
+    turret_positions = db.Column(db.Integer, nullable=False, default=12, server_default="12")
+    max_z_feed = db.Column(db.Float)  # mm/min; not the threading limit (max_thread_feed) unless set there
+    coolant = db.Column(db.Boolean)
+    coolant_pressure_bar = db.Column(db.Float)
+    live_tooling = db.Column(db.Boolean)
+    c_axis = db.Column(db.Boolean)
+    control = db.Column(db.String(100))
 
     slots = db.relationship(
         "TurretSlot", back_populates="machine", order_by="TurretSlot.position", cascade="all, delete-orphan"
     )
+    sources = db.relationship("MachineSpecSource", back_populates="machine", cascade="all, delete-orphan")
+
+    def source_of(self, field):
+        return next((s for s in self.sources if s.field == field), None)
+
+
+class MachineSpecSource(db.Model):
+    """Where a machine value comes from: the passport (page, quote), the operator, or "not in passport"."""
+
+    __table_args__ = (db.UniqueConstraint("machine_id", "field", name="uq_machine_spec_source_field"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_machine_spec_source_machine_id"),
+                           nullable=False)
+    field = db.Column(db.String(40), nullable=False)
+    value = db.Column(db.String(100))  # as confirmed, in the field's unit
+    source = db.Column(db.String(20), nullable=False)  # machine_spec.SOURCE_*
+    page = db.Column(db.Integer)
+    quote = db.Column(db.Text)
+    document_id = db.Column(db.Integer)  # MachineDocument, when from a passport
+    confirmed_at = db.Column(db.DateTime, default=_now, nullable=False)
+
+    machine = db.relationship("Machine", back_populates="sources")
+
+    @property
+    def label(self):
+        if self.source == "passport":
+            return f"passport p. {self.page}" if self.page else "passport"
+        if self.source == "operator":
+            return f"entered by the operator {self.confirmed_at:%Y-%m-%d}"
+        return self.source
 
 
 class Tool(db.Model):
