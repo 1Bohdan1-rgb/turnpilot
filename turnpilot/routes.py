@@ -177,7 +177,29 @@ def passport_pages(document_id):
              likely=passport_reader.likely_spec_page(t), selected=i in document.selected)
         for i, t in enumerate(texts, start=1)
     ]
-    return render_template("passport_pages.html", document=document, pages=pages, max_pages=MAX_PASSPORT_PAGES)
+    estimate = passport_reader.estimate(services.passport_path(document, current_app.instance_path),
+                                        document.selected) if document.selected else None
+    return render_template("passport_pages.html", document=document, pages=pages, max_pages=MAX_PASSPORT_PAGES,
+                           estimate=estimate, model=current_app.config["ANTHROPIC_MODEL"])
+
+
+@bp.route("/machine/passport/<int:document_id>/read", methods=["POST"])
+def read_passport(document_id):
+    """The paid call: only on the operator's explicit request, for the picked pages."""
+    document = db.get_or_404(MachineDocument, document_id)
+    if not request.form.get("paid"):
+        flash("Tick that you start a paid reading (one API call).", "error")
+        return redirect(url_for("main.passport_pages", document_id=document.id))
+    try:
+        services.read_passport_document(document, current_app.instance_path, current_app.config,
+                                        client=current_app.config.get("ANTHROPIC_CLIENT"))
+    except services.UploadError as e:
+        flash(str(e), "error")
+        return redirect(url_for("main.passport_pages", document_id=document.id))
+    if document.status != "read":
+        flash(f"The passport could not be read: {document.error}", "error")
+        return redirect(url_for("main.passport_pages", document_id=document.id))
+    return redirect(url_for("main.passport_pages", document_id=document.id))
 
 
 @bp.route("/machine/passport/<int:document_id>/file")

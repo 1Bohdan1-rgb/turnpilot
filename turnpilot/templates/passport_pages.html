@@ -23,4 +23,17 @@
   </table>
   <button type="submit">Save the picked pages</button>
 </form>
+
+{% if estimate %}
+<h2>Read the picked pages</h2>
+<form method="post" action="{{ url_for('main.read_passport', document_id=document.id) }}" class="card">
+  <p>Pages {{ document.selected_pages }}: {{ estimate.text_pages }} as text, {{ estimate.image_pages }} as images ·
+    <strong>{{ estimate.calls }} API call</strong> to {{ model }}, about {{ estimate.input_tokens }} input tokens.</p>
+  <label class="inline"><input type="checkbox" name="paid" value="1"> I start a paid reading (one API call)</label>
+  <button type="submit" class="js-reading">Read</button>
+  {% if document.status == "read" %}<p class="muted small">Read {{ document.read_at.strftime("%Y-%m-%d %H:%M") }}
+    (pages {{ document.read_pages }}): reading again makes a new paid call.</p>{% endif %}
+  {% if document.status == "failed" %}<p class="warning">Last reading failed: {{ document.error }}</p>{% endif %}
+</form>
+{% endif %}
 {% endblock %}

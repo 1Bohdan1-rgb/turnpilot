@@ -74,6 +74,16 @@ class MachineDocument(db.Model):
     text_pages = db.Column(db.Integer, nullable=False)  # pages with a text layer (0: a scan)
     selected_pages = db.Column(db.String(200))  # "3, 4, 12": the pages to read
     created_at = db.Column(db.DateTime, default=_now, nullable=False)
+    # The reading of the picked pages (one paid call, started by the operator); kept for the record.
+    status = db.Column(db.String(12), nullable=False, default="uploaded", server_default="uploaded")  # uploaded/read/failed/confirmed
+    model = db.Column(db.String(100))
+    prompt_version = db.Column(db.String(20))  # passport_reader.prompt_version()
+    read_pages = db.Column(db.String(200))  # the pages that were sent
+    raw_response = db.Column(db.Text)
+    reading = db.Column(db.Text)  # passport_reader.PassportValue list as JSON, checked by the code
+    error = db.Column(db.Text)
+    read_at = db.Column(db.DateTime)
+    confirmed_at = db.Column(db.DateTime)
 
     machine = db.relationship("Machine")
 

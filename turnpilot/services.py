@@ -381,6 +381,33 @@ def passport_path(document, instance_path):
     return os.path.join(machine_docs_dir(instance_path), document.stored_filename)
 
 
+def read_passport_document(document, instance_path, config, client=None):
+    """One paid call on the picked pages; the values are checked by the code and kept for the review."""
+    pages = document.selected
+    if not pages:
+        raise UploadError("Pick the pages with the machine's technical data first.")
+    path = passport_path(document, instance_path)
+    model = config["ANTHROPIC_MODEL"]
+    document.model, document.prompt_version = model, passport_reader.prompt_version()
+    document.read_pages, document.read_at = document.selected_pages, datetime.now(timezone.utc)
+    document.error = document.raw_response = document.reading = None
+    try:
+        tool_input, raw = passport_reader.read_passport(path, pages, client or drawing_reader.make_client(), model)
+    except passport_reader.PassportReadError as exc:
+        document.status, document.error = "failed", str(exc)
+        document.raw_response = json.dumps(exc.raw) if exc.raw is not None else None
+    except Exception as exc:  # API / network / auth errors: keep a record instead of a 500
+        document.status, document.error = "failed", f"{type(exc).__name__}: {exc}"
+    else:
+        texts = passport_reader.page_texts(path)
+        values = passport_reader.check_reading(tool_input, {n: texts[n - 1] for n in pages})
+        document.status = "read"
+        document.raw_response = json.dumps(raw)
+        document.reading = passport_reader.reading_to_json(values)
+    db.session.commit()
+    return document
+
+
 def drawings_dir(instance_path):
     path = os.path.join(instance_path, "drawings")
     os.makedirs(path, exist_ok=True)
