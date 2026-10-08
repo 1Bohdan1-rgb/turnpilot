@@ -35,7 +35,8 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   tool, not a guess); rough boring then opens it in passes by the boring tool's `ap_max`. A drill of the
   bore's own size makes it with no boring when the bore needs nothing finer than IT12 and Ra 6.3
   (placeholders). A hole deeper than 3 × the drill (placeholder) gets "G83 peck drilling". A tap drill
-  must be the exact size. A hole drilled for one feature that is at least as large and as deep makes
+  comes from Sandvik Solid round tools 2020, C157 (coarse) / C158 (fine), for cutting taps: a drill from PHD
+  up to PHDX is accepted, the nearest to PHD; other threads take d − P, noted "not in catalogue". A hole drilled for one feature that is at least as large and as deep makes
   another's drill. Without a boring tool (allowance unknown), a fitting drill or a centre drill: a
   warning, nothing guessed. Not modelled: through vs blind (depth = the bore length), the smallest bore a
   boring bar enters, a flat bottom.

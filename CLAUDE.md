@@ -49,7 +49,8 @@ catalogue, handbook, ISO), and the operator or the process engineer confirms it.
 Stages, in this order:
 1. Edit and delete tools on the Machine page. **Done 2026-10-07** (a9bc72c, 4e9fce6): see "Tool library".
 2. Check every placeholder constant (see "Placeholders and assumptions") against the catalogue and the
-   machinist's experience. **Partly done 2026-10-07** for steel P1.2 (Sandvik 2020): see the Status column.
+   machinist's experience. **Done 2026-10-08 for steel P1.2** (Sandvik 2020): see the Status column; open
+   rows stay open (other materials, machine data, rules not in the catalogue).
 3. Blind check of the DXF input on new files (see "DXF blind check: stop rule").
 4. Machine documentation: upload the PDF → the model reads the data → the operator confirms it on a review
    screen.
@@ -496,8 +497,8 @@ Planner constants (`turnpilot/planner.py`):
 | `INTERNAL_THREAD_DEPTH_FACTOR` | 0.541·P | internal thread depth | ISO 68-1 (H1), from memory | code | open (as above) |
 | thread passes and infeed series | C77 count (P 1 / 1.5 / 2: 5 / 6 / 8; internal 1.5: 6); series ϕ 0.3, 1, x − 1 | thread passes | TT C77, C82 | code | verified (other pitches: the tool's ap range, open) |
 | thread spring pass | one 0 mm pass | thread passes | rule of thumb | code | open |
-| `TAP_DRILL_MM` | ISO 2306 coarse table; else d − P | tap drill Ø | ISO, from memory | code | open |
-| `COARSE_PITCH_MM` (`extraction_schema.py`) | ISO 261 | pitch when the drawing has none ("check") | ISO, from memory | code | open |
+| `TAP_HOLES_C157` / `TAP_HOLES_C158` | PHD (drill) and PHDX (max) for cutting taps: M3–M48 coarse (19), 17 fine; else d − P | tap drill Ø, the drills accepted | SRT C157, C158 | code | verified (other threads: d − P, open) |
+| `COARSE_PITCH_MM` (`extraction_schema.py`) | ISO 261 | pitch when the drawing has none ("check") | ISO, from memory | code | partly (C157 confirms the pitch of M3–M48 in its table; the other sizes open) |
 | `WRENCH_SIZES_MM` (`extraction_schema.py`) | ISO 272 | hex "not a wrench size" warning | ISO, from memory | code | open |
 | `HEX_BAR_TOLERANCE` | h11 | hex bar flats left unmachined | GOST 8560 / EN 10278, from memory | code | open |
 | `HEX_MIN_CORNERS_PER_FLATS` | 1.10 | hex corners warning | ISO 4032-like, from memory | code | open |
@@ -538,8 +539,8 @@ DXF reader (`turnpilot/dxf_reader.py`, what becomes a section on the review scre
 
 Check first (safety or scrap), in this order:
 1. Machine max rpm (chuck / bar limit) and the threading feed limit n·P (Z axis following the thread): not set.
-2. Tap drill sizes (broken tap), then the thread rules still open: d − 0.1·P, depths 0.613 / 0.541·P, the
-   spring pass (thread out of gauge).
+2. The thread rules still open: d − 0.1·P, depths 0.613 / 0.541·P, the spring pass (thread out of gauge);
+   tap drills for threads outside C157 / C158 (d − P).
 3. mc of C45, kc of AISI 304 / 6061, and the drive efficiency (spindle overload, stall).
 4. Chuck side = the largest Ø in DXF jobs: if the part is held otherwise, roughing ap is larger than planned.
 5. Drill-only holes (IT12 / Ra 6.3) and the groove finishing rule (Ra 1.6, 0.2 mm): size and finish of holes
@@ -560,7 +561,7 @@ Commits a9bc72c, 4e9fce6. Plan agreed with the user, plus the "Source" field.
   not compared.
 - Migration 157413ef972d; DB backup `instance/turnpilot.db.bak-2026-10-07-before-tool-edit`.
 
-## Stage 2: placeholders checked against Sandvik 2020, steel P1.2 (in progress, 2026-10-07)
+## Stage 2: placeholders checked against Sandvik 2020, steel P1.2 (done for P1.2, 2026-10-08)
 Plan agreed with the user (8 answers). Source file: `docs/turnpilot_catalog_P1.2.md` (numbers and pages only;
 catalogue PDFs under `docs/catalogs/*.pdf` are git-ignored). Done so far:
 - f13984e: the catalogue file in git; its section 4 corrected to the V-profile insert 266RG-16VM01A001M.
@@ -582,6 +583,12 @@ catalogue PDFs under `docs/catalogs/*.pdf` are git-ignored). Done so far:
 - 7e648e7: `Tool.max_depth`; drills 860-GM Ø6 / Ø8 / Ø10 on T10–T12 (SRT B25–B26, B70, B71; 3×D, external
   coolant); deeper than the drill reaches → "drill too short". Migration 450337eecff1 (positions only if empty).
 - The placeholder table has a Status column (verified / partly / operator decision / open).
+- 451d344: tap drills from SRT C157 / C158 (PHD; a drill accepted from PHD up to PHDX, the nearest to PHD).
+  The memory table matched for all 19 coarse sizes (M33 is in C157 too: 29.50 / 29.771) and 16 of 17 fine
+  ones; M10 × 1.25 is 8.8 now (d − P gave 8.75). Other threads: d − P, "not in catalogue". Section 5a of the
+  catalogue file was copied from the operator's updated notes, M33 added.
+- Result (48 rows): verified 9, partly 4, operator decision 2, open 33. Stage 2 is closed for steel P1.2;
+  other materials (AISI 304, aluminium) have no checked tools: their jobs get "no tool".
 - DB backups: `instance/turnpilot.db.bak-2026-10-07-before-catalogue-data`, `…-before-t6-t8`,
   `…-before-rough-boring`, `…-before-drills`.
 
@@ -604,7 +611,7 @@ catalogue PDFs under `docs/catalogs/*.pdf` are git-ignored). Done so far:
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 724 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 740 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
