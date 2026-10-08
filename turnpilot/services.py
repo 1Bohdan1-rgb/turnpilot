@@ -79,6 +79,21 @@ def set_machine_value(machine, name, value, source, page=None, quote=None, docum
     row.confirmed_at = datetime.now(timezone.utc)
 
 
+def machine_warnings(job, machine):
+    """What the machine's documented limits say about a job's blank (empty fields: not checked)."""
+    if machine is None:
+        return []
+    warnings = []
+    if machine.max_turning_length and job.blank_length > machine.max_turning_length:
+        warnings.append(f"Blank length {job.blank_length:g} mm is above the machine's max turning length "
+                        f"{machine.max_turning_length:g} mm.")
+    if machine.max_bar_diameter and (job.blank_shape or "round") == "round" \
+            and job.blank_diameter > machine.max_bar_diameter:
+        warnings.append(f"Bar Ø{job.blank_diameter:g} does not pass through the spindle (max Ø"
+                        f"{machine.max_bar_diameter:g}): chuck a cut piece.")
+    return warnings
+
+
 def check_machine(machine):
     """Rules across fields; raises MachineError."""
     if machine.drive_efficiency is not None and machine.drive_efficiency > 1:
@@ -156,8 +171,9 @@ def calculate_operations(job, machine):
     for op in job.current_operations:
         op.is_archived = True
     power = planner.PowerSpec(machine.power_kw, machine.drive_efficiency)
+    limits = planner.MachineLimits(machine.min_rpm, machine.coolant, machine.live_tooling, machine.c_axis)
     for planned in planner.plan_job(job_spec(job), turret_entries(machine), machine.max_rpm, machine.max_thread_feed,
-                                    power):
+                                    power, limits):
         job.operations.append(
             Operation(
                 feature_id=planned.feature_id,

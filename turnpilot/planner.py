@@ -150,6 +150,34 @@ class JobSpec:
 
 
 @dataclass(frozen=True)
+class MachineLimits:
+    """What the machine can do, from its documentation; None: not known, not checked."""
+    min_rpm: int | None = None
+    coolant: bool | None = None
+    live_tooling: bool | None = None
+    c_axis: bool | None = None
+
+
+MIN_RPM_WARNING = ("n {n} is below the machine's min spindle speed {min_rpm}: the spindle cannot turn slower, "
+                   "so Vc would be higher than planned")
+NO_COOLANT_WARNING = "the catalogue's Vc are with coolant and this machine has none: check Vc"
+NO_DRIVEN_TOOLS = "manual operation: the machine has no {what}, mill the hex on a milling machine"
+
+
+def _apply_machine_limits(op, tool: ToolSpec | None, limits: MachineLimits) -> None:
+    if op.tool_type == "milling" and (limits.live_tooling is False or limits.c_axis is False):
+        what = " and no ".join(name for name, flag in (("driven tools", limits.live_tooling),
+                                                       ("C axis", limits.c_axis)) if flag is False)
+        op.tool_id = op.tool_name = op.turret_position = None
+        op.warnings = [w for w in op.warnings if w != NO_MILLING_TOOL] + [NO_DRIVEN_TOOLS.format(what=what)]
+        return
+    if limits.min_rpm and op.n and op.n < limits.min_rpm:
+        op.warnings.append(MIN_RPM_WARNING.format(n=op.n, min_rpm=limits.min_rpm))
+    if limits.coolant is False and tool is not None and tool.vc_points:
+        op.warnings.append(NO_COOLANT_WARNING)
+
+
+@dataclass(frozen=True)
 class PowerSpec:
     """The machine's spindle power and the share of it the drive delivers; None: not known."""
     power_kw: float | None
@@ -1563,10 +1591,12 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
 
 
 def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
-             max_thread_feed: float | None = None, power: PowerSpec | None = None) -> list[PlannedOperation]:
+             max_thread_feed: float | None = None, power: PowerSpec | None = None,
+             limits: MachineLimits | None = None) -> list[PlannedOperation]:
     """Build the ordered list of proposed operations for a job. max_thread_feed: the machine's Z feed limit
     when threading (n·P, mm/min), None when not known. power: the machine's spindle power for the roughing
-    check; None: not checked."""
+    check; None: not checked. limits: min spindle speed, coolant, driven tools, C axis; None: not checked."""
+    tools_by_id = {entry.tool.id: entry.tool for entry in turret}
     features = list(job.features)
     hex_bar = job.blank_diameter if job.blank_shape == "hex" else None
     holes = plan_holes(features, job.iso_group, turret)
@@ -1616,6 +1646,8 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
             step = replace(step, feature=replace(original, diameter=hex_corners(original)))
         start = starts.get(id(original)) if step.tool_type == "turning_rough" else None
         op = _plan_step(step, job, turret, max_rpm, start, max_thread_feed, power, holes.get(id(original)))
+        if limits is not None:
+            _apply_machine_limits(op, tools_by_id.get(op.tool_id), limits)
         if start and start.from_bar and not start.pit and both_sides:
             op.notes.append(TWO_SIDES_NOTE)
         if pitch and step.mode == "finish":

@@ -7,6 +7,7 @@
   blank {{ job.blank_label }} × {{ job.blank_length|round(2) }} mm
   {% if job.extraction %}· created from drawing <a href="{{ url_for('main.extraction_file', extraction_id=job.extraction.id, which='original') }}" target="_blank">{{ job.extraction.original_filename }}</a>{% endif %}
 </p>
+{% for w in machine_warnings %}<div class="flash flash-error machine-warning">⚠ {{ w }}</div>{% endfor %}
 
 <h2>Features</h2>
 {% if job.active_features %}

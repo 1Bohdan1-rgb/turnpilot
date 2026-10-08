@@ -344,7 +344,8 @@ def jobs():
 @bp.route("/jobs/<int:job_id>")
 def job_detail(job_id):
     job = db.get_or_404(Job, job_id)
-    return render_template("job_detail.html", job=job, feature_types=FEATURE_TYPES, positions=POSITIONS)
+    return render_template("job_detail.html", job=job, feature_types=FEATURE_TYPES, positions=POSITIONS,
+                           machine_warnings=services.machine_warnings(job, services.get_machine()))
 
 
 @bp.route("/jobs/<int:job_id>/features", methods=["POST"])
@@ -386,7 +387,9 @@ def calculate(job_id):
 @bp.route("/jobs/<int:job_id>/operations")
 def operations(job_id):
     job = db.get_or_404(Job, job_id)
-    return render_template("operations.html", job=job, machine=_machine_or_404())
+    machine = _machine_or_404()
+    return render_template("operations.html", job=job, machine=machine,
+                           machine_warnings=services.machine_warnings(job, machine))
 
 
 @bp.route("/jobs/<int:job_id>/history")

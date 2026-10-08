@@ -9,6 +9,7 @@
   {% if job.archived_operations %}· <a href="{{ url_for('main.history', job_id=job.id) }}">calculation history</a>{% endif %}
 </p>
 {% if job.current_operations %}<p class="muted small">Calculation version {{ job.last_calculation_version }}</p>{% endif %}
+{% for w in machine_warnings %}<div class="flash flash-error machine-warning">⚠ {{ w }}</div>{% endfor %}
 {% set changed = job.tools_changed_since_calculation %}
 {% if changed %}
 <div class="flash flash-error tools-changed" role="alert">
