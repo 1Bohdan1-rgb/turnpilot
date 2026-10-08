@@ -100,9 +100,9 @@ def page_has_text(pages: dict, number: int) -> bool:
 # --- reading the picked pages with the model ------------------------------------------------------------
 
 TOOL_NAME = "record_cutting_data"
-MAX_OUTPUT_TOKENS = 16000
+MAX_OUTPUT_TOKENS = 32000  # the answer plus the model's thinking (adaptive by default)
 PAGE_IMAGE_WIDTH = 1600  # px; every page is also sent as an image: the text layer loses the tables' layout
-IMAGE_TOKENS_ESTIMATE = 1600  # per page image, for the estimate shown before the call
+MAX_IMAGE_EDGE = 1568  # px: a larger image is scaled down by the API before it is read
 PROMPT_TOKENS_ESTIMATE = 3000  # the instructions and the tool schema
 APPLICATIONS = ("turning", "grooving", "parting", "threading", "drilling")
 
@@ -197,13 +197,22 @@ class CatalogueReadError(Exception):
         self.raw = raw
 
 
+def estimate_image_tokens(width: float, height: float) -> int:
+    """About width × height / 750 tokens for a page image sent PAGE_IMAGE_WIDTH wide, after the API scales its
+    long edge down to MAX_IMAGE_EDGE (an estimate for the operator, not a count)."""
+    w, h = PAGE_IMAGE_WIDTH, PAGE_IMAGE_WIDTH * height / width
+    scale = min(1.0, MAX_IMAGE_EDGE / max(w, h))
+    return int(w * scale * h * scale / 750)
+
+
 def build_content(path, pages: list[int], material_groups: str, codes: str | None,
                   with_images: bool = True) -> tuple[list[dict], dict]:
     """The message content (each page as text and as an image) and an estimate of the input tokens."""
-    content, chars = [], 0
+    content, chars, image_tokens = [], 0, 0
     with pymupdf.open(path) as doc:
         for number in pages:
             page = doc[number - 1]
+            image_tokens += estimate_image_tokens(page.rect.width, page.rect.height)
             text = page.get_text("text")
             label = page.get_label() or ""
             head = f"=== Page {number}" + (f" (printed label {label})" if label else "") + " ==="
@@ -216,7 +225,7 @@ def build_content(path, pages: list[int], material_groups: str, codes: str | Non
                                                             "data": data.decode("ascii")}})
     content.append({"type": "text", "text": user_prompt(material_groups, codes)})
     estimate = {"calls": 1, "pages": len(pages), "max_output_tokens": MAX_OUTPUT_TOKENS,
-                "input_tokens": chars // 3 + len(pages) * IMAGE_TOKENS_ESTIMATE + PROMPT_TOKENS_ESTIMATE}
+                "input_tokens": chars // 3 + image_tokens + PROMPT_TOKENS_ESTIMATE}
     return content, estimate
 
 
