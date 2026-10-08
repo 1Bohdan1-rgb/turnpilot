@@ -7,9 +7,9 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from . import drawing_reader, dxf_input, dxf_reader, machine_spec, pdf_text, planner
+from . import drawing_reader, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
-from .models import DrawingExtraction, Edit, Machine, MachineSpecSource, Operation, TurretSlot, db
+from .models import DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, TurretSlot, db
 
 # Extra names a material may appear under on a drawing (compared after normalization).
 MATERIAL_ALIASES = {
@@ -344,6 +344,41 @@ def drawing_numbers(extraction, instance_path):
     if extraction is None or extraction.file_type != "pdf":
         return None
     return pdf_text.read_numbers(os.path.join(drawings_dir(instance_path), extraction.stored_filename))
+
+
+def machine_docs_dir(instance_path):
+    path = os.path.join(instance_path, "machine_docs")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def store_passport(machine, filename, data, instance_path):
+    """Keep an uploaded passport PDF and count its pages with text. Raises UploadError for anything else."""
+    name = display_filename(filename)
+    if not data:
+        raise UploadError("The file is empty.")
+    if drawing_reader.detect_file_type(data) != "pdf":
+        raise UploadError("The passport must be a PDF file.")
+    stored = f"{uuid.uuid4().hex}.pdf"
+    path = os.path.join(machine_docs_dir(instance_path), stored)
+    with open(path, "wb") as f:
+        f.write(data)
+    try:
+        texts = passport_reader.page_texts(path)
+    except Exception as exc:  # a broken PDF: keep no record
+        os.remove(path)
+        raise UploadError(f"The PDF cannot be read: {exc}") from None
+    document = MachineDocument(
+        machine=machine, original_filename=name, stored_filename=stored, sha256=hashlib.sha256(data).hexdigest(),
+        size_bytes=len(data), pages=len(texts), text_pages=sum(passport_reader.has_text(t) for t in texts),
+    )
+    db.session.add(document)
+    db.session.commit()
+    return document
+
+
+def passport_path(document, instance_path):
+    return os.path.join(machine_docs_dir(instance_path), document.stored_filename)
 
 
 def drawings_dir(instance_path):

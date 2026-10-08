@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Machine passport{% endblock %}
+{% block content %}
+<h1>Machine passport</h1>
+<p class="muted">{{ machine.name }} · <a href="{{ url_for('main.machine') }}">back to the machine</a></p>
+<p class="muted small">Upload the machine's passport (PDF, up to 10 MB). Then pick the pages with its technical
+  data: only those are read. The values read are shown with their page and quote for you to confirm; nothing
+  reaches the machine profile before you confirm it, and nothing is guessed: a value the passport does not
+  give is marked "not in passport".</p>
+<form method="post" enctype="multipart/form-data" class="card upload-form">
+  <input type="file" name="passport" accept=".pdf,application/pdf" required>
+  <button type="submit">Upload</button>
+</form>
+{% if documents %}
+<h2>Uploaded</h2>
+<table class="card">
+  <thead><tr><th>File</th><th>Pages</th><th>With text</th><th>Picked</th><th>Uploaded</th></tr></thead>
+  <tbody>
+  {% for d in documents %}
+    <tr>
+      <td><a href="{{ url_for('main.passport_pages', document_id=d.id) }}">{{ d.original_filename }}</a></td>
+      <td>{{ d.pages }}</td>
+      <td>{{ d.text_pages }}{% if d.text_pages == 0 %} (a scan){% endif %}</td>
+      <td>{{ d.selected_pages or "—" }}</td>
+      <td>{{ d.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

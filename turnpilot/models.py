@@ -60,6 +60,28 @@ class Machine(db.Model):
         return next((s for s in self.sources if s.field == field), None)
 
 
+class MachineDocument(db.Model):
+    """An uploaded machine passport (PDF) and the pages the operator picked for reading. Kept for the record."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_machine_document_machine_id"),
+                           nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_filename = db.Column(db.String(100), nullable=False)  # in instance/machine_docs/
+    sha256 = db.Column(db.String(64), nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=False)
+    pages = db.Column(db.Integer, nullable=False)
+    text_pages = db.Column(db.Integer, nullable=False)  # pages with a text layer (0: a scan)
+    selected_pages = db.Column(db.String(200))  # "3, 4, 12": the pages to read
+    created_at = db.Column(db.DateTime, default=_now, nullable=False)
+
+    machine = db.relationship("Machine")
+
+    @property
+    def selected(self):
+        return [int(p) for p in (self.selected_pages or "").replace(" ", "").split(",") if p]
+
+
 class MachineSpecSource(db.Model):
     """Where a machine value comes from: the passport (page, quote), the operator, or "not in passport"."""
 
@@ -73,7 +95,7 @@ class MachineSpecSource(db.Model):
     source = db.Column(db.String(20), nullable=False)  # machine_spec.SOURCE_*
     page = db.Column(db.Integer)
     quote = db.Column(db.Text)
-    document_id = db.Column(db.Integer)  # MachineDocument, when from a passport
+    document_id = db.Column(db.Integer)  # MachineDocument.id, when from a passport
     confirmed_at = db.Column(db.DateTime, default=_now, nullable=False)
 
     machine = db.relationship("Machine", back_populates="sources")

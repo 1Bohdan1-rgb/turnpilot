@@ -2,6 +2,7 @@
 {% block title %}Machine{% endblock %}
 {% block content %}
 <h1>Machine profile</h1>
+<p class="muted small"><a href="{{ url_for('main.machine_passport') }}">Read the values from the machine passport (PDF)</a>: each value comes with its page, and you confirm it before it is used.</p>
 <form method="post" class="card grid-form machine-profile">
   <input type="hidden" name="action" value="profile">
   <label>Name <input name="name" value="{{ machine.name }}" required></label>

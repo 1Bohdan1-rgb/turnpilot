@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Passport pages{% endblock %}
+{% block content %}
+<h1>{{ document.original_filename }}</h1>
+<p class="muted">{{ document.pages }} pages, {{ document.text_pages }} with text{% if document.text_pages == 0 %}
+  (a scan: the pages are read as images, and every value gets a "check" badge){% endif %} ·
+  <a href="{{ url_for('main.passport_file', document_id=document.id) }}" target="_blank">open the PDF</a> ·
+  <a href="{{ url_for('main.machine_passport') }}">all passports</a></p>
+<p class="muted small">Tick the pages with the machine's technical data (at most {{ max_pages }}). Pages whose
+  text has words like "technical", "характеристики", "rpm", "kW" are marked "likely".</p>
+<form method="post">
+  <table class="card passport-pages">
+    <thead><tr><th>Read</th><th>Page</th><th>Text</th></tr></thead>
+    <tbody>
+    {% for p in pages %}
+      <tr>
+        <td><input type="checkbox" name="page" value="{{ p.number }}" {% if p.selected %}checked{% endif %}></td>
+        <td>{{ p.number }}{% if p.likely %} <span class="badge badge-suggested">likely</span>{% endif %}</td>
+        <td class="small">{% if p.has_text %}{{ p.text }}{% else %}<span class="muted">no text (an image)</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <button type="submit">Save the picked pages</button>
+</form>
+{% endblock %}

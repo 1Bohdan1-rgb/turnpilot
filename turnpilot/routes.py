@@ -14,7 +14,7 @@ from flask import (
     url_for,
 )
 
-from . import drawing_reader, number_check, planner, services
+from . import drawing_reader, number_check, passport_reader, planner, services
 from .extraction_schema import (
     RADIUS_TYPES,
     START_DIAMETER_TYPES,
@@ -31,6 +31,7 @@ from .models import (
     TOOL_TYPES,
     Feature,
     Job,
+    MachineDocument,
     Material,
     Operation,
     Tool,
@@ -130,6 +131,59 @@ def machine():
         iso_groups=ISO_GROUPS, machine_fields=MACHINE_FIELDS, format_value=format_value,
         hex_bar_sizes=", ".join(f"{s:g}" for s in hex_sizes),
     )
+
+
+MAX_PASSPORT_PAGES = 20  # pages sent to the model in one reading (cost)
+
+
+@bp.route("/machine/passport", methods=["GET", "POST"])
+def machine_passport():
+    machine = _machine_or_404()
+    if request.method == "POST":
+        upload = request.files.get("passport")
+        if upload is None or not upload.filename:
+            flash("Choose the machine passport (PDF).", "error")
+            return redirect(url_for("main.machine_passport"))
+        try:
+            document = services.store_passport(machine, upload.filename, upload.read(), current_app.instance_path)
+        except services.UploadError as e:
+            flash(str(e), "error")
+            return redirect(url_for("main.machine_passport"))
+        return redirect(url_for("main.passport_pages", document_id=document.id))
+    documents = db.session.execute(
+        db.select(MachineDocument).order_by(MachineDocument.created_at.desc())
+    ).scalars().all()
+    return render_template("passport.html", machine=machine, documents=documents)
+
+
+@bp.route("/machine/passport/<int:document_id>", methods=["GET", "POST"])
+def passport_pages(document_id):
+    """The passport's pages with their text, for the operator to pick the technical data pages."""
+    document = db.get_or_404(MachineDocument, document_id)
+    if request.method == "POST":
+        pages = sorted({int(p) for p in request.form.getlist("page") if p.isdigit() and 1 <= int(p) <= document.pages})
+        if not pages:
+            flash("Pick the pages with the machine's technical data.", "error")
+        elif len(pages) > MAX_PASSPORT_PAGES:
+            flash(f"At most {MAX_PASSPORT_PAGES} pages in one reading.", "error")
+        else:
+            document.selected_pages = ", ".join(str(p) for p in pages)
+            db.session.commit()
+            flash(f"Pages {document.selected_pages} picked.")
+        return redirect(url_for("main.passport_pages", document_id=document.id))
+    texts = passport_reader.page_texts(services.passport_path(document, current_app.instance_path))
+    pages = [
+        dict(number=i, text=" ".join(t.split())[:400], has_text=passport_reader.has_text(t),
+             likely=passport_reader.likely_spec_page(t), selected=i in document.selected)
+        for i, t in enumerate(texts, start=1)
+    ]
+    return render_template("passport_pages.html", document=document, pages=pages, max_pages=MAX_PASSPORT_PAGES)
+
+
+@bp.route("/machine/passport/<int:document_id>/file")
+def passport_file(document_id):
+    document = db.get_or_404(MachineDocument, document_id)
+    return send_from_directory(services.machine_docs_dir(current_app.instance_path), document.stored_filename)
 
 
 def _tool_fields(form):
