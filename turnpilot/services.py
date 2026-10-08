@@ -541,6 +541,47 @@ def store_catalogue(upload, title, instance_path):
     return document
 
 
+def read_catalogue_document(document, instance_path, config, client=None):
+    """One paid call on the picked pages. The rows the code takes become rows to check (status "read", with this
+    document); the earlier unconfirmed rows of this document are set aside (rejected, never used)."""
+    pages = document.selected
+    if not pages or not document.material_groups:
+        raise UploadError("Pick the pages and the material groups first.")
+    path = catalogue_path(document, instance_path)
+    model = config["ANTHROPIC_MODEL"]
+    document.model, document.prompt_version = model, catalogue_reader.prompt_version()
+    document.read_pages, document.read_at = document.selected_pages, datetime.now(timezone.utc)
+    document.error = document.raw_response = document.not_taken = None
+    try:
+        tool_input, raw = catalogue_reader.read_catalogue(path, pages, document.material_groups, document.codes,
+                                                          client or drawing_reader.make_client(), model)
+    except catalogue_reader.CatalogueReadError as exc:
+        document.status, document.error = "failed", str(exc)
+        document.raw_response = json.dumps(exc.raw) if exc.raw is not None else None
+        db.session.commit()
+        return document
+    except Exception as exc:  # API / network / auth errors: keep a record instead of a 500
+        document.status, document.error = "failed", f"{type(exc).__name__}: {exc}"
+        db.session.commit()
+        return document
+    texts = catalogue_pages(document, instance_path)["texts"]
+    taken, not_taken = catalogue_reader.check_reading(
+        tool_input, {n: texts[n - 1] for n in pages}, document.material_groups, document.codes)
+    for row in db.session.execute(db.select(CuttingDataRow).filter_by(document_id=document.id, status="read")).scalars():
+        row.status, row.note = "rejected", "set aside: the document was read again"
+    for data in taken:
+        checks = data.pop("checks")
+        db.session.add(CuttingDataRow(
+            catalogue=document.title, document_id=document.id, origin="model", status="read",
+            checks=json.dumps(checks, ensure_ascii=False) if checks else None,
+            note=f"read by {model} ({document.prompt_version})", **data))
+    document.status = "read"
+    document.raw_response = json.dumps(raw)
+    document.not_taken = json.dumps(not_taken, ensure_ascii=False)
+    db.session.commit()
+    return document
+
+
 def drawings_dir(instance_path):
     path = os.path.join(instance_path, "drawings")
     os.makedirs(path, exist_ok=True)

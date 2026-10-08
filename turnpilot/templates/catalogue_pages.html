@@ -1,5 +1,32 @@
 {% extends "base.html" %}
-{% block title %}Catalogue pages{% endblock %}
+{% block title %}Catalogue pages
+{% if estimate %}
+<h2>Read the picked pages</h2>
+<form method="post" action="{{ url_for('main.read_catalogue', document_id=document.id) }}" class="card">
+  <p>Pages {{ document.selected_pages }} (each as text and as an image), groups {{ document.material_groups }} ·
+    <strong>{{ estimate.calls }} API call</strong> to {{ model }}, about {{ estimate.input_tokens }} input tokens,
+    at most {{ estimate.max_output_tokens }} output tokens.</p>
+  <label class="inline"><input type="checkbox" name="paid" value="1"> I start a paid reading (one API call)</label>
+  <button type="submit" class="js-reading">Read</button>
+  {% if document.status == "read" %}<p class="muted small">Read {{ document.read_at.strftime("%Y-%m-%d %H:%M") }}
+    (pages {{ document.read_pages }}): <a href="{{ url_for('main.cutting_data') }}">check the rows</a>; reading
+    again makes a new paid call and sets aside the rows not confirmed yet.</p>{% endif %}
+  {% if document.status == "failed" %}<p class="warning">Last reading failed: {{ document.error }}</p>{% endif %}
+</form>
+{% endif %}
+{% if not_taken %}
+<h2>Not taken from the last reading ({{ not_taken|length }})</h2>
+<table class="card">
+  <thead><tr><th>Row as read</th><th>Why</th></tr></thead>
+  <tbody>
+  {% for item in not_taken %}
+    <tr><td class="small">{{ item.row.kind }} {{ item.row.insert_code or item.row.grade }} {{ item.row.material_group }}
+      (PDF p. {{ item.row.pdf_page }}): “{{ item.row.quote }}”</td><td class="small warning">{{ item.reason }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
 {% block content %}
 <h1>{{ document.title }}</h1>
 <p class="muted">{{ document.original_filename }} · {{ document.pages }} pages, {{ document.text_pages }} with text ·
@@ -51,6 +78,33 @@
       <td>{{ p.number }}</td><td>{{ p.label }}</td>
       <td class="small">{% if p.has_text %}{{ p.text }}{% else %}<span class="muted">no text (an image): read as an image, every row gets a "check"</span>{% endif %}</td>
     </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if estimate %}
+<h2>Read the picked pages</h2>
+<form method="post" action="{{ url_for('main.read_catalogue', document_id=document.id) }}" class="card">
+  <p>Pages {{ document.selected_pages }} (each as text and as an image), groups {{ document.material_groups }} ·
+    <strong>{{ estimate.calls }} API call</strong> to {{ model }}, about {{ estimate.input_tokens }} input tokens,
+    at most {{ estimate.max_output_tokens }} output tokens.</p>
+  <label class="inline"><input type="checkbox" name="paid" value="1"> I start a paid reading (one API call)</label>
+  <button type="submit" class="js-reading">Read</button>
+  {% if document.status == "read" %}<p class="muted small">Read {{ document.read_at.strftime("%Y-%m-%d %H:%M") }}
+    (pages {{ document.read_pages }}): <a href="{{ url_for('main.cutting_data') }}">check the rows</a>; reading
+    again makes a new paid call and sets aside the rows not confirmed yet.</p>{% endif %}
+  {% if document.status == "failed" %}<p class="warning">Last reading failed: {{ document.error }}</p>{% endif %}
+</form>
+{% endif %}
+{% if not_taken %}
+<h2>Not taken from the last reading ({{ not_taken|length }})</h2>
+<table class="card">
+  <thead><tr><th>Row as read</th><th>Why</th></tr></thead>
+  <tbody>
+  {% for item in not_taken %}
+    <tr><td class="small">{{ item.row.kind }} {{ item.row.insert_code or item.row.grade }} {{ item.row.material_group }}
+      (PDF p. {{ item.row.pdf_page }}): “{{ item.row.quote }}”</td><td class="small warning">{{ item.reason }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

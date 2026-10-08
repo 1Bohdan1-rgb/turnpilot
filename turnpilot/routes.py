@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -335,11 +336,36 @@ def catalogue_pages(document_id):
                     likely=catalogue_reader.likely_cutting_data_page(text), text=catalogue_reader.snippet(text, query))
 
     default_groups, default_codes = _default_targets()
+    estimate = None
+    if document.selected and document.material_groups:
+        estimate = catalogue_reader.estimate(services.catalogue_path(document, current_app.instance_path),
+                                             document.selected, document.material_groups, document.codes)
     return render_template(
         "catalogue_pages.html", document=document, query=query, found=[page_row(n) for n in found],
+        estimate=estimate, model=current_app.config["ANTHROPIC_MODEL"],
+        not_taken=json.loads(document.not_taken) if document.not_taken else [],
         picked=[page_row(n) for n in document.selected], max_pages=MAX_CATALOGUE_PAGES,
         groups=document.material_groups or default_groups, codes=document.codes if document.codes is not None else default_codes,
     )
+
+
+@bp.route("/cutting-data/catalogues/<int:document_id>/read", methods=["POST"])
+def read_catalogue(document_id):
+    """The paid call: only on the operator's explicit request, for the picked pages."""
+    document = db.get_or_404(CatalogueDocument, document_id)
+    if not request.form.get("paid"):
+        flash("Tick that you start a paid reading (one API call).", "error")
+        return redirect(url_for("main.catalogue_pages", document_id=document.id))
+    try:
+        services.read_catalogue_document(document, current_app.instance_path, current_app.config,
+                                         client=current_app.config.get("ANTHROPIC_CLIENT"))
+    except services.UploadError as e:
+        flash(str(e), "error")
+        return redirect(url_for("main.catalogue_pages", document_id=document.id))
+    if document.status != "read":
+        flash(f"The catalogue could not be read: {document.error}", "error")
+        return redirect(url_for("main.catalogue_pages", document_id=document.id))
+    return redirect(url_for("main.cutting_data"))
 
 
 @bp.route("/cutting-data/catalogues/<int:document_id>/file")
