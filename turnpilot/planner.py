@@ -89,6 +89,10 @@ class ToolSpec:
     ap_rec: float | None = None
     f_rec: float | None = None
     vc_points: tuple = ()
+    # Where the values come from for this job's material (services.turret_entries with a material): the confirmed
+    # catalogue rows (catalogue_note), or what is the tool's own value and needs a check (catalogue_warning).
+    catalogue_note: str | None = None
+    catalogue_warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1385,8 +1389,12 @@ def _note_source(op: PlannedOperation, tool: ToolSpec) -> None:
         vc_from = f"Vc(f) at f {op.f:g}" if tool.vc_points else "the Vc range"
         op.notes.append(f"catalogue values: f rec {tool.f_rec:g}, ap rec "
                         f"{tool.ap_rec if tool.ap_rec is not None else '—'}; Vc {op.vc:g} from {vc_from}")
+    if tool.catalogue_note:
+        op.notes.append(tool.catalogue_note)
     if tool.source:
         op.notes.append(f"cutting data ranges: {tool.source}")
+    if tool.catalogue_warning:
+        op.warnings.append(tool.catalogue_warning)
 
 
 def _plan_centring(op, job, turret, max_rpm) -> PlannedOperation:

@@ -1,7 +1,7 @@
 """Thread speed check: the Z axis moves at n·P when threading; the machine's limit, or a warning without one."""
 import re
 
-from conftest import seed_turret
+from conftest import confirm_p12_catalogue, seed_turret
 from turnpilot import services
 from turnpilot.models import db
 
@@ -125,6 +125,7 @@ def test_limit_from_the_machine_page_through_the_app(client):
     job = db.session.execute(db.select(Job)).scalar_one()
     client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=24, length=22))
     client.post(f"/jobs/{job.id}/features", data=dict(type="thread", diameter=24, length=22, pitch=1.5))
+    confirm_p12_catalogue()  # the catalogue's values, else every operation asks to check its tool's values
 
     def thread_op():
         client.post(f"/jobs/{job.id}/calculate")

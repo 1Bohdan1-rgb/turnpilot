@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 import re
 
+from .planner import parse_vc_points
+
 # The catalogue's Vc tables are per application: a grade has other Vc for grooving than for turning.
 APPLICATION_BY_TOOL_TYPE = {
     "facing": "turning",
@@ -103,3 +105,63 @@ def describe(row) -> str:
     if row.vc_min is not None or row.vc_max is not None:
         parts.append(f"Vc {_fmt(row.vc_min)}–{_fmt(row.vc_max)}")
     return "; ".join(parts)
+
+
+# --- the planner's cutting data from the confirmed rows ---------------------------------------------------
+
+NO_GROUP_WARNING = ("{material} has no catalogue group (Machine page, Materials): cutting data are the tool's own "
+                    "values, not from a confirmed catalogue table (check)")
+NO_APPLICATION_WARNING = "no catalogue cutting data for {type} tools: the tool's own values (check)"
+NO_GEOMETRY_WARNING = ("no confirmed catalogue ap / f for {code} in {group}: the tool's own values (check)")
+NO_GRADE_WARNING = ("no confirmed catalogue Vc for {grade} ({application}) in {group}: the tool's own values "
+                    "(check)")
+
+
+def _source(row, what: str) -> str:
+    page = f" p. {row.page}" if row.page else ""
+    graph = ", from a graph" if row.from_graph else ""
+    by = "entered by the operator" if row.origin == "operator" else "confirmed"
+    when = f" {row.confirmed_at:%Y-%m-%d}" if row.confirmed_at else ""
+    return f"{what}: {row.catalogue}{page}{graph} ({by}{when})"
+
+
+def catalogue_values(tool_type: str, insert_code: str | None, grade: str | None, material_name: str,
+                     material_group: str | None, rows) -> dict:
+    """What the confirmed rows give a tool for a material, as ToolSpec fields: ap / f from the insert's geometry
+    row, Vc from the grade's row, and the note naming the catalogue and pages (catalogue_note). What they do not
+    give stays the tool's own value, and catalogue_warning asks to check it. rows: the confirmed rows."""
+    if not material_group:
+        return {"catalogue_warning": NO_GROUP_WARNING.format(material=material_name)}
+    application = application_for(tool_type)
+    if application is None:
+        return {"catalogue_warning": NO_APPLICATION_WARNING.format(type=tool_type)}
+    values, sources, warnings = {}, [], []
+    geometry = geometry_row(rows, insert_code, material_group)
+    if geometry is None:
+        warnings.append(NO_GEOMETRY_WARNING.format(code=insert_code or "a tool without an insert code",
+                                                   group=material_group))
+    else:
+        values.update({k: getattr(geometry, k) for k in ("ap_min", "ap_rec", "ap_max", "f_min", "f_rec", "f_max")
+                       if getattr(geometry, k) is not None})
+        sources.append(_source(geometry, "ap / f"))
+    grade_vc = grade_row(rows, grade, tool_type, material_group)
+    if grade_vc is None:
+        warnings.append(NO_GRADE_WARNING.format(grade=grade or "no grade", application=application,
+                                                group=material_group))
+    else:
+        points = parse_vc_points(grade_vc.vc_points)
+        if points:
+            values["vc_points"] = points
+        speeds = [vc for _, vc in points]
+        for key, given, fallback in (("vc_min", grade_vc.vc_min, min(speeds, default=None)),
+                                     ("vc_max", grade_vc.vc_max, max(speeds, default=None))):
+            if (given if given is not None else fallback) is not None:
+                values[key] = given if given is not None else fallback
+        sources.append(_source(grade_vc, "Vc"))
+    if sources:
+        values["catalogue_note"] = f"cutting data for {material_group}: " + "; ".join(sources)
+    if warnings:
+        values["catalogue_warning"] = "; ".join(warnings)
+    else:
+        values["source"] = None  # every number is from the catalogue rows: the tool's own source is not used
+    return values

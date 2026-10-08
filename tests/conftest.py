@@ -112,3 +112,17 @@ def seed_turret():
         return ToolSpec(id=position, **data)
 
     return [TurretEntry(position, spec(position, tool)) for position, tool in TURRET_TOOLS.items()]
+
+
+def confirm_p12_catalogue():
+    """Import docs/turnpilot_catalog_P1.2.md and confirm all its rows, as the operator would on the review screen."""
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from turnpilot import services
+    from turnpilot.models import CuttingDataRow
+
+    services.import_hand_typed(str(Path(__file__).parent.parent / "docs"), "turnpilot_catalog_P1.2.md")
+    for row in db.session.execute(db.select(CuttingDataRow)).scalars():
+        row.status, row.confirmed_at = "confirmed", datetime.now(timezone.utc)
+    db.session.commit()

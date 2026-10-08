@@ -5,6 +5,7 @@ import json
 import os
 import re
 import uuid
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from . import catalogue_file, cutting_data, drawing_reader, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
@@ -104,7 +105,22 @@ def check_machine(machine):
         raise MachineError("Min spindle speed is above the max")
 
 
-def tool_spec(tool):
+def tool_spec(tool, material=None, rows=()):
+    """The tool as the planner sees it. With a material: ap / f / Vc from the confirmed catalogue rows (rows) of
+    the material's group where they give them, with the note naming the source, else the tool's own values with
+    a warning (cutting_data.catalogue_values)."""
+    spec = _tool_spec(tool)
+    if material is None:
+        return spec
+    return replace(spec, **cutting_data.catalogue_values(
+        tool.type, tool.insert_code, tool.grade, material.name, material.catalogue_group, rows))
+
+
+def confirmed_rows():
+    return db.session.execute(db.select(CuttingDataRow).filter_by(status="confirmed")).scalars().all()
+
+
+def _tool_spec(tool):
     return planner.ToolSpec(
         id=tool.id,
         name=tool.name,
@@ -127,8 +143,11 @@ def tool_spec(tool):
     )
 
 
-def turret_entries(machine):
-    return [planner.TurretEntry(s.position, tool_spec(s.tool)) for s in machine.slots if s.tool is not None]
+def turret_entries(machine, material=None):
+    """The turret as the planner sees it; with a material, its cutting data from the confirmed catalogue rows."""
+    rows = confirmed_rows() if material is not None else ()
+    return [planner.TurretEntry(s.position, tool_spec(s.tool, material, rows))
+            for s in machine.slots if s.tool is not None]
 
 
 def _roughness_for_planner(feature):
@@ -174,7 +193,8 @@ def calculate_operations(job, machine):
         op.is_archived = True
     power = planner.PowerSpec(machine.power_kw, machine.drive_efficiency)
     limits = planner.MachineLimits(machine.min_rpm, machine.coolant, machine.live_tooling, machine.c_axis)
-    for planned in planner.plan_job(job_spec(job), turret_entries(machine), machine.max_rpm, machine.max_thread_feed,
+    for planned in planner.plan_job(job_spec(job), turret_entries(machine, job.material), machine.max_rpm,
+                                    machine.max_thread_feed,
                                     power, limits):
         job.operations.append(
             Operation(

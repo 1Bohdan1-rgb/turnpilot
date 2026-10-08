@@ -1,5 +1,5 @@
 """Spindle power check of roughing: Pc = Vc·ap·f·kc / 60000 against power_kw × drive efficiency."""
-from conftest import seed_turret
+from conftest import confirm_p12_catalogue, seed_turret
 from turnpilot import services
 from turnpilot.models import Material, db
 
@@ -163,6 +163,7 @@ def test_power_check_through_the_app(client):
                                    blank_length=60))
     job = db.session.execute(db.select(Job)).scalar_one()
     client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=36, length=40))  # 4.3 mm/side
+    confirm_p12_catalogue()  # the catalogue's values, else every operation asks to check its tool's values
 
     def rough():
         client.post(f"/jobs/{job.id}/calculate")
