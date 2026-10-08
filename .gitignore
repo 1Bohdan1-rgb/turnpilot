@@ -226,3 +226,5 @@ tests/fixtures/drawings/real_*
 real_dxf/
 # Tool makers' catalogue PDFs (copyright): local only; the numbers taken from them are in docs/turnpilot_catalog_*.md
 docs/catalogs/*.pdf
+# DXF blind check (roadmap stage 3): new drawings and their expected answers, local only (copyright)
+dxf_blind/
