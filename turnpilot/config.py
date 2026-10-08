@@ -12,6 +12,8 @@ class DefaultConfig:
 
     # --- drawing upload ---------------------------------------------------
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # bytes; larger uploads get HTTP 413
+    # A tool maker's catalogue (PDF, hundreds of pages) is kept in instance/catalogues/; only picked pages are read.
+    MAX_CATALOGUE_LENGTH = 300 * 1024 * 1024
     ALLOWED_DRAWING_EXTENSIONS = ("png", "jpg", "jpeg", "pdf", "dxf")  # dxf: KOMPAS-3D, read by the code
 
     # --- Claude vision ----------------------------------------------------

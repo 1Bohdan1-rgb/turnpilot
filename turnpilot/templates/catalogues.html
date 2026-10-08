@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Catalogues{% endblock %}
+{% block content %}
+<h1>Tool makers' catalogues</h1>
+<p class="muted">· <a href="{{ url_for('main.cutting_data') }}">cutting data</a></p>
+<p class="muted small">Upload a catalogue (PDF, up to {{ limit_mb }} MB). It is kept on this computer only
+  (instance/catalogues/), never in git. Then find and pick its cutting data pages: only those are read. The rows
+  read come with their page and quote for you to confirm; nothing reaches the planner before you confirm it.
+  Values the catalogue gives only as a graph are not read: enter them by hand.</p>
+<form method="post" enctype="multipart/form-data" class="card upload-form">
+  <label>Catalogue <input name="title" placeholder="e.g. Sandvik Coromant Turning tools 2020" size="40"></label>
+  <input type="file" name="catalogue" accept=".pdf,application/pdf" required>
+  <button type="submit" class="js-reading">Upload</button>
+</form>
+{% if documents %}
+<h2>Uploaded</h2>
+<table class="card">
+  <thead><tr><th>Catalogue</th><th>File</th><th>Pages</th><th>With text</th><th>Picked</th><th>Read</th><th>Uploaded</th></tr></thead>
+  <tbody>
+  {% for d in documents %}
+    <tr>
+      <td><a href="{{ url_for('main.catalogue_pages', document_id=d.id) }}">{{ d.title }}</a></td>
+      <td class="small">{{ d.original_filename }} · {{ (d.size_bytes / 1048576)|round(1) }} MB</td>
+      <td>{{ d.pages }}</td>
+      <td>{{ d.text_pages }}{% if d.text_pages == 0 %} (a scan){% endif %}</td>
+      <td>{{ d.selected_pages or "—" }}</td>
+      <td>{{ d.status }}</td>
+      <td>{{ d.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

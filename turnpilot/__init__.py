@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, flash, redirect, url_for
+from flask import Flask, flash, redirect, request, url_for
 from flask_migrate import Migrate
 from werkzeug.exceptions import RequestEntityTooLarge
 
@@ -31,8 +31,9 @@ def create_app(test_config=None, instance_path=None):
 
     @app.errorhandler(RequestEntityTooLarge)
     def file_too_large(_error):
-        limit_mb = app.config["MAX_CONTENT_LENGTH"] / (1024 * 1024)
+        catalogue = request.endpoint == "main.catalogues"
+        limit_mb = app.config["MAX_CATALOGUE_LENGTH" if catalogue else "MAX_CONTENT_LENGTH"] / (1024 * 1024)
         flash(f"The file is too large (limit {limit_mb:g} MB).", "error")
-        return redirect(url_for("main.upload_drawing"))
+        return redirect(url_for("main.catalogues" if catalogue else "main.upload_drawing"))
 
     return app

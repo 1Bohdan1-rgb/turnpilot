@@ -8,10 +8,10 @@ import uuid
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
-from . import catalogue_file, cutting_data, drawing_reader, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
+from . import catalogue_file, catalogue_reader, cutting_data, drawing_reader, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
 from .models import (
-    CuttingDataRow, DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, TurretSlot, db,
+    CatalogueDocument, CuttingDataRow, DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, TurretSlot, db,
 )
 
 # Extra names a material may appear under on a drawing (compared after normalization).
@@ -490,6 +490,55 @@ def import_hand_typed(docs_dir, filename):
         added += 1
     db.session.commit()
     return added, already
+
+
+def catalogues_dir(instance_path):
+    """Uploaded catalogues: instance/catalogues/ (instance/ is not in git: the catalogues are the makers' files)."""
+    path = os.path.join(instance_path, "catalogues")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def catalogue_path(document, instance_path):
+    return os.path.join(catalogues_dir(instance_path), document.stored_filename)
+
+
+def catalogue_pages(document, instance_path):
+    """The text and label of every page, read once at the upload."""
+    return catalogue_reader.load_pages(catalogue_path(document, instance_path) + ".pages.json")
+
+
+def store_catalogue(upload, title, instance_path):
+    """Keep an uploaded catalogue PDF (saved as it streams in, it may be large) and its pages' text. Raises
+    UploadError for anything else."""
+    name = display_filename(upload.filename)
+    stored = f"{uuid.uuid4().hex}.pdf"
+    path = os.path.join(catalogues_dir(instance_path), stored)
+    upload.save(path)
+    digest, size = hashlib.sha256(), 0
+    with open(path, "rb") as f:
+        head = f.read(4096)
+        f.seek(0)
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+            size += len(chunk)
+    if not size or drawing_reader.detect_file_type(head) != "pdf":
+        os.remove(path)
+        raise UploadError("The catalogue must be a PDF file." if size else "The file is empty.")
+    try:
+        pages = catalogue_reader.read_pages(path)
+    except Exception as exc:  # a broken PDF: keep no record
+        os.remove(path)
+        raise UploadError(f"The PDF cannot be read: {exc}") from None
+    catalogue_reader.save_pages(pages, path + ".pages.json")
+    document = CatalogueDocument(
+        original_filename=name, stored_filename=stored, title=(title or "").strip()[:200] or name,
+        sha256=digest.hexdigest(), size_bytes=size, pages=len(pages["texts"]),
+        text_pages=sum(passport_reader.has_text(t) for t in pages["texts"]),
+    )
+    db.session.add(document)
+    db.session.commit()
+    return document
 
 
 def drawings_dir(instance_path):

@@ -15,7 +15,7 @@ from flask import (
     url_for,
 )
 
-from . import cutting_data as cd, drawing_reader, number_check, passport_reader, planner, services
+from . import catalogue_reader, cutting_data as cd, drawing_reader, number_check, passport_reader, planner, services
 from .extraction_schema import (
     RADIUS_TYPES,
     START_DIAMETER_TYPES,
@@ -27,6 +27,7 @@ from .machine_spec import MACHINE_FIELDS, SOURCE_OPERATOR, format_value, parse_v
 from .models import (
     BLANK_SHAPES,
     FEATURE_TYPES,
+    CatalogueDocument,
     CuttingDataRow,
     DrawingExtraction,
     ISO_GROUPS,
@@ -264,6 +265,87 @@ def import_cutting_data():
     else:
         flash(f"{added} row(s) to check added; {already} already there.")
     return redirect(url_for("main.cutting_data"))
+
+
+MAX_CATALOGUE_PAGES = 20  # pages sent to the model in one reading (cost)
+
+
+@bp.route("/cutting-data/catalogues", methods=["GET", "POST"])
+def catalogues():
+    if request.method == "POST":
+        request.max_content_length = current_app.config["MAX_CATALOGUE_LENGTH"]  # before the form is read
+        upload = request.files.get("catalogue")
+        if upload is None or not upload.filename:
+            flash("Choose the catalogue (PDF).", "error")
+            return redirect(url_for("main.catalogues"))
+        try:
+            document = services.store_catalogue(upload, request.form.get("title"), current_app.instance_path)
+        except services.UploadError as e:
+            flash(str(e), "error")
+            return redirect(url_for("main.catalogues"))
+        return redirect(url_for("main.catalogue_pages", document_id=document.id))
+    documents = db.session.execute(
+        db.select(CatalogueDocument).order_by(CatalogueDocument.created_at.desc())
+    ).scalars().all()
+    limit_mb = current_app.config["MAX_CATALOGUE_LENGTH"] // (1024 * 1024)
+    return render_template("catalogues.html", documents=documents, limit_mb=limit_mb)
+
+
+def _default_targets():
+    """The material groups of the materials and the insert codes / grades of the library: what to record."""
+    groups = sorted({m.catalogue_group for m in db.session.execute(db.select(Material)).scalars() if m.catalogue_group})
+    tools = db.session.execute(db.select(Tool).filter_by(is_retired=False).order_by(Tool.name)).scalars()
+    codes = list(dict.fromkeys(c for t in tools for c in (t.insert_code, t.grade) if c))
+    return ", ".join(groups), "\n".join(codes)
+
+
+@bp.route("/cutting-data/catalogues/<int:document_id>", methods=["GET", "POST"])
+def catalogue_pages(document_id):
+    """Find the cutting data pages (search, "likely" marks) and pick the ones to read, with what to record."""
+    document = db.get_or_404(CatalogueDocument, document_id)
+    pages = services.catalogue_pages(document, current_app.instance_path)
+    if request.method == "POST":
+        try:
+            picked = catalogue_reader.resolve_pages(request.form.get("pages", ""), pages)
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("main.catalogue_pages", document_id=document.id))
+        groups = ", ".join(g.strip() for g in request.form.get("material_groups", "").split(",") if g.strip())
+        if not picked:
+            flash("Pick the pages with the cutting data.", "error")
+        elif len(picked) > MAX_CATALOGUE_PAGES:
+            flash(f"At most {MAX_CATALOGUE_PAGES} pages in one reading.", "error")
+        elif not groups:
+            flash("Write the material groups to record (e.g. P1.2).", "error")
+        else:
+            document.selected_pages = ", ".join(str(p) for p in picked)
+            document.material_groups = groups[:100]
+            document.codes = request.form.get("codes", "").strip() or None
+            db.session.commit()
+            flash(f"Pages {document.selected_pages} picked.")
+        return redirect(url_for("main.catalogue_pages", document_id=document.id))
+    query = request.args.get("q", "").strip()
+    found = catalogue_reader.search(pages, query) if query else []
+    if not query:  # without a search: the pages that look like cutting data
+        found = [i for i, t in enumerate(pages["texts"], start=1) if catalogue_reader.likely_cutting_data_page(t)][:50]
+
+    def page_row(number):
+        text = pages["texts"][number - 1]
+        return dict(number=number, label=pages["labels"][number - 1], has_text=catalogue_reader.page_has_text(pages, number),
+                    likely=catalogue_reader.likely_cutting_data_page(text), text=catalogue_reader.snippet(text, query))
+
+    default_groups, default_codes = _default_targets()
+    return render_template(
+        "catalogue_pages.html", document=document, query=query, found=[page_row(n) for n in found],
+        picked=[page_row(n) for n in document.selected], max_pages=MAX_CATALOGUE_PAGES,
+        groups=document.material_groups or default_groups, codes=document.codes if document.codes is not None else default_codes,
+    )
+
+
+@bp.route("/cutting-data/catalogues/<int:document_id>/file")
+def catalogue_file(document_id):
+    document = db.get_or_404(CatalogueDocument, document_id)
+    return send_from_directory(services.catalogues_dir(current_app.instance_path), document.stored_filename)
 
 
 def _tool_fields(form):

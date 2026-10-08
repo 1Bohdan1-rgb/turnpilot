@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Catalogue pages{% endblock %}
+{% block content %}
+<h1>{{ document.title }}</h1>
+<p class="muted">{{ document.original_filename }} · {{ document.pages }} pages, {{ document.text_pages }} with text ·
+  <a href="{{ url_for('main.catalogue_file', document_id=document.id) }}" target="_blank">open the PDF</a> ·
+  <a href="{{ url_for('main.catalogues') }}">all catalogues</a></p>
+
+<h2>Find the pages</h2>
+<form method="get" class="card">
+  <input name="q" value="{{ query }}" placeholder="insert code, grade or page label, e.g. CNMG 12 04 08-PM" size="40">
+  <button type="submit">Search</button>
+  <p class="muted small">Spaces are ignored ("CNMG120408-PM" finds "CNMG 12 04 08-PM"). Without a search the list
+    shows the pages whose text has words like "m/min" and "fn" / "ap" ("likely").</p>
+</form>
+{% if found %}
+<table class="card catalogue-pages">
+  <thead><tr><th>PDF page</th><th>Label</th><th>Text</th></tr></thead>
+  <tbody>
+  {% for p in found %}
+    <tr>
+      <td><a href="{{ url_for('main.catalogue_file', document_id=document.id) }}#page={{ p.number }}" target="_blank">{{ p.number }}</a>
+        {% if p.likely %}<span class="badge badge-suggested">likely</span>{% endif %}</td>
+      <td>{{ p.label }}</td>
+      <td class="small">{% if p.has_text %}{{ p.text }}{% else %}<span class="muted">no text (an image)</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% elif query %}<p class="muted">No page has “{{ query }}”.</p>{% endif %}
+
+<h2>Pick the pages to read</h2>
+<form method="post" class="card grid-form">
+  <label>Pages (at most {{ max_pages }}): PDF page numbers or printed labels
+    <input name="pages" value="{{ document.selected_pages or '' }}" placeholder="280-282, 285 or A283, A285">
+  </label>
+  <label>Material groups to record
+    <input name="material_groups" value="{{ groups }}" placeholder="P1.2">
+  </label>
+  <label>Insert codes and grades to record (the shop's tools; one per line, empty: all on the pages)
+    <textarea name="codes" rows="6">{{ codes }}</textarea>
+  </label>
+  <button type="submit">Save the picked pages</button>
+</form>
+{% if picked %}
+<table class="card catalogue-pages">
+  <thead><tr><th>PDF page</th><th>Label</th><th>Text</th></tr></thead>
+  <tbody>
+  {% for p in picked %}
+    <tr>
+      <td>{{ p.number }}</td><td>{{ p.label }}</td>
+      <td class="small">{% if p.has_text %}{{ p.text }}{% else %}<span class="muted">no text (an image): read as an image, every row gets a "check"</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

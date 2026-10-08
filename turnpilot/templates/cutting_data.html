@@ -7,6 +7,7 @@
   drilling) and the material's catalogue group (Machine page, Materials). Every number keeps its catalogue and
   page, and the operator confirms it. A tool without confirmed rows for the job's material uses its own values,
   and its operations ask you to check them.</p>
+<p><a href="{{ url_for('main.catalogues') }}">Catalogues (PDF): upload, pick the pages, read them</a></p>
 
 {% if hand_typed %}
 <form method="post" action="{{ url_for('main.import_cutting_data') }}" class="card">
