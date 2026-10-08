@@ -11,7 +11,7 @@ import math
 import re
 from dataclasses import dataclass, field, replace
 
-from .extraction_schema import WRENCH_SIZES_MM, coarse_pitch, hex_across_corners, hex_across_flats
+from .extraction_schema import WRENCH_SIZES_MM, hex_across_corners, hex_across_flats
 
 G96_NOTE = "G96 constant surface speed, capped at max RPM"
 G97_THREAD_NOTE = "G97 constant RPM — required for threading"
@@ -849,22 +849,53 @@ def match_chamfers(features: list[FeatureSpec]) -> dict[int, FeatureSpec]:
 
 
 # Tap drill diameters for ISO coarse threads (ISO 2306), mm; other sizes: nominal - pitch.
-TAP_DRILL_MM = {
-    3: 2.5, 4: 3.3, 5: 4.2, 6: 5.0, 8: 6.8, 10: 8.5, 12: 10.2, 14: 12.0, 16: 14.0, 18: 15.5, 20: 17.5,
-    22: 19.5, 24: 21.0, 27: 24.0, 30: 26.5, 33: 29.5, 36: 32.0, 42: 37.5, 48: 43.0,
+# Hole for a cutting tap (DIN 13), Sandvik Coromant Solid round tools 2020, "Hole size recommendations, cutting
+# taps": PHD the recommended hole (the drill), PHDX the largest allowed (6H). C157: coarse pitch, nominal: (P, PHD,
+# PHDX); C158: fine pitch, (nominal, P): (PHD, PHDX). Forming taps need other holes (C155): not covered.
+TAP_HOLES_C157 = {
+    3: (0.5, 2.5, 2.599), 4: (0.7, 3.3, 3.422), 5: (0.8, 4.2, 4.334), 6: (1.0, 5.0, 5.153), 8: (1.25, 6.8, 6.912),
+    10: (1.5, 8.5, 8.676), 12: (1.75, 10.2, 10.441), 14: (2.0, 12.0, 12.21), 16: (2.0, 14.0, 14.21),
+    18: (2.5, 15.5, 15.744), 20: (2.5, 17.5, 17.744), 22: (2.5, 19.5, 19.744), 24: (3.0, 21.0, 21.252),
+    27: (3.0, 24.0, 24.252), 30: (3.5, 26.5, 26.771), 33: (3.5, 29.5, 29.771), 36: (4.0, 32.0, 32.27),
+    42: (4.5, 37.5, 37.799), 48: (5.0, 43.0, 43.297),
 }
+TAP_HOLES_C158 = {
+    (8, 1.0): (7.0, 7.153), (10, 1.0): (9.0, 9.153), (10, 1.25): (8.8, 8.912), (12, 1.0): (11.0, 11.153),
+    (12, 1.25): (10.75, 10.912), (12, 1.5): (10.5, 10.676), (14, 1.5): (12.5, 12.676), (16, 1.5): (14.5, 14.676),
+    (18, 1.5): (16.5, 16.676), (20, 1.5): (18.5, 18.676), (20, 2.0): (18.0, 18.21), (22, 1.5): (20.5, 20.676),
+    (24, 1.5): (22.5, 22.676), (24, 2.0): (22.0, 22.21), (27, 1.5): (25.5, 25.676), (30, 1.5): (28.5, 28.676),
+    (30, 2.0): (28.0, 28.21),
+}
+TAP_HOLE_SOURCE = "Sandvik Solid round tools 2020, {page}"
+TAP_HOLE_NOTE = "tap drill Ø{phd:g} (PHD, max Ø{phdx:g} PHDX): {source}"
+TAP_HOLE_NOT_IN_CATALOGUE = "tap drill Ø{phd:g} (d − P): not in catalogue"
 INTERNAL_THREAD_DEPTH_FACTOR = 0.541  # H1 of an internal metric thread: 0.541 * pitch
 TAPPING_NOTE = "G84 rigid tapping, feed = pitch"
 NO_INTERNAL_THREAD_TOOL = "manual operation: no tap or internal threading tool in the turret"
 NO_DRILL = "manual operation: no drill in the turret"
 
 
+@dataclass(frozen=True)
+class TapHole:
+    phd: float  # the recommended hole: the drill
+    phdx: float | None = None  # the largest allowed hole (6H); None when not in the catalogue
+    source: str | None = None
+
+
+def tap_hole(nominal: float, pitch: float) -> TapHole:
+    """Hole for a cutting tap: SRT C157 (coarse) / C158 (fine); other threads nominal − pitch, not in catalogue."""
+    for size, (table_pitch, phd, phdx) in TAP_HOLES_C157.items():
+        if math.isclose(size, nominal) and math.isclose(pitch, table_pitch):
+            return TapHole(phd, phdx, TAP_HOLE_SOURCE.format(page="C157"))
+    for (size, table_pitch), (phd, phdx) in TAP_HOLES_C158.items():
+        if math.isclose(size, nominal) and math.isclose(pitch, table_pitch):
+            return TapHole(phd, phdx, TAP_HOLE_SOURCE.format(page="C158"))
+    return TapHole(round(nominal - pitch, 2))
+
+
 def tap_drill_diameter(nominal: float, pitch: float) -> float:
-    """Tap drill for an internal metric thread: the ISO 2306 table for coarse threads, else nominal - pitch."""
-    for size, drill in TAP_DRILL_MM.items():
-        if math.isclose(size, nominal) and math.isclose(pitch, coarse_pitch(size) or 0):
-            return drill
-    return round(nominal - pitch, 2)
+    """Tap drill for an internal metric thread: the catalogue's PHD, else nominal − pitch."""
+    return tap_hole(nominal, pitch).phd
 
 
 # --- holes: centre drilling, then a drill chosen by its diameter, then boring ---------------------------------
@@ -954,13 +985,21 @@ def plan_holes(features, iso_group: str, turret: list[TurretEntry]) -> dict[int,
             plans[id(f)] = HolePlan(entry.tool.diameter, f.length, entry, note=DRILL_NOTE.format(
                 d=entry.tool.diameter, limit=limit, hole=f.diameter, a=allowance))
         elif f.type == "thread" and f.location == "internal" and f.diameter and f.pitch:
-            size = tap_drill_diameter(f.diameter, f.pitch)
-            exact = [e for e in drills if abs(e.tool.diameter - size) <= TAP_DRILL_TOL_MM]
-            if exact:
-                plans[id(f)] = HolePlan(size, f.length, min(exact, key=lambda e: e.position))
+            hole = tap_hole(f.diameter, f.pitch)
+            size = hole.phd
+            if hole.phdx is not None:
+                # from PHD (a smaller hole overloads the tap) up to PHDX; the drill nearest to PHD
+                fits = [e for e in drills if size - DRILL_SIZE_TOL_MM <= e.tool.diameter <= hole.phdx + 1e-9]
+                note = TAP_HOLE_NOTE.format(phd=size, phdx=hole.phdx, source=hole.source)
             else:
-                plans[id(f)] = HolePlan(size, f.length, warning=NO_DRILL if not drills else NO_TAP_DRILL.format(
-                    d=size, nominal=f.diameter, pitch=f.pitch))
+                fits = [e for e in drills if abs(e.tool.diameter - size) <= TAP_DRILL_TOL_MM]
+                note = TAP_HOLE_NOT_IN_CATALOGUE.format(phd=size)
+            if fits:
+                entry = min(fits, key=lambda e: (abs(e.tool.diameter - size), e.position))
+                plans[id(f)] = HolePlan(entry.tool.diameter, f.length, entry, note=note)
+            else:
+                plans[id(f)] = HolePlan(size, f.length, note=note, warning=NO_DRILL if not drills else
+                                        NO_TAP_DRILL.format(d=size, nominal=f.diameter, pitch=f.pitch))
     # a hole drilled for one feature makes another's when it is at least as large and as deep
     by_id = {id(f): f for f in features}
     for key, plan in list(plans.items()):
