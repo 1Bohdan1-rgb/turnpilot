@@ -48,6 +48,25 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   and the finishing allowance is the finishing tool's ap rec. The seed tools T1, T2, T4-T9 carry the
   Sandvik Coromant 2020 values for steel P1.2 with their pages (`docs/turnpilot_catalog_P1.2.md`), ISO P
   only; T3 and the VCGT (N, in the library only) are placeholders.
+- **Cutting data from catalogues** (Cutting data page): a table of catalogue rows, each with its catalogue, page
+  and quote: *geometry* rows give an insert's or a drill's ap / f (min, recommended, max) by its code, *grade*
+  rows give a grade's Vc (at given feeds, or a range) per application (turning, grooving, parting, threading,
+  drilling) and material group (e.g. Sandvik Coromant P1.2, set per material on the Machine page). The planner
+  takes ap / f / Vc only from **confirmed** rows of the job's material group (a group row before an ISO letter
+  row) and names the catalogue and pages in the operation's note. What no confirmed row gives stays the tool's
+  own value, with a "(check)" warning on the operation (Approve is not blocked). The confirmed P1.2 file gives
+  the seed tools exactly the numbers they carry (tested). Rows come from:
+  - the hand-typed file `docs/turnpilot_catalog_P1.2.md` (Import button; no model call);
+  - a catalogue PDF (up to 300 MB, kept in `instance/catalogues/`, never in git): search its pages, pick up to
+    20, and start one paid reading with an explicit tick (calls and tokens shown before). Each page is sent as
+    text and as an image. The code drops a row without a picked page or a quote, outside the groups and codes
+    asked for, with values out of order, or read off a graph; it looks for the quote and every number on the
+    page and marks what it does not find "check";
+  - the operator, by hand (values the catalogue gives only as a graph), with catalogue and page required.
+  On the review screen the operator confirms (as read or corrected: then recorded as the operator's), rejects or
+  leaves each row. A row that gives other values than a confirmed one replaces it only on the operator's tick.
+  The tool library shows per material group whether a tool has confirmed ap / f and Vc rows.
+  `tools/eval_catalogue.py` measures a reading against a hand-typed file (paid; `--estimate` makes no call).
 - **Rough and finish boring:** a `boring_rough` tool (seed T5, CCMT09T304-PM) roughs a bore in passes of
   its ap rec; the `boring` tool (T9, CCMT09T304-PF) takes the finishing pass and sets the drill. Without a
   `boring_rough` tool the boring bar roughs too, with a note.
@@ -379,12 +398,16 @@ turnpilot/
   dxf_input.py     a DXF part as DrawingData rows + the binding report for the review screen
   config.py        settings: upload limit, model, bar sizes, allowances
   services.py      ORM <-> planner glue, edit logging, drawing upload
+  cutting_data.py  catalogue rows -> a tool's ap / f / Vc for a material group (with the source note)
+  catalogue_file.py  import of a hand-typed catalogue file (docs/turnpilot_catalog_*.md)
+  catalogue_reader.py  catalogue PDF: pages, search, the record_cutting_data reading and its checks
+  passport_reader.py, machine_spec.py  machine passport reading, machine fields with sources
   routes.py        pages
   seed.py          seed data and `seed` CLI command
   templates/, static/
 migrations/        Alembic migrations (Flask-Migrate)
-tools/             generate_drawings.py, eval_extraction.py
-docs/              eval_results.md
+tools/             generate_drawings.py, eval_extraction.py, eval_catalogue.py, dxf_blind_check.py
+docs/              eval_results.md, turnpilot_catalog_P1.2.md (Sandvik 2020 numbers and pages, steel P1.2)
 tests/             pytest suite; fixtures/drawings/ test drawings + expected answers
 ```
 

@@ -61,6 +61,8 @@ Stages, in this order:
    reading only with the user's "так" and the number of calls.
 5. Cutting data from a catalogue or handbook: the catalogue is uploaded once → the model extracts the table →
    a person confirms it → the planner takes its numbers only from that table, with the source in the note.
+   **Built 2026-10-08** (see "Stage 5: cutting data from catalogues"): the in-sample reading measurement (step 7)
+   waits for the user's "так"; the hold-out waits for the user's expected answer.
 6. G-code from the part zero (Z0 on the end face, X0 on the axis) from the DXF contour coordinates: the outer
    profile first, one control, simulation required.
 
@@ -473,6 +475,8 @@ change it in the app; "code" = only in the code / config.
 Status: **verified** = checked against the catalogue (page given); **partly** = verified in part, the rest open;
 **operator decision** = set by the operator's choice, not by a catalogue number; **open** = not checked yet.
 All catalogue values are for steel P1.2 (C45) with coolant.
+Since stage 5 the planner takes the catalogue numbers of a job's material from the confirmed cutting data rows
+(Cutting data page); the tool's own values are the fallback, marked "(check)" on the operation.
 
 Machine and tools (seed, `turnpilot/seed.py`):
 
@@ -661,6 +665,35 @@ c68d92e ("operator", not "machinist"), 1c81872, 9217c81, 2fe69ed, 463b9d9, 4bef3
   curve; the control is shown only (stage 6).
 - Next: the real passport, one reading with the user's "так" (1 call), then the Status column update.
 
+## Stage 5: cutting data from catalogues (built 2026-10-08)
+Plan agreed with the user: R1 (a) no confirmed row → the tool's own values with "(check)", Approve not blocked;
+R2 geometry rows (ap / f by insert / drill code) apart from grade rows (Vc by grade, application, material group);
+R3 catalogue PDFs up to 300 MB in `instance/catalogues/` (never in git, checked with `git check-ignore`), only
+picked pages are read; R4 graph values are not read by the model, the operator enters them. Commits 6314be1 …
+1f8fc4c and the docs commit. Migration 339c93bf0976 (DB backup `instance/turnpilot.db.bak-2026-10-08-before-
+cutting-data`). The files frozen by `dxf-blind-freeze` are untouched.
+- `CuttingDataRow` (kind, catalogue, insert code / grade + application, material group, ap / f / Vc, coolant,
+  from_graph, page, PDF page, quote, origin hand_typed / model / operator, status read / confirmed / rejected /
+  replaced, checks), `CatalogueDocument`, `Material.catalogue_group` (C45 = P1.2; the others empty).
+- `catalogue_file.py`: import of `docs/turnpilot_catalog_*.md` (tables by their headers, the drill section's Vc
+  sentence; "~" = graph → check). The P1.2 file gives 24 rows; the T5 row (CCMT 09 T3 04-PM) was added to the file
+  on 2026-10-08 from the tool data and checked by the user against A41 / A289 / A279.
+- `cutting_data.catalogue_values` + `services.turret_entries(machine, material)`: ap / f from the geometry row,
+  Vc from the grade row (a group row before an ISO-letter row), note "cutting data for P1.2: …" with pages.
+  Equivalence (tested): the confirmed P1.2 file gives every seed tool its own numbers, and a job's plan is the same.
+- `catalogue_reader.py`: page search, `record_cutting_data` (prompt `catalogue:` + hash), each page as text + image,
+  max 32000 output tokens; code checks: picked page + quote, groups / codes asked for, order, graph → not taken;
+  quote and every number looked for on the page → "check". A wrong number that is written elsewhere on the page
+  passes silently: only the operator's review catches it.
+- Review screen `/cutting-data/review`: confirm / correct (→ origin operator, changes in the note) / reject; a
+  confirmed row with other values is replaced only with the "replace" tick. Hand entry with catalogue and page.
+- `tools/eval_catalogue.py` (prepared, NOT run): `--read PDF PAGES` per catalogue (TT and SRT are two PDFs, so the
+  8 P1.2 pages are 2 calls), expected = the hand-typed file's rows on the read pages, score per number, wrong
+  numbers marked with the code's check or SILENT; `--estimate` makes no call. In-sample label: the prompt was
+  written knowing the file's table structure. Criterion proposed: ≥ 95% numbers right.
+- Demo DB: the P1.2 file was imported once (24 rows "read", none confirmed): until the operator confirms them,
+  every operation shows "(check)". The catalogue PDFs are not uploaded yet.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -670,7 +703,7 @@ c68d92e ("operator", not "machinist"), 1c81872, 9217c81, 2fe69ed, 463b9d9, 4bef3
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 811 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 873 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
