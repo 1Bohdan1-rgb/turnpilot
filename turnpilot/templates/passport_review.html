@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Passport review{% endblock %}
+{% block content %}
+<h1>Check the machine data: {{ document.original_filename }}</h1>
+<p class="muted">Read by {{ document.model }} ({{ document.prompt_version }}) from pages {{ document.read_pages }},
+  {{ document.read_at.strftime("%Y-%m-%d %H:%M") }} ·
+  <a href="{{ url_for('main.passport_file', document_id=document.id) }}" target="_blank">open the PDF</a> ·
+  nothing reaches the machine before you confirm it.</p>
+{% if document.status == "confirmed" %}
+<div class="flash">Confirmed {{ document.confirmed_at.strftime("%Y-%m-%d %H:%M") }}. Confirming again overwrites
+  the values you tick.</div>
+{% endif %}
+<p class="muted small">Tick each value you have checked against the passport. A value you change is recorded as
+  entered by the operator. A value the passport does not give is recorded as "not in passport" and the machine
+  keeps what it has; nothing is guessed. <span class="badge badge-check">check</span>: the code could not confirm the
+  quote or the number in it.</p>
+
+<form method="post" action="{{ url_for('main.confirm_passport', document_id=document.id) }}">
+  <div class="table-wrap">
+  <table class="card passport-review">
+    <thead><tr><th>Confirm</th><th>Field</th><th>Value read</th><th>Page</th><th>Quote</th><th>Machine now</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      {% set f = row.field %}
+      <tr class="{% if not row.value.found %}not-in-passport{% elif row.value.checks %}has-check{% endif %}">
+        <td>{% if row.value.found %}<input type="checkbox" name="confirm-{{ f.name }}" value="1">{% endif %}</td>
+        <td>{{ f.label }}{% if f.unit %}, {{ f.unit }}{% endif %}</td>
+        <td>
+          {% if row.value.found %}
+            <input name="value-{{ f.name }}" value="{{ format_value(f, row.value.value) }}" size="12">
+            {% if row.value.unit_as_written and row.value.unit_as_written != f.unit %}<span class="small muted">as written: {{ row.value.unit_as_written }}</span>{% endif %}
+            {% if row.value.checks %}<span class="badge badge-check" title="{{ row.value.checks|join('; ') }}">check</span>{% endif %}
+            {% for c in row.value.checks %}<div class="warning small">{{ c }}</div>{% endfor %}
+            {% if f.name == "max_z_feed" %}
+              <label class="inline small"><input type="checkbox" name="thread-limit" value="1"> also use it as the
+                threading limit n·P (the passport gives the Z feed, not a threading limit)</label>
+            {% endif %}
+          {% else %}
+            <span class="muted">not in passport</span>
+            {% for c in row.value.checks %}<div class="warning small">{{ c }}</div>{% endfor %}
+          {% endif %}
+        </td>
+        <td>{{ row.value.page or "" }}{% if row.value.quote_checked %} ✅{% endif %}</td>
+        <td class="small">{{ row.value.quote }}</td>
+        <td class="small">{{ format_value(f, row.current) or "—" }}{% if row.source %} <span class="muted">({{ row.source.label }})</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="actions">
+    <button type="submit" class="primary">Confirm the ticked values</button>
+    <a href="{{ url_for('main.machine') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

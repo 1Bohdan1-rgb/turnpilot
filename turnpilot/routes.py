@@ -199,7 +199,35 @@ def read_passport(document_id):
     if document.status != "read":
         flash(f"The passport could not be read: {document.error}", "error")
         return redirect(url_for("main.passport_pages", document_id=document.id))
-    return redirect(url_for("main.passport_pages", document_id=document.id))
+    return redirect(url_for("main.passport_review", document_id=document.id))
+
+
+@bp.route("/machine/passport/<int:document_id>/review")
+def passport_review(document_id):
+    document = db.get_or_404(MachineDocument, document_id)
+    if document.status not in ("read", "confirmed") or not document.reading:
+        abort(404)
+    machine = _machine_or_404()
+    values = {v.field: v for v in passport_reader.reading_from_json(document.reading)}
+    rows = [dict(field=f, value=values[f.name], current=getattr(machine, f.name), source=machine.source_of(f.name))
+            for f in MACHINE_FIELDS if f.name in values]
+    return render_template("passport_review.html", document=document, rows=rows, format_value=format_value)
+
+
+@bp.route("/machine/passport/<int:document_id>/confirm", methods=["POST"])
+def confirm_passport(document_id):
+    document = db.get_or_404(MachineDocument, document_id)
+    if document.status not in ("read", "confirmed") or not document.reading:
+        abort(400)
+    try:
+        count = services.confirm_passport(document, _machine_or_404(), request.form)
+    except (services.MachineError, ValueError) as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return redirect(url_for("main.passport_review", document_id=document.id))
+    db.session.commit()
+    flash(f"{count} value(s) confirmed from the passport.")
+    return redirect(url_for("main.machine"))
 
 
 @bp.route("/machine/passport/<int:document_id>/file")

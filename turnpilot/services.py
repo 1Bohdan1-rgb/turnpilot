@@ -381,6 +381,39 @@ def passport_path(document, instance_path):
     return os.path.join(machine_docs_dir(instance_path), document.stored_filename)
 
 
+def confirm_passport(document, machine, form):
+    """Write the values the operator ticked (as read: source passport with page and quote; changed: the
+    operator's), record "not in passport" where the machine has no value from the operator or a passport, and
+    return how many values were confirmed. Raises MachineError (nothing is written then)."""
+    values = {v.field: v for v in passport_reader.reading_from_json(document.reading)}
+    confirmed = 0
+    for field in machine_spec.MACHINE_FIELDS:
+        v = values.get(field.name)
+        if v is None:
+            continue
+        if not v.found:
+            source = machine.source_of(field.name)
+            if source is None or source.source == machine_spec.SOURCE_NOT_IN_PASSPORT:
+                set_machine_value(machine, field.name, None, machine_spec.SOURCE_NOT_IN_PASSPORT,
+                                  document_id=document.id)
+            continue
+        if not form.get(f"confirm-{field.name}"):
+            continue
+        value = machine_spec.parse_value(field, form.get(f"value-{field.name}"))
+        if value is None:
+            raise MachineError(f"{field.label}: empty value ticked")
+        source = machine_spec.SOURCE_PASSPORT if value == v.value else machine_spec.SOURCE_OPERATOR
+        set_machine_value(machine, field.name, value, source, v.page, v.quote, document.id)
+        confirmed += 1
+        if field.name == "max_z_feed" and form.get("thread-limit"):
+            # the operator's decision: the passport's Z feed taken as the threading limit
+            set_machine_value(machine, "max_thread_feed", value, machine_spec.SOURCE_OPERATOR, v.page,
+                              f"max Z feed from the passport, taken as the threading limit: {v.quote}", document.id)
+    check_machine(machine)
+    document.status, document.confirmed_at = "confirmed", datetime.now(timezone.utc)
+    return confirmed
+
+
 def read_passport_document(document, instance_path, config, client=None):
     """One paid call on the picked pages; the values are checked by the code and kept for the review."""
     pages = document.selected
