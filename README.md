@@ -277,10 +277,10 @@ What it does **not** do:
 - only KOMPAS-3D DXF files are supported (linetypes `K5LT_BASIC` / `K5LT_THIN` / `K5LT_AXLED`);
   another CAD system's DXF is rejected with a message;
 - the inner profile (bores) is not read: its dimensions are listed as "inner profile: not read";
-- material, quantity, roughness and the blank are not taken from the DXF: the machinist fills them in;
+- material, quantity, roughness and the blank are not taken from the DXF: the operator fills them in;
 - a section that is not machined (the bar held in the chuck) is not recognised: untick it;
 - on real files most lengths carry **check**: KOMPAS drawings dimension from a base, so a section's
-  length usually comes from a chain of dimensions, not from one. The risk is that the machinist gets
+  length usually comes from a chain of dimensions, not from one. The risk is that the operator gets
   used to the badge and stops reading it. (An idea for later, not implemented: two levels of warning,
   "length from a chain of dimensions" and "length from the geometry only, no dimension".)
 

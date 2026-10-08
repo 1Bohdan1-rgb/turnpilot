@@ -27,7 +27,7 @@ class DefaultConfig:
         10, 12, 14, 16, 18, 20, 22, 25, 28, 30, 32, 35, 36, 38, 40, 42, 45, 48, 50,
         55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 110, 120, 130, 140, 150, 160, 180, 200,
     )
-    # Hex bar sizes across flats, mm: the default list; the machinist edits it on the Machine page.
+    # Hex bar sizes across flats, mm: the default list; the operator edits it on the Machine page.
     HEX_BAR_SIZES = (8, 10, 11, 12, 13, 14, 17, 19, 22, 24, 27, 30, 32, 36, 41)
     BLANK_DIAMETER_ALLOWANCE_MM = 2.0  # added to the largest diameter before rounding up to bar
     BLANK_FACING_ALLOWANCE_MM = 2.0  # total for both faces

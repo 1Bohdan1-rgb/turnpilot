@@ -118,7 +118,7 @@ class ExtractedFeature(BaseModel):
     # Required in model output (strict tool schema); absent in hand-written expected files.
     confidence: float | None = Field(default=None, ge=0, le=1)
     # Set by the code, not by the model: the length is not dimensioned directly but computed from
-    # other dimensions (e.g. a baseline minus a groove), so the machinist should check it.
+    # other dimensions (e.g. a baseline minus a groove), so the operator should check it.
     length_derived: bool = False
     # Set by the code: the dimensions allow a second reading of this length (a face dimension that
     # may or may not include a neighbouring groove), see dimensions_first.ambiguous_face_bindings().

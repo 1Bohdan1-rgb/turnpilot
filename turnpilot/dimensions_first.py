@@ -170,7 +170,7 @@ def ambiguous_face_bindings(data: DimensionsData) -> list[tuple[str, int]]:
     exactly one section, not a groove, whose inner boundary borders a groove. Alternative reading:
     the same dimension with its inner boundary moved across the groove, so that it covers the groove
     too. If the alternative gives no more conflicts than the recorded reading and no section of zero
-    or negative length, both readings fit: the machinist has to check the extension lines.
+    or negative length, both readings fit: the operator has to check the extension lines.
 
     Only a warning: lengths are never changed. Returns (message, 1-based section number) pairs.
     """

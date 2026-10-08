@@ -558,7 +558,7 @@ def test_blank_suggestion_counts_taper_diameters():
 
 from turnpilot.planner import geometry_warnings  # noqa: E402
 
-REAL_SHAFT = [  # the machinist-checked real shaft (lengths from baseline dimensions)
+REAL_SHAFT = [  # the operator-checked real shaft (lengths from baseline dimensions)
     FeatureSpec(1, "od_turn", diameter=80, length=40.1),
     FeatureSpec(2, "fillet", radius=10),
     FeatureSpec(3, "od_turn", diameter=60, length=40),

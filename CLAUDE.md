@@ -32,6 +32,9 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
 - Temporary scripts live in the scratchpad, never in git. Write files as UTF-8 with `\n` (Windows cp1252 breaks Ø).
 - Never auto-correct lengths: warn only. Mark derived/uncertain values with a "check" badge.
 - Label in-sample tuning honestly. Don't change the prompt unless asked.
+- Say "operator" ("оператор"), never "machinist" ("машиніст"), in every text. Three comments in the files
+  frozen by `dxf-blind-freeze` (dxf_reader.py ×1, dxf_input.py ×2) still say "machinist": change them after
+  the stage 3 run.
 
 ## Project goal (set 2026-09-30)
 Read ≥ 90% of the fields in each of 3 runs, on 3–6 part types (shaft, bushing, fitting, flange, screw),
@@ -49,7 +52,7 @@ catalogue, handbook, ISO), and the operator or the process engineer confirms it.
 Stages, in this order:
 1. Edit and delete tools on the Machine page. **Done 2026-10-07** (a9bc72c, 4e9fce6): see "Tool library".
 2. Check every placeholder constant (see "Placeholders and assumptions") against the catalogue and the
-   machinist's experience. **Done 2026-10-08 for steel P1.2** (Sandvik 2020): see the Status column; open
+   operator's experience. **Done 2026-10-08 for steel P1.2** (Sandvik 2020): see the Status column; open
    rows stay open (other materials, machine data, rules not in the catalogue).
 3. Blind check of the DXF input on new files (see "DXF blind check: stop rule"). **Code frozen 2026-10-08**
    (tag `dxf-blind-freeze`): waiting for the new drawings and the expected answers.
@@ -135,7 +138,7 @@ number to the section it spans. The prototype is NOT in the repo: it lives in th
   - Long tail: each new drawing brought a new kind of failure (open arrows, inner chamfers, hex edge
     lines, a dimension on another view). Unambiguous binding: 0 of 3.
   - Caveat: test_03–05 are synthetic (generated in chat), not a hold-out of real drawings.
-- What stays in the product: stage 1 only (`pdf_text.py` + `number_check.py`). The machinist checks the
+- What stays in the product: stage 1 only (`pdf_text.py` + `number_check.py`). The operator checks the
   binding on the review screen.
 - Deferred: a narrow mode "warn only when everything is recognised unambiguously". On the new drawings
   it would have bound 0 of 3, i.e. stayed silent.
@@ -367,7 +370,7 @@ DXF → sections → review → planner, as a second input next to the model. Co
     "-" in the expected answer, the binding itself is right);
   - equivalence product = prototype: all dimensions, 100%.
 - Seen on the demo server: on real sheets most lengths carry "check" (computed from a chain), since
-  KOMPAS drawings dimension from a base. Risk: the machinist gets used to the badge and ignores it.
+  KOMPAS drawings dimension from a base. Risk: the operator gets used to the badge and ignores it.
   Idea for later, NOT to implement now: two levels of warning, "length from a chain of dimensions" and
   "length from the geometry only, no dimension".
 - The not-machined chucked section (НД 012 §1 Ø50) is a row to untick by hand.

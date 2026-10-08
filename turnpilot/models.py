@@ -31,7 +31,7 @@ class Machine(db.Model):
     power_kw = db.Column(db.Float, nullable=False)
     max_diameter = db.Column(db.Float, nullable=False)
     # Z feed the machine allows when threading (feed = pitch, so n·P), mm/min. Empty: not known, and every
-    # thread operation asks the machinist to check n·P (no number is guessed).
+    # thread operation asks the operator to check n·P (no number is guessed).
     max_thread_feed = db.Column(db.Float)
     # Share of power_kw the spindle delivers (0..1, from the machine's documentation). Empty: not known, and
     # roughing asks for the power to be checked (no efficiency is guessed).

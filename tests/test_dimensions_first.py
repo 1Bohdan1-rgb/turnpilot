@@ -82,7 +82,7 @@ def test_real_shaft_lengths_come_from_the_dimension_graph():
     assert geometry_warnings(data.features, data.overall_length) == []
 
 
-def test_matches_the_machinist_checked_expected_answer():
+def test_matches_the_operator_checked_expected_answer():
     expected = DrawingData.model_validate_json(
         (FIXTURES / "real_01.expected.json").read_text(encoding="utf-8")
     ) if (FIXTURES / "real_01.expected.json").exists() else None

@@ -121,7 +121,7 @@ def _feature(type_, diameter=None, start_diameter=None, length=None, tolerance=N
 
 def expected_answer(part: dict) -> dict:
     sections = part["sections"]
-    # A groove is a section of its own (machinist's convention): the od_turn length excludes it.
+    # A groove is a section of its own (operator's convention): the od_turn length excludes it.
     groove_width = {i: 0 for i in range(len(sections))}
     for g in part.get("grooves", []):
         groove_width[sections.index(_section_at(part, g["x"]))] += g["width"]
