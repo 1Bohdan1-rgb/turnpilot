@@ -51,7 +51,8 @@ Stages, in this order:
 2. Check every placeholder constant (see "Placeholders and assumptions") against the catalogue and the
    machinist's experience. **Done 2026-10-08 for steel P1.2** (Sandvik 2020): see the Status column; open
    rows stay open (other materials, machine data, rules not in the catalogue).
-3. Blind check of the DXF input on new files (see "DXF blind check: stop rule").
+3. Blind check of the DXF input on new files (see "DXF blind check: stop rule"). **Code frozen 2026-10-08**
+   (tag `dxf-blind-freeze`): waiting for the new drawings and the expected answers.
 4. Machine documentation: upload the PDF → the model reads the data → the operator confirms it on a review
    screen.
 5. Cutting data from a catalogue or handbook: the catalogue is uploaded once → the model extracts the table →
@@ -602,6 +603,32 @@ catalogue PDFs under `docs/catalogs/*.pdf` are git-ignored). Done so far:
 - ≥ 90%: DXF is confirmed as an input. Below 90%: DXF stays a prototype, and the code is NOT patched
   for these files (they would become in-sample).
 
+## Stage 3: DXF blind check, frozen (2026-10-08)
+Plan agreed with the user. Commits a707c6d (tool, template, tests) and the freeze commit, tag `dxf-blind-freeze`.
+- Frozen (md5 of the files with LF line ends, in `tools/dxf_blind_freeze.json`; ezdxf 1.4.4):
+  - `turnpilot/dxf_reader.py` cb7a837ca766dd852e808c075b74021f (the binding; unchanged since the port);
+  - `turnpilot/dxf_input.py` 48cd70b73b2c2f25c5ba82462a57f5d6;
+  - `tools/dxf_blind_check.py` 1da5e321f33373d3bbedcc82221fa73d;
+  - `requirements.txt` cfec32af5793f15862929e8d5f1c5773.
+  A run stops by itself if any of them differs. The user checks it with
+  `git diff --stat dxf-blind-freeze -- turnpilot/dxf_reader.py turnpilot/dxf_input.py tools/dxf_blind_check.py
+  tools/dxf_blind_freeze.json requirements.txt` (must print nothing). Do NOT change these files until the run
+  is done.
+- Files: `dxf_blind/<name>.dxf` + `<name>.etalon.md` (git-ignored, local only). Template:
+  `docs/dxf_etalon_template.md`. Expected answers written by the user before the run.
+- Blind: Claude does not open the new DXF files before the run (no render, no probe, no trial run). It may run
+  `tools/dxf_blind_check.py dxf_blind --check-etalon` (expected answers only, no DXF opened).
+- What to ask for: 8–10 real KOMPAS parts (DIMENSION entities kept, 1:1), not prepared for us, not деталь 1 /
+  НД 012 / Завіса 36, ≥ 80 outer dimensions in all; stepped shafts, external threads, grooves, chamfers, a taper,
+  a fillet, an arc end, bushings. Inner profile → "внутрішній"; hex, flats, keyways, angular dimensions, end
+  views → "поза критерієм" (listed before the run); drawings with them are not dropped.
+- Metric: outer-profile dimensions bound right / all, summed over all parts; ≥ 90% → DXF confirmed, below →
+  stays a prototype, no patching. A broken sheet counts all its outer dimensions wrong. Check badges and
+  "drawing ≠ dimension" flags are reported apart. An expected-answer error found after the run does not change
+  the official number (a corrected number may be shown beside it, labelled).
+- One run: `.venv/Scripts/python tools/dxf_blind_check.py dxf_blind --report instance/dxf_blind_report.md`.
+  Only the numbers and the verdict go to CLAUDE.md / README, not the drawings' content.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -611,7 +638,7 @@ catalogue PDFs under `docs/catalogs/*.pdf` are git-ignored). Done so far:
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 740 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 750 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

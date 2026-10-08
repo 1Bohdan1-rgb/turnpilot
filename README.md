@@ -303,7 +303,11 @@ How far it is measured, two different things:
    the prototype, field by field (sections, every dimension's binding and flags), on all four parts:
    100%. This shows the port is faithful, not that the binding is right.
 
-It has not yet been checked on DXF files it has never seen.
+It has not yet been checked on DXF files it has never seen. That blind check is prepared:
+`tools/dxf_blind_check.py` compares the binding with expected answers written by hand before the run
+(template `docs/dxf_etalon_template.md`, drawings in the git-ignored `dxf_blind/`); the code it measures is
+frozen under the tag `dxf-blind-freeze` (md5 in `tools/dxf_blind_freeze.json`, checked at the start of the
+run). Criterion: ≥ 90% of the outer-profile dimensions bound right, summed over all the new parts.
 
 ## Stack
 

@@ -1,0 +1,10 @@
+{
+  "files": {
+    "turnpilot/dxf_reader.py": "cb7a837ca766dd852e808c075b74021f",
+    "turnpilot/dxf_input.py": "48cd70b73b2c2f25c5ba82462a57f5d6",
+    "tools/dxf_blind_check.py": "1da5e321f33373d3bbedcc82221fa73d",
+    "requirements.txt": "cfec32af5793f15862929e8d5f1c5773"
+  },
+  "ezdxf": "1.4.4",
+  "frozen": "2026-10-08, tag dxf-blind-freeze; md5 of the files with LF line ends"
+}
