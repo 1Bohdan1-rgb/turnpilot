@@ -51,6 +51,19 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
 - **Rough and finish boring:** a `boring_rough` tool (seed T5, CCMT09T304-PM) roughs a bore in passes of
   its ap rec; the `boring` tool (T9, CCMT09T304-PF) takes the finishing pass and sets the drill. Without a
   `boring_rough` tool the boring bar roughs too, with a note.
+- **Machine data with sources** (Machine page): max / min spindle speed, S1 power (S6 shown only), drive
+  efficiency, max turning Ø and length, bar through the spindle, turret positions, max Z feed, the threading
+  limit n·P, coolant, driven tools, C axis, CNC control. Every value shows its source: the passport (page and
+  quote), "entered by the operator", or "not in passport"; nothing is guessed, an empty field is not known.
+  The planner warns when n is below the min speed, when catalogue Vc (given with coolant) meet a machine
+  without coolant, and makes hex milling manual without driven tools / a C axis; the job pages warn when the
+  blank is longer than the turning length or a round bar does not pass through the spindle.
+- **Machine passport** (Machine page → passport): upload the PDF, tick the technical data pages (text pages are
+  read as text, scanned pages as images), then start one paid reading with an explicit tick (the calls and
+  input tokens are shown before). The model returns each value with its page and an exact quote; the code
+  checks the quote is on that page and the number is in it ("check" otherwise), and drops a value without a
+  page or quote. On the review screen the operator ticks each value; only then it reaches the machine and the
+  planner. The passport's max Z feed becomes the threading limit only on the operator's own tick.
 - **Tool library** (Machine page): add, edit (everything but the type) and delete tools. A tool in the
   turret is not deleted until it is taken off its position; a tool used by operations is retired instead
   (out of the library and the turret, kept for their record). The optional "Source" of the Vc / f / ap

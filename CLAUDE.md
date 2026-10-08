@@ -57,7 +57,8 @@ Stages, in this order:
 3. Blind check of the DXF input on new files (see "DXF blind check: stop rule"). **Code frozen 2026-10-08**
    (tag `dxf-blind-freeze`): waiting for the new drawings and the expected answers.
 4. Machine documentation: upload the PDF → the model reads the data → the operator confirms it on a review
-   screen.
+   screen. **Built 2026-10-08** (see "Stage 4: machine passport"): waiting for the real passport; its one paid
+   reading only with the user's "так" and the number of calls.
 5. Cutting data from a catalogue or handbook: the catalogue is uploaded once → the model extracts the table →
    a person confirms it → the planner takes its numbers only from that table, with the source in the note.
 6. G-code from the part zero (Z0 on the end face, X0 on the axis) from the DXF contour coordinates: the outer
@@ -477,12 +478,12 @@ Machine and tools (seed, `turnpilot/seed.py`):
 
 | Name | Value | Depends on it | Source | Change | Status |
 |---|---|---|---|---|---|
-| Seed machine `MACHINE` | 4000 rpm, 11 kW, Ø300 | n cap, power check, blank check | guessed (example) | Machine page | open (stage 4, machine documentation) |
+| Seed machine `MACHINE` | 4000 rpm, 11 kW, Ø300 | n cap, power check, blank check | guessed (example) | Machine page, passport review | open (stage 4 built: closes when the real passport is read and confirmed) |
 | Seed tools: ranges, ap rec, f rec, Vc(f) | T1 SCMT-PM, T2 CNMG-PM, T4 DNMG-PF, T5 CCMT-PM, T6 N123G2, T7 266RG VM, T8 QD-NG, T9 CCMT-PF, T10–T12 860-GM | every Vc, n, f, ap, passes | TT A41, A49, A160, A278–A279, A283, A285, A289, A290, B11, B53, B130–B131, B139, B144 (graphs), C5, C73; SRT B25–B26, B70–B71 | Machine page, tool library | verified (grades: the catalogue's ★, operator decision); T3 and VCGT (library) open |
 | Seed materials kc1 / mc | C45 1600/0.25, AISI 304 2000/0.21, 6061 600/0.25 | spindle power check | C45 kc1: TT A278; the rest from memory | Machine page, Materials | partly (C45 kc1 verified; mc and the other materials open) |
 | Seed: no centre drill, no threading feed limit, no drive efficiency | empty | centring, n·P, power: warnings until set | not guessed on purpose | Machine page / tool library | partly (drills added; centre drill not in TT / SRT: open by decision; n·P and efficiency: stage 4) |
 | ISO groups of the checked tools | P only | M / N jobs: "no tool" | operator decision 2026-10-07 | tool library | operator decision |
-| Coolant | present | every catalogue Vc (given with coolant) | catalogue condition | — | operator decision (assumed; check at stage 4) |
+| Coolant | `Machine.coolant`, empty (not known) | catalogue Vc: a warning when the machine has none | catalogue condition | Machine page, passport review | operator decision (assumed present until the passport says) |
 
 Planner constants (`turnpilot/planner.py`):
 
@@ -632,6 +633,34 @@ Plan agreed with the user. Commits a707c6d (tool, template, tests) and the freez
 - One run: `.venv/Scripts/python tools/dxf_blind_check.py dxf_blind --report instance/dxf_blind_report.md`.
   Only the numbers and the verdict go to CLAUDE.md / README, not the drawings' content.
 
+## Stage 4: machine passport (built 2026-10-08)
+Plan agreed with the user (all three defaults: S1 power for the check; the passport's max Z feed is not the
+threading limit unless the operator ticks it; the operator picks the pages before a reading). Commits
+c68d92e ("operator", not "machinist"), 1c81872, 9217c81, 2fe69ed, 463b9d9, 4bef39f. No new dependency
+(pymupdf, anthropic); the files frozen by `dxf-blind-freeze` are untouched.
+- `turnpilot/machine_spec.py`: one list of the machine's fields (Machine page, passport tool, review).
+  New fields: min_rpm, power_s6_kw, max_turning_length, max_bar_diameter, turret_positions, max_z_feed,
+  coolant, coolant_pressure_bar, live_tooling, c_axis, control (migration ccd02424ad60). Seed: empty.
+- `MachineSpecSource`: per field the source (passport + page + quote + document, operator, "not in passport").
+  An operator's change on the Machine page is recorded as the operator's.
+- Planner (`MachineLimits`): n below min_rpm → warning; coolant = no → warning on catalogue-Vc operations;
+  live_tooling / c_axis = no → hex milling manual. Job pages: blank longer than the turning length, round bar
+  thicker than the spindle passes. Empty fields check nothing.
+- Passport: `MachineDocument` (instance/machine_docs/, migrations c96d2f7a7dcc, ac2fb403c778), page texts by
+  pymupdf, the operator picks ≤ 20 pages, "likely" marks; `passport_reader` tool `record_machine` (prompt
+  version "passport:8e97abf8", separate from the drawing prompt): value, unit as written, page, exact quote.
+  The code drops a value without a picked page or a quote, checks the quote on the page (text pages) and the
+  number in the quote. The paid call needs the operator's tick; calls and input tokens are shown before.
+- Review: only ticked values are written (passport source; a changed value is the operator's); "not in
+  passport" recorded where the machine has no operator / passport source; a conflict writes nothing.
+- Tests: synthetic passport (`tests/passport_pdfs.py`, one scanned page), fake client: no paid call so far.
+- DB backups: `instance/turnpilot.db.bak-2026-10-08-before-machine-spec`, `…-before-passport`,
+  `…-before-passport-reading`. The demo server's DB holds one test upload "synthetic passport (test).pdf"
+  (MachineDocument 1, not read); documents have no delete yet.
+- Limits: uploads up to 10 MB (MAX_CONTENT_LENGTH): a larger scanned passport has to be split; no torque
+  curve; the control is shown only (stage 6).
+- Next: the real passport, one reading with the user's "так" (1 call), then the Status column update.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -641,7 +670,7 @@ Plan agreed with the user. Commits a707c6d (tool, template, tests) and the freez
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 750 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 811 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
