@@ -226,6 +226,9 @@ class PlannedOperation:
     ref_diameter: float | None = None
     notes: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Where vc / f / ap come from: "catalogue" (every value from confirmed catalogue rows), "tool" (some are the
+    # tool's own values), None: not known (a planner call without a material, or no tool).
+    data_origin: str | None = None
 
 
 def spindle_speed(vc: float, diameter: float, max_rpm: int) -> tuple[int, bool]:
@@ -1395,6 +1398,8 @@ def _note_source(op: PlannedOperation, tool: ToolSpec) -> None:
         op.notes.append(f"cutting data ranges: {tool.source}")
     if tool.catalogue_warning:
         op.warnings.append(tool.catalogue_warning)
+    if tool.catalogue_note or tool.catalogue_warning:
+        op.data_origin = "tool" if tool.catalogue_warning else "catalogue"
 
 
 def _plan_centring(op, job, turret, max_rpm) -> PlannedOperation:

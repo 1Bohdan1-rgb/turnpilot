@@ -350,6 +350,9 @@ class Operation(db.Model):
     insert_width = db.Column(db.Float)  # grooving: insert width
     depth = db.Column(db.Float)  # per side: groove depth or thread profile depth h
     ref_diameter = db.Column(db.Float)  # diameter used to compute n
+    # Where vc / f / ap come from: "catalogue" (confirmed catalogue rows), "tool" (the tool's own values),
+    # "operator" (changed by the operator); empty: not known. The G-code takes only catalogue / operator values.
+    cutting_data_origin = db.Column(db.String(12))
     note = db.Column(db.Text)
     warning = db.Column(db.Text)
     status = db.Column(db.String(10), nullable=False, default="proposed")

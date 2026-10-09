@@ -212,6 +212,7 @@ def calculate_operations(job, machine):
                 insert_width=planned.insert_width,
                 depth=planned.depth,
                 ref_diameter=planned.ref_diameter,
+                cutting_data_origin=planned.data_origin,
                 note="; ".join(planned.notes) or None,
                 warning="; ".join(planned.warnings) or None,
                 status="proposed",
@@ -219,6 +220,22 @@ def calculate_operations(job, machine):
             )
         )
     db.session.commit()
+
+
+def gcode_readiness(job, machine):
+    """What blocks a program for this job, and which operations go into it (gcode.readiness)."""
+    from .gcode import readiness
+
+    operations = [
+        readiness.OperationInfo(
+            id=op.id, sequence=op.sequence, tool_type=op.tool_type,
+            feature_type=op.feature.type if op.feature else "", status=op.status, has_tool=op.tool_id is not None,
+            origin=op.cutting_data_origin, vc=op.vc, n=op.n, f=op.f)
+        for op in job.current_operations
+    ]
+    source = machine.source_of("max_rpm") if machine else None
+    return readiness.check(bool(job.axial_order_known), operations,
+                           [t.name for t in job.tools_changed_since_calculation], source.source if source else None)
 
 
 def _fmt(value):
@@ -259,6 +276,9 @@ def apply_operation_edit(op, machine, turret_position, vc, f, ap, passes):
         if value != old:
             changes[name] = (old, value)
             setattr(op, name, value)
+
+    if any(name in changes for name in ("vc", "f", "ap", "passes")):
+        op.cutting_data_origin = "operator"  # the operator's numbers: confirmed by the operator
 
     if "vc" in changes and op.vc and op.ref_diameter:
         new_n, _ = planner.spindle_speed(op.vc, op.ref_diameter, machine.max_rpm)
