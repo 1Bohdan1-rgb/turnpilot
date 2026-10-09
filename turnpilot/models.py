@@ -350,7 +350,9 @@ class Feature(db.Model):
     radius = db.Column(db.Float)  # mm, fillets and arcs only
     across_flats = db.Column(db.Float)  # mm, hex only: size across flats S (diameter = across corners)
     location = db.Column(db.String(10))  # chamfers: "external" / "internal"
-    face = db.Column(db.String(10))  # chamfers: "left" / "right" end face
+    face = db.Column(db.String(10))  # chamfers, fillets: "left" / "right" end face (on the drawing)
+    # arcs and fillets: bulging away from the axis (True) or into it (False); empty: not known, not programmed
+    arc_convex = db.Column(db.Boolean)
     confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 

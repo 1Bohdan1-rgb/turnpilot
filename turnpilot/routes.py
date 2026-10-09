@@ -576,14 +576,29 @@ POSITIONS = ("external", "internal", "external left", "external right", "interna
 
 
 def _position(form, prefix, feature_type):
-    """location / face from the combined "position" field; only chamfers and threads have one."""
+    """location / face from the combined "position" field; chamfers, threads and fillets (their face) have one."""
     value = (form.get(prefix + "position") or "").strip()
-    if feature_type not in ("chamfer", "thread") or not value:
+    if feature_type not in ("chamfer", "thread", "fillet") or not value:
         return {"location": None, "face": None}
     if value not in POSITIONS:
         raise FormError("Unknown position")
     location, *face = value.split()
+    if feature_type == "fillet":
+        return {"location": None, "face": face[0] if face else None}
     return {"location": location, "face": face[0] if face and feature_type == "chamfer" else None}
+
+
+ARC_SHAPES = {"convex": True, "concave": False}
+
+
+def _arc_convex(form, prefix, feature_type):
+    """Arcs and fillets: convex (away from the axis) / concave; empty: not known (the arc is not programmed)."""
+    value = (form.get(prefix + "arc_shape") or "").strip()
+    if feature_type not in RADIUS_TYPES or not value:
+        return None
+    if value not in ARC_SHAPES:
+        raise FormError("Arc shape: convex or concave")
+    return ARC_SHAPES[value]
 
 
 def _roughness_param(form, prefix=""):
@@ -634,6 +649,7 @@ def _feature_from_form(form, blank_diameter, prefix=""):
         start_diameter=start_diameter,
         radius=_number(form, prefix + "radius") if feature_type in RADIUS_TYPES else None,
         across_flats=across_flats,
+        arc_convex=_arc_convex(form, prefix, feature_type),
     )
 
 
@@ -913,6 +929,7 @@ def _flag_derived_lengths(rows, data):
         row["size_derived"] = feature.size_derived
         row["probably_s"] = feature.type == "hex" and planner.hex_probably_s(feature.diameter, feature.across_flats)
         row["position"] = " ".join(p for p in (feature.location, feature.face) if p) or None
+        row["arc_shape"] = None
     return rows
 
 
@@ -954,6 +971,10 @@ def _review_values_from_extraction(extraction):
         for f in data.features
     ]
     _flag_derived_lengths(rows, data)
+    for i, shape in services.dxf_arc_shapes(extraction, current_app.instance_path).items():
+        rows[i]["arc_shape"] = shape["arc_shape"]  # from the file's geometry
+        if shape.get("face"):
+            rows[i]["position"] = f"external {shape['face']}"
     _flag_bore_ra(rows)  # on the marks read from the drawing, before the general Ra fills the gaps
     _apply_general_ra(rows, data.general_ra, data.general_ra_param)
     _apply_general_tolerance(rows, data.general_tolerance)
@@ -997,6 +1018,7 @@ def _review_values_from_form(form):
         row = {k: form.get(f"f{i}-{k}") or None for k in REVIEW_FIELDS}
         row["include"] = bool(form.get(f"f{i}-include"))
         row["position"] = form.get(f"f{i}-position") or None
+        row["arc_shape"] = form.get(f"f{i}-arc_shape") or None
         row["probably_s"] = row["type"] == "hex" and planner.hex_probably_s(
             _to_float(row.get("diameter")), _to_float(row.get("across_flats"))
         )

@@ -222,7 +222,13 @@
             {% if row.pitch_assumed %}<span class="badge badge-check"
               title="No pitch on the drawing: the ISO 261 coarse pitch was filled in. Check it.">check</span>{% endif %}
           </td>
-          <td><input name="f{{ i }}-radius" type="number" step="any" min="0" value="{{ row.radius if row.radius is not none else '' }}"></td>
+          <td><input name="f{{ i }}-radius" type="number" step="any" min="0" value="{{ row.radius if row.radius is not none else '' }}">
+            {% if row.type in ("arc", "fillet") %}
+            <select name="f{{ i }}-arc_shape" title="Arc / fillet: bulging away from the axis (convex) or into it (concave). From the DXF geometry when there is one; empty: not programmed.">
+              <option value="">shape?</option>
+              <option value="convex" {% if row.arc_shape == "convex" %}selected{% endif %}>convex</option>
+              <option value="concave" {% if row.arc_shape == "concave" %}selected{% endif %}>concave</option>
+            </select>{% endif %}</td>
           <td>
             <input name="f{{ i }}-across_flats" type="number" step="any" min="0" value="{{ row.across_flats if row.across_flats is not none else '' }}">
             {% if row.size_derived == "across_flats" %}<span class="badge badge-check"

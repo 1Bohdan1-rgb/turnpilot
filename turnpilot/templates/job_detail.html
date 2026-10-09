@@ -58,7 +58,11 @@
   <label>Start Ø, mm (groove / taper / arc) <input name="start_diameter" type="number" step="any" min="0" placeholder="groove: blank Ø if empty"></label>
   <label>Radius, mm (fillet / arc) <input name="radius" type="number" step="any" min="0"></label>
   <label>S across flats, mm (hex; Ø = across corners) <input name="across_flats" type="number" step="any" min="0"></label>
-  <label>Where (chamfer / thread)
+  <label>Arc / fillet shape
+    <select name="arc_shape"><option value="">—</option><option value="convex">convex (away from the axis)</option>
+      <option value="concave">concave (into the axis)</option></select>
+  </label>
+  <label>Where (chamfer / thread / fillet)
     <select name="position"><option value="">—</option>{% for p in positions %}<option>{{ p }}</option>{% endfor %}</select>
   </label>
   <p class="muted small">Groove: Diameter is the groove bottom, Start Ø is the diameter the groove is cut from, Length is the width.

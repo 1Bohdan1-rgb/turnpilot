@@ -1117,6 +1117,42 @@ def dxf_parts(extraction):
     ).scalars().all()
 
 
+def dxf_arc_shapes(extraction, instance_path):
+    """Per row of a DXF part: whether an arc or a fillet bulges away from the axis (convex) or into it, and a
+    fillet's side, from the file's geometry (dxf_reader, called as it is). {} when the file cannot be read."""
+    report = dxf_report(extraction)
+    if not extraction.is_dxf or not report:
+        return {}
+    try:
+        reading = dxf_reader.read_dxf(os.path.join(drawings_dir(instance_path), extraction.stored_filename))
+        part = reading.parts[report["part"] - 1]
+    except Exception:  # the stored file is gone or unreadable: the operator chooses
+        return {}
+    data = extraction_data(extraction)
+    by_index = {s.index: s for s in part.sections}  # the reader numbers its sections (from 1)
+    shapes, fillets_seen = {}, {}
+    for i, (row, feature) in enumerate(zip(report["rows"], data.features)):
+        section = by_index.get(row.get("section"))
+        if section is None:
+            continue
+        if feature.type == "arc" and section.prim.arc:
+            mid = (section.x0 + section.x1) / 2
+            chord = (section.r_at(section.x0) + section.r_at(section.x1)) / 2
+            shapes[i] = {"arc_shape": "convex" if section.r_at(mid) > chord + 1e-6 else "concave"}
+        elif feature.type == "fillet":
+            k = fillets_seen.get(section.index, 0)
+            fillets_seen[section.index] = k + 1
+            if k >= len(section.fillets):
+                continue
+            side, _radius = section.fillets[k]
+            neighbour = by_index.get(section.index + (1 if side == "right" else -1))
+            here = section.r_at(section.x1 if side == "right" else section.x0)
+            there = neighbour.r_at(neighbour.x0 if side == "right" else neighbour.x1) if neighbour else 0.0
+            # into a larger neighbour: an inside corner (concave); towards a smaller one or the end: an edge
+            shapes[i] = {"arc_shape": "concave" if there > here + 1e-6 else "convex", "face": side}
+    return shapes
+
+
 def dxf_report(extraction):
     return json.loads(extraction.binding) if extraction.binding else None
 
