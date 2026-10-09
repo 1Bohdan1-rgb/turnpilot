@@ -242,6 +242,55 @@ def gcode_readiness(job, machine):
                            programming, labels, job_setup)
 
 
+def gcode_inputs(job, machine, readiness=None):
+    """The generator's inputs from the database: the job, the machine, the profile, the usable operations."""
+    from .gcode import profile as gprofile
+    from .gcode import program as gprogram
+
+    readiness = readiness or gcode_readiness(job, machine)
+    features = [gprofile.FeatureData(id=f.id, type=f.type, diameter=f.diameter, start_diameter=f.start_diameter,
+                                     length=f.length, pitch=f.pitch, radius=f.radius, face=f.face,
+                                     location=f.location, across_flats=f.across_flats)
+                for f in job.active_features]
+    profile = gprofile.build(features, job.free_end or "left")
+    by_id = {op.id: op for op in job.current_operations}
+    ops = []
+    for op_id in readiness.usable:
+        op = by_id[op_id]
+        tool = op.tool
+        ops.append(gprogram.OpData(
+            id=op.id, sequence=op.sequence, tool_type=op.tool_type, mode=op.rough_finish, feature_id=op.feature_id,
+            feature_type=op.feature.type, position=op.turret_position, tool_name=tool.name if tool else "",
+            insert_code=tool.insert_code if tool else None, vc=op.vc, n=op.n, f=op.f, ap=op.ap, passes=op.passes,
+            depth=op.depth, insert_width=op.insert_width, ref_diameter=op.ref_diameter,
+            ap_min=tool.ap_min if tool else None, ap_max=tool.ap_max if tool else None,
+            tool_diameter=tool.diameter if tool else None, pitch=op.feature.pitch))
+    stock = planner.stock_diameter(job.blank_shape or "round", job.blank_diameter)
+    job_data = gprogram.JobData(id=job.id, name=job.name, material=job.material.name, blank_diameter=stock,
+                                blank_label=f"{job.blank_label} x {job.blank_length:g}",
+                                stickout=job.stickout_mm or 0.0, face_stock=job.face_stock_mm,
+                                free_end=job.free_end or "left")
+    machine_data = gprogram.MachineData(
+        max_rpm=machine.max_rpm, spindle=machine.spindle_right_hand or "", clearance_x=machine.clearance_x or 0.0,
+        clearance_z=machine.clearance_z or 0.0, retract=machine.retract_mm or 0.0,
+        chuck_safety=machine.chuck_safety_mm or 0.0, coolant=machine.coolant, thread_run_in=machine.thread_run_in_mm,
+        peck_depth=machine.peck_depth_mm, facing_overshoot=machine.facing_overshoot_mm,
+        groove_reference=machine.groove_reference, min_rpm=machine.min_rpm, max_thread_feed=machine.max_thread_feed,
+        control=machine.control)
+    return job_data, machine_data, profile, ops
+
+
+def gcode_program(job, machine):
+    """(readiness, program or None): no program while anything blocks it."""
+    from .gcode import program as gprogram
+
+    readiness = gcode_readiness(job, machine)
+    if not readiness.ok:
+        return readiness, None
+    job_data, machine_data, profile, ops = gcode_inputs(job, machine, readiness)
+    return readiness, gprogram.build(job_data, machine_data, profile, ops, readiness.skipped)
+
+
 PROFILE_TYPES = ("od_turn", "hex", "taper", "arc", "groove")
 
 

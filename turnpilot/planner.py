@@ -419,6 +419,16 @@ def thread_infeed(h: float, ap_max: float, ap_min: float) -> tuple[list[float], 
     return cutting + [0.0], method
 
 
+def thread_infeed_plan(pitch: float, ap_min: float, ap_max: float, location: str = "external") -> tuple[list[float], str]:
+    """The radial infeed per pass of a thread (spring pass last) and how it was found: "catalogue" (C77 count, C82
+    series), else thread_infeed's method by the tool's ap range."""
+    h = thread_depth(pitch)
+    passes = catalogue_thread_passes(pitch, location)
+    if passes:
+        return _decreasing_infeed(h, passes) + [0.0], "catalogue"
+    return thread_infeed(h, ap_max, ap_min)
+
+
 def iso_fit_grade(tolerance: str | None) -> int | None:
     """IT grade of an ISO fit tolerance: 'h6' -> 6, 'H7' -> 7, 'js5' -> 5. None otherwise."""
     if not tolerance:
@@ -1351,10 +1361,7 @@ def _plan_thread(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec,
     limit_thread_speed(op, feature.pitch, max_thread_feed)
     op.depth = thread_depth(feature.pitch)
     passes = catalogue_thread_passes(feature.pitch)
-    if passes:
-        infeed, method = _decreasing_infeed(op.depth, passes) + [0.0], "catalogue"
-    else:
-        infeed, method = thread_infeed(op.depth, tool.ap_max, tool.ap_min)
+    infeed, method = thread_infeed_plan(feature.pitch, tool.ap_min, tool.ap_max)
     op.passes = len(infeed)
     cutting = ", ".join(f"{d:g}" for d in infeed[:-1])
     op.notes.append(f"radial infeed per pass: {cutting} + spring pass")
