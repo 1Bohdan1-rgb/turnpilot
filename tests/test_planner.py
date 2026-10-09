@@ -659,8 +659,9 @@ def test_a_taper_is_roughed_from_its_larger_ends_neighbour(turret):
     ), axial_order=True)
     rough = next(op for op in plan_job(job, turret, max_rpm=4000) if op.feature_id == 3 and op.mode == "rough")
     allowance = float(next(n for n in rough.notes if n.startswith("leaves")).split()[1])
-    assert rough.ref_diameter == 22 and rough.passes * rough.ap == pytest.approx((22 - 13) / 2 - allowance)
-    assert "roughed from Ø22, the neighbouring section towards the chuck" in rough.notes
+    assert rough.ref_diameter == 22 + 2 * allowance  # Ø22 as its roughing leaves it
+    assert rough.passes * rough.ap == pytest.approx((22 + 2 * allowance - 13) / 2 - allowance)
+    assert any(n.startswith(f"roughed from Ø{22 + 2 * allowance:g}: the neighbouring section") for n in rough.notes)
     no_order = replace(job, axial_order=False)
     rough = next(op for op in plan_job(no_order, turret, max_rpm=4000) if op.feature_id == 3 and op.mode == "rough")
     assert rough.ref_diameter == 38  # from the bar

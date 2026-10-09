@@ -295,7 +295,8 @@ def rough_passes(
 TURNED_SECTION_TYPES = ("od_turn", "hex")  # sections the planner roughs
 PROFILE_SECTION_TYPES = ("od_turn", "hex", "taper", "arc")  # sections with a diameter at both ends
 ROUGH_FROM_BAR_NOTE = "roughed from the bar Ø{d:g}"
-ROUGH_FROM_NEIGHBOUR_NOTE = "roughed from Ø{d:g}, the neighbouring section towards the chuck"
+ROUGH_FROM_NEIGHBOUR_NOTE = ("roughed from Ø{d:g}: the neighbouring section towards the chuck as its roughing leaves it "
+                             "(Ø{nominal:g} + 2 × {a:g} for finishing)")
 NO_STOCK_AFTER_NEIGHBOUR_NOTE = "no roughing stock left after Ø{d:g} (the neighbouring section towards the chuck)"
 PIT_WARNING = ("check: section narrower than both its neighbours (a wide groove?): how it is roughed is not "
                "determined, passes counted from the bar")
@@ -308,6 +309,16 @@ class RoughStart:
     diameter: float  # the diameter the section is roughed from
     from_bar: bool
     pit: bool = False
+    nominal: float | None = None  # from a neighbour: its turned Ø (diameter is that plus its finishing allowance)
+    allowance: float = 0.0
+
+
+def with_allowance(start: RoughStart, allowance: float) -> RoughStart:
+    """A neighbour leaves its roughing allowance on: the section is roughed from that real Ø, not the nominal one."""
+    if start.from_bar or not allowance:
+        return start
+    return replace(start, diameter=round(start.diameter + 2 * allowance, 3), nominal=start.diameter,
+                   allowance=allowance)
 
 
 def _boundary_diameters(feature) -> tuple[float, float]:
@@ -1284,8 +1295,12 @@ def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSp
     allowance, is_default = finish_allowance(job.iso_group, turret)
     from_diameter = start.diameter if start else job.stock_diameter
     if start:
-        template = ROUGH_FROM_BAR_NOTE if start.from_bar else ROUGH_FROM_NEIGHBOUR_NOTE
-        op.notes.append(template.format(d=from_diameter))
+        if start.from_bar:
+            op.notes.append(ROUGH_FROM_BAR_NOTE.format(d=from_diameter))
+        elif start.nominal is not None:
+            op.notes.append(ROUGH_FROM_NEIGHBOUR_NOTE.format(d=from_diameter, nominal=start.nominal, a=start.allowance))
+        else:
+            op.notes.append(ROUGH_FROM_NEIGHBOUR_NOTE.format(d=from_diameter, nominal=from_diameter, a=0))
         if start.pit:
             op.warnings.append(PIT_WARNING)
     op.passes, op.ap = rough_passes(from_diameter, feature.diameter, roughing_ap_limit(tool), allowance)
@@ -1689,6 +1704,8 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
 
     starts, both_sides = rough_starts(features, turned_diameter, job.stock_diameter) if job.axial_order else ({}, False)
     starts.update(taper_starts(features, turned_diameter, job.stock_diameter, job.axial_order))
+    allowance, _ = finish_allowance(job.iso_group, turret)
+    starts = {key: with_allowance(start, allowance) for key, start in starts.items()}
 
     steps = [s for f in features if id(f) not in chamfer_hosts for s in feature_to_steps(f, hex_bar, holes.get(id(f)))]
     drilling = [s for s in steps if s.tool_type == "drilling"]

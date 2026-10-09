@@ -107,24 +107,24 @@ def test_nd012_within_power_unchanged_with_a_note():
 
 
 def test_nd012_section_above_power_gets_more_thinner_passes():
-    op = _rough(ND012, 55)[4]  # Ø24 (under M24, 23.85) from Ø38.5: 3 × 2.308 by ap rec 3, Pc 8.86
-    assert (op.passes, op.ap) == (4, 1.731) and (op.vc, op.f) == (355, 0.3)  # Vc and f unchanged
+    op = _rough(ND012, 55)[4]  # Ø24 (under M24, 23.85) from Ø39.3 (Ø38.5 + 2 × 0.4): 3 × 2.442, Pc 9.37
+    assert (op.passes, op.ap) == (4, 1.831) and (op.vc, op.f) == (355, 0.3)  # Vc and f unchanged
     assert not op.warnings
     note = next(n for n in op.notes if n.startswith("ap reduced"))
-    assert "Pc 8.86 > 8.80 kW (11 × 0.8) at ap 2.308; now 4 × ap 1.731, Pc 6.64 kW" in note
+    assert "Pc 9.37 > 8.80 kW (11 × 0.8) at ap 2.442; now 4 × ap 1.831, Pc 7.03 kW" in note
 
 
 def test_without_efficiency_a_warning_and_no_change():
     with_none = _rough(ND012, 55, power=PowerSpec(11, None))[4]
     unchecked = _rough(ND012, 55, power=None)[4]
-    assert (with_none.passes, with_none.ap) == (unchecked.passes, unchecked.ap) == (3, 2.308)
-    assert with_none.warnings == ["check the spindle power: Pc 8.86 kW at ap 2.308, power 11 kW, but the drive "
+    assert (with_none.passes, with_none.ap) == (unchecked.passes, unchecked.ap) == (3, 2.442)
+    assert with_none.warnings == ["check the spindle power: Pc 9.37 kW at ap 2.442, power 11 kW, but the drive "
                                   "efficiency is not set on the Machine page"]
 
 
 def test_without_machine_power_a_warning():
     op = _rough(ND012, 55, power=PowerSpec(None, 0.8))[4]
-    assert op.passes == 3 and op.warnings == ["check the spindle power: Pc 8.86 kW at ap 2.308, the machine power is "
+    assert op.passes == 3 and op.warnings == ["check the spindle power: Pc 9.37 kW at ap 2.442, the machine power is "
                                               "not set"]
 
 
@@ -148,11 +148,11 @@ def test_not_enough_power_even_at_ap_min():
 
 
 def test_power_from_the_actual_speed_when_n_is_capped():
-    # Ø10 from Ø20 with Vc 200 would need 3183 rpm; capped at 1000 rpm the actual Vc is π·20·1000/1000 = 62.8
+    # Ø10 from Ø20.8 (Ø20 + 2 × 0.4) would need over 3000 rpm; capped at 1000 the actual Vc is π·20.8·1000/1000
     op = _rough([FeatureSpec(1, "od_turn", diameter=20, length=20), FeatureSpec(2, "od_turn", diameter=10,
                                                                                   length=20)], 22, max_rpm=1000)[2]
     kc = specific_cutting_force(1600, 0.25, op.f)
-    expected = cutting_power(math.pi * 20 * 1000 / 1000, op.ap, op.f, kc)
+    expected = cutting_power(math.pi * 20.8 * 1000 / 1000, op.ap, op.f, kc)
     assert any(n.startswith(f"Pc {expected:.2f} kW") for n in op.notes)
 
 
@@ -179,18 +179,26 @@ def test_power_check_through_the_app(client):
 
 
 def test_above_the_nominal_power_ap_is_reduced_without_the_efficiency(app):
-    """The Zavisa 36 pin's Ø22 from Ø34.8: 2 × ap 3 would take 11.5 kW of the seed's 11 kW (no efficiency set)."""
+    """The Zavisa 36 pin's Ø22 from Ø35.6 (Ø34.8 as roughed, + 2 × 0.4): 3 × ap 2.133 take 8.18 kW; with a 7 kW
+    machine (no efficiency set) the passes get thinner."""
     from turnpilot.models import Feature, Job
     material = _materials()["Steel 45 (C45)"]
     job = Job(name="Pin", material=material, quantity=1, blank_diameter=38, blank_length=120, axial_order_known=True)
     job.features = [Feature(type="od_turn", diameter=22, length=26), Feature(type="od_turn", diameter=34.8, length=52)]
     db.session.add(job)
     db.session.commit()
-    services.calculate_operations(job, services.get_machine())
-    rough = next(op for op in job.current_operations if op.tool_type == "turning_rough" and op.feature.diameter == 22)
-    assert (rough.ref_diameter, rough.passes, rough.ap) == (34.8, 3, 2.0)
-    assert "ap reduced for spindle power: Pc 11.51 > 11 kW (the nominal power; the drive efficiency is not set) at " \
-           "ap 3; now 3 × ap 2" in rough.note
-    assert "check the spindle power: Pc 7.67 kW at ap 2," in rough.warning  # after the reduction; still to check
-    within = next(op for op in job.current_operations if op.tool_type == "turning_rough" and op.feature.diameter == 34.8)
-    assert "ap reduced" not in (within.note or "")
+    machine = services.get_machine()
+
+    def rough22():
+        services.calculate_operations(job, machine)
+        return next(op for op in job.current_operations if op.tool_type == "turning_rough" and op.feature.diameter == 22)
+
+    rough = rough22()
+    assert (rough.ref_diameter, rough.passes, rough.ap) == (35.6, 3, 2.133)  # within the seed's 11 kW
+    assert "ap reduced" not in rough.note and "Pc 8.18 kW at ap 2.133, power 11 kW" in rough.warning
+    machine.power_kw = 7
+    db.session.commit()
+    rough = rough22()
+    assert rough.passes == 4 and rough.ap == 1.6
+    assert "ap reduced for spindle power: Pc 8.18 > 7 kW (the nominal power; the drive efficiency is not set) at "            "ap 2.133; now 4 × ap 1.6" in rough.note
+    assert "check the spindle power: Pc 6.14 kW at ap 1.6, power 7 kW" in rough.warning  # after the reduction

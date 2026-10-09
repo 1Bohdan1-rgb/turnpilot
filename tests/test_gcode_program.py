@@ -60,8 +60,8 @@ def test_facing_roughing_finishing_of_a_pin(app):
     job = make_job()
     program = blocks(job, machine)
     titles = [b.title for b in program.blocks]
-    assert titles == ["FACE Z0, 1 MM STOCK", "ROUGH D30 1 X AP 0.6 FROM D32", "ROUGH D24 1 X AP 2.6 FROM D30",
-                      "ROUGH D20 1 X AP 1.6 FROM D24", "FINISH D20, D24, D30", "GROOVE D16 W3, INSERT 3, 1 PLUNGE",
+    assert titles == ["FACE Z0, 1 MM STOCK", "ROUGH D30 1 X AP 0.6 FROM D32", "ROUGH D24 1 X AP 3 FROM D30.8",
+                      "ROUGH D20 1 X AP 2 FROM D24.8", "FINISH D20, D24, D30", "GROOVE D16 W3, INSERT 3, 1 PLUNGE",
                       "PART OFF AT Z-63, INSERT 3"]
     face, r30, r24, r20, finish = program.blocks[:5]
     assert face.commands[0] == Spindle("css", 380, "M04", 3500)

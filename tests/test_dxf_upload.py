@@ -167,7 +167,7 @@ def test_dxf_job_is_roughed_from_the_neighbouring_sections(client, no_api, tmp_p
     client.post(f"/jobs/{job.id}/calculate")
     by_diameter = rough()
     # Ø28 is the largest: from the bar; Ø24, Ø16 and Ø18 lie on both sides of it and start from Ø28
-    assert {d: op.ref_diameter for d, op in by_diameter.items()} == {24: 28, 16: 28, 28: 45, 18: 28}
+    assert {d: op.ref_diameter for d, op in by_diameter.items()} == {24: 28.8, 16: 28.8, 28: 45, 18: 28.8}  # Ø28 + 2 × 0.4
     assert TWO_SIDES_NOTE in by_diameter[28].note
 
     client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=10, length=2))  # order lost
