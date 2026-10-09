@@ -4,6 +4,7 @@ from gcode_jobs import chamfer, make_job, pin_features, ready_machine
 
 from turnpilot import services
 from turnpilot.gcode import profile as gp
+from turnpilot.gcode import fanuc
 from turnpilot.gcode.program import Feed, Rapid, Spindle, ascii_text
 from turnpilot.models import Feature
 
@@ -114,14 +115,14 @@ def test_a_section_between_larger_ones_is_not_roughed(app):
 def test_finishing_split_at_a_section_without_a_finishing_pass(app):
     machine = ready_machine()
     features = [Feature(type="od_turn", diameter=20, length=10),
-                Feature(type="taper", start_diameter=20, diameter=26, length=6),
+                Feature(type="arc", start_diameter=20, diameter=26, radius=8, length=6),
                 Feature(type="od_turn", diameter=26, length=10), Feature(type="od_turn", diameter=30, length=10)]
     job = make_job(features)
     program = blocks(job, machine)
     finishes = [b for b in program.blocks if b.tool_type == "turning_finish"]
     assert [b.title for b in finishes] == ["FINISH D20", "FINISH D26, D30"]
     second = finishes[1].commands
-    # entry beside the taper (not finished: its allowance is assumed): above it, then down onto the face
+    # entry beside the arc (a manual operation, not finished: its allowance is assumed): above it, onto the face
     assert second[2:6] == [Rapid(x=27.8), Rapid(z=-13.6), Feed(x=26.0, f=0.15), Feed(z=-16.0)]
 
 
@@ -140,7 +141,7 @@ def test_sections_of_one_diameter_are_roughed_once(app):
     assert len(roughs) == 1 and Feed(z=-33.0, f=0.3) in roughs[0].commands  # over both sections and the groove
     second = next(op for op in job.current_operations if op.tool_type == "turning_rough"
                   and op.id not in roughs[0].op_ids)
-    assert program.notes == [f"operation {second.id} (rough Ø30): the passes before it already took the material "
+    assert program.notes == [f"operation {second.id} (rough D30): the passes before it already took the material "
                              "down to its Ø"]
     assert second.id not in program.skipped
 
@@ -151,3 +152,31 @@ def test_the_planners_warnings_go_into_the_block(app):
     program = blocks(job, machine)
     rough = next(b for b in program.blocks if b.tool_type == "turning_rough")
     assert any(w.startswith("check the spindle power") for w in rough.warnings)  # no drive efficiency in the seed
+
+
+def test_a_taper_is_roughed_in_steps_then_along_its_line_and_finished_in_the_contour(app):
+    """The operator's remark on the Zavisa 36 pin: a taper Ø13 → Ø22 at the free end, after Ø22."""
+    machine = ready_machine()
+    features = [Feature(type="face"), Feature(type="taper", start_diameter=13, diameter=22, length=6),
+                Feature(type="od_turn", diameter=22, length=26), Feature(type="od_turn", diameter=34.8, length=30),
+                Feature(type="parting")]
+    job = make_job(features, blank=38, length=70)
+    program = blocks(job, machine)
+    taper = next(b for b in program.blocks if b.title.startswith("ROUGH TAPER"))
+    feeds = [c for c in taper.commands if isinstance(c, Feed)]
+    assert feeds[-3:] == [Feed(z=0.0, f=0.3), Feed(x=22.8, z=-6.0), Feed(x=23.8)]  # along the line, 0.4 above it
+    assert taper.notes[0] == "taper: steps, then one pass along its line 0.4 mm above it"
+    finish = next(b for b in program.blocks if b.tool_type == "turning_finish")
+    assert finish.title == "FINISH TAPER D13-D22, D22, D34.8"
+    moves = [(c.x, c.z) for c in finish.commands if isinstance(c, Feed)]
+    assert moves[:2] == [(None, 0.0), (22.0, -6.0)] and Rapid(x=13.0) in finish.commands
+    assert any("the taper D13-D22 (36.9° to the axis)" in w for w in finish.warnings)
+    result = services.gcode_simulation(job, machine, fanuc.render(program))
+    assert result.ok and result.complete, (result.errors, result.incomplete)
+
+
+def test_a_groove_after_a_thread_is_bridged_at_the_threads_turned_diameter():
+    p = gp.build([fd(1, "od_turn", diameter=24, length=27), fd(2, "thread", diameter=24, length=27, pitch=1.5),
+                  fd(3, "groove", diameter=20.5, start_diameter=24, length=3), fd(4, "od_turn", diameter=30,
+                                                                                 length=20)], "left")
+    assert p.sections[1].groove_from == 23.85 and p.turned(-28.5) == pytest.approx(11.925)

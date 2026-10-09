@@ -2,12 +2,13 @@
 checks what the machine would do. The tool is its imaginary tip point (grooving and parting inserts: their width);
 the stock is a radius per z on a 0.01 mm grid, from the stock beyond Z0 to the jaws.
 
-Errors (the program is not ready to run): a rapid through material (both orders of the axes, as a Fanuc control
+Errors (the program is not ready to run): a turning cut deeper than the tool's ap max, a rapid through material (both orders of the axes, as a Fanuc control
 may move them separately), a cut below the finished profile, a tool point at the jaws, X below the axis (beyond the
 facing overshoot), G96 while drilling, a speed above G50 or the machine's max, G96 without G50, a spindle direction
 other than the operator's, G92 outside G97, n·P above the machine's threading limit, a tool change away from the
 reference point, a feed with the spindle stopped or without F, a wrong program frame.
-Warnings: parting to the axis in G96, n·P unknown, speeds below the min, material left on the part.
+Warnings: parting to the axis in G96, n·P unknown, speeds below the min. Material left on the part makes the
+program incomplete ("part not complete"), apart from the warnings.
 """
 from __future__ import annotations
 
@@ -62,12 +63,18 @@ class SimResult:
     errors: list[tuple[int, str]] = field(default_factory=list)  # (line, message)
     warnings: list[tuple[int, str]] = field(default_factory=list)
     leftover: list[tuple[float, float, float]] = field(default_factory=list)  # (z from, z to, mm per side)
+    incomplete: list[str] = field(default_factory=list)  # the part is not finished by this program: why
     final_stock: list[float] = field(default_factory=list)
     z_top: float = 0.0
 
     @property
     def ok(self) -> bool:
         return not self.errors
+
+    @property
+    def complete(self) -> bool:
+        """The program machines the whole outer profile (no material left on the part)."""
+        return not self.incomplete
 
 
 class _Sim:
@@ -200,10 +207,41 @@ class _Sim:
                 self.error(line, "the drill is off the axis")
             self.hole = min(self.hole, z)
         else:
-            for zz, xx in self._path_points(x0, z0, x, z):
-                self._remove(line, zz, max(xx, 0.0) / 2, radial=abs(x - x0) > 1e-9)
+            points = self._path_points(x0, z0, x, z)
+            excess = []  # (z, material above the tip) along a move towards the chuck
+            for k, (zz, xx) in enumerate(points):
+                r = max(xx, 0.0) / 2
+                i = self.index(zz)
+                if z < z0 - 1e-9 and i is not None and k < len(points) - 1:
+                    excess.append((zz, self.stock[i] - r))
+                self._remove(line, zz, r, radial=abs(x - x0) > 1e-9)
+            self._check_depth(line, excess, x0, z0, x, z)
         self.r.segments.append(Segment(kind, x0, z0, x, z, line, self.tool))
         self.pos = (x, z)
+
+    def _check_depth(self, line, excess, x0, z0, x, z) -> None:
+        """A turning insert cutting deeper than its ap max (the catalogue's) along more than ap max of its way: an
+        error. Shorter runs are a face's allowance taken across (an axial cut); a 45° chamfer up to 3 mm cut in one
+        pass is a warning (the chip is a triangle)."""
+        info = self.info
+        if not info or info.tool_type not in ("turning_rough", "turning_finish") or not info.edge:
+            return
+        limit, depth, run = info.edge + 0.01, 0.0, []
+        for zz, e in excess + [(None, 0.0)]:
+            if e > limit:
+                run.append((zz, e))
+                continue
+            if run and abs(run[0][0] - run[-1][0]) + DZ > info.edge:
+                depth = max(depth, max(e for _, e in run))
+            run = []
+        if not depth:
+            return
+        chamfer = abs(abs(x - x0) / 2 - abs(z - z0)) < 0.01 and abs(z - z0) <= 3 + 1e-9
+        message = (f"cuts {depth:.2f} mm deep (per side), above the tool's ap max {info.edge:g}")
+        if chamfer:
+            self.warning(line, message + ": a chamfer in one pass, check")
+        else:
+            self.error(line, message)
 
     def _remove(self, line: int, z: float, r: float, radial: bool) -> None:
         """The tool at (z, r) takes the material above r over its footprint; a turning insert moving radially
@@ -356,8 +394,9 @@ class _Sim:
         if run is not None:
             self.r.leftover.append(tuple(run))
         for z0, z1, excess in self.r.leftover:
-            self.r.warnings.append((0, f"material left from Z{fanuc.number(z0)} to Z{fanuc.number(z1)} (up to "
-                                       f"{excess:.2f} mm per side): operations not in the program, or manual"))
+            self.r.incomplete.append(f"PART NOT COMPLETE: material left from Z{fanuc.number(z0)} to "
+                                     f"Z{fanuc.number(z1)} (up to {excess:.2f} mm per side): operations not in the "
+                                     f"program, or manual")
 
 
 def simulate(text: str, data: SimInput) -> SimResult:

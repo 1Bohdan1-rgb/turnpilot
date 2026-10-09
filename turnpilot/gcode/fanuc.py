@@ -72,7 +72,8 @@ def _command(c) -> list[str]:
 
 
 def _block(b: Block) -> list[str]:
-    lines = [f"N{b.number} " + comment_lines(f"T{b.tool_position:02d} {b.tool_name} - {b.title}")[0]]
+    title = comment_lines(f"T{b.tool_position:02d} {b.tool_name} - {b.title}")
+    lines = [f"N{b.number} " + title[0]] + title[1:]
     for note in b.notes:
         lines += comment_lines(note)
     for warning in b.warnings:

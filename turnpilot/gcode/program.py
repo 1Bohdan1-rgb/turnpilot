@@ -236,10 +236,15 @@ class _Builder:
             return None  # no stock left: nothing to write
         if op.ref_diameter is None or op.ap is None:
             return "no start diameter or depth of cut: not generated"
-        b = self.block(op, f"ROUGH D{section.turned_d:g} {op.passes} X AP {op.ap:g} FROM D{op.ref_diameter:g}")
-        target = section.turned_d / 2
+        name = (f"TAPER D{section.d_free:g}-D{section.d_chuck:g}" if section.kind == "taper"
+                else f"D{section.turned_d:g}")
+        b = self.block(op, f"ROUGH {name} {op.passes} X AP {op.ap:g} FROM D{op.ref_diameter:g}")
+        target = min(section.d_free, section.d_chuck) / 2 if section.kind == "taper" else section.turned_d / 2
         allowance = max(0.0, op.ref_diameter / 2 - op.passes * op.ap - target)
+        # the scans start where the section is lowest (a taper: its smaller end)
         z_mid = (section.z_free + section.z_chuck) / 2
+        if section.kind == "taper":
+            z_mid = section.z_free if section.d_free <= section.d_chuck else section.z_chuck
         passes = []
         for i in range(1, op.passes + 1):
             radius = op.ref_diameter / 2 - i * op.ap
@@ -249,18 +254,27 @@ class _Builder:
                         "not generated")
             shoulder = self._scan(z_mid, True, level)
             z_end = -self.p.length if shoulder is None else min(shoulder + allowance, section.z_free)
+            if z_end > -EPS:
+                continue  # a taper's step that does not reach the part
             if self._roughed_to(z_end, radius):
                 continue  # an earlier pass already took the material down to this radius over the span
             passes.append((radius, _r3(z_end)))
-        if not passes:
-            self.covered.append(f"operation {op.id} (rough Ø{section.turned_d:g}): the passes before it already "
-                                f"took the material down to its Ø")
+        profile_pass = section.kind == "taper" and section.d_free < section.d_chuck and allowance >= 0
+        if not passes and not profile_pass:
+            self.covered.append(f"operation {op.id} (rough {name}): the passes before it already took the "
+                                f"material down to its Ø")
             return b  # no commands: left out of the program
         self.roughed += [(0.0, z_end, radius) for radius, z_end in passes]
         self._start(b, op)
         for radius, z_end in passes:
             b.commands += [Rapid(x=_r3(2 * radius)), Feed(z=z_end, f=op.f),
                            Feed(x=_r3(2 * (radius + self.m.retract))), Rapid(z=self.z_safe)]
+        if profile_pass:  # along the taper's line, the allowance above it: the steps' corners off
+            r0, r1 = section.d_free / 2 + allowance, section.d_chuck / 2 + allowance
+            b.commands += [Rapid(z=_r3(section.z_free + self.m.clearance_z)), Rapid(x=_r3(2 * r0)),
+                           Feed(z=_r3(section.z_free), f=op.f), Feed(x=_r3(2 * r1), z=_r3(section.z_chuck)),
+                           Feed(x=_r3(2 * (r1 + self.m.retract))), Rapid(z=self.z_safe)]
+            b.notes.append(f"taper: steps, then one pass along its line {allowance:g} mm above it")
         self._end(b)
         if allowance:
             b.notes.append(f"leaves {allowance:g} mm per side for finishing")
@@ -277,7 +291,8 @@ class _Builder:
         """One contour over adjacent sections (grooves between them bridged at the Ø they are cut from)."""
         first_op = next(op for _, op in group if op is not None)
         sections = [s for s, _ in group]
-        names = ", ".join(f"D{s.turned_d:g}" for s, op in group if op is not None)
+        names = ", ".join((f"TAPER D{s.d_free:g}-D{s.d_chuck:g}" if s.kind == "taper" else f"D{s.turned_d:g}")
+                          for s, op in group if op is not None)
         b = self.block(first_op, f"FINISH {names}", [op.id for _, op in group if op is not None])
         self._start(b, first_op)
         first = sections[0]
@@ -319,6 +334,13 @@ class _Builder:
             b.warnings.append(f"no nose radius compensation: 45° chamfers come out about {offset:g} mm (normal) "
                               f"fuller than drawn, legs about {round(offset * math.sqrt(2), 2):g} mm shorter "
                               f"(rε {rnose:g}): check")
+        for s in sections:
+            if s.kind == "taper" and rnose:
+                angle = math.atan2(abs(s.d_chuck - s.d_free) / 2, s.length)
+                offset = round(rnose * (math.sin(angle) + math.cos(angle) - 1), 3)
+                b.warnings.append(f"no nose radius compensation: the taper D{s.d_free:g}-D{s.d_chuck:g} "
+                                  f"({math.degrees(angle):.1f}° to the axis) comes out about {offset:g} mm (normal) "
+                                  f"fuller than drawn (rε {rnose:g}): check")
         return b
 
     def _contour(self, section: Section) -> list[tuple[float, float]]:
@@ -501,8 +523,8 @@ class _Builder:
         out = []
         for op in finish:
             sec = self.p.section_of(op.feature_id)
-            if sec is None or sec.kind not in ("od_turn", "hex"):
-                out.append((op.id, "not a cylinder of the profile: not generated"))
+            if sec is None or sec.kind not in ("od_turn", "hex", "taper"):
+                out.append((op.id, "not a cylinder or taper of the profile: not generated"))
                 continue
             by_section[sec.index] = op
         groups, current = [], []

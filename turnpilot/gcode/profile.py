@@ -134,10 +134,24 @@ def build(features: list[FeatureData], free_end: str) -> Profile:
     for i, s in enumerate(sections):
         s.index, s.z_free, s.z_chuck = i, z, round(z - s.length, 6)
         z = s.z_chuck
+    for i, s in enumerate(sections):  # a groove is bridged at the smaller of its neighbours as they are turned
+        if s.kind == "groove":
+            sides = [_turned_end(sections[i - 1], chuck_side=True)] if i > 0 else []
+            sides += [_turned_end(sections[i + 1], chuck_side=False)] if i + 1 < len(sections) else []
+            s.groove_from = min([d for d in [s.groove_from] + sides if d] or [s.d_free])
     profile = Profile(sections, round(-z, 6), warnings)
     profile.turned_points = _points(sections, final=False)
     profile.final_points = _points(sections, final=True)
     return profile
+
+
+def _turned_end(section: Section, chuck_side: bool) -> float | None:
+    """The Ø a neighbour is turned to at the end next to a groove (a thread: its reduced major Ø)."""
+    if section.kind in ("od_turn", "hex"):
+        return section.turned_d
+    if section.kind == "taper":
+        return section.d_chuck if chuck_side else section.d_free
+    return None
 
 
 def _points(sections: list[Section], final: bool) -> list[tuple[float, float]]:

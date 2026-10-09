@@ -91,14 +91,22 @@ def test_a_value_without_a_decimal_point_stops_the_simulation(pin):
 def test_material_left_where_an_operation_is_not_in_the_program(app):
     machine = ready_machine()
     features = [Feature(type="face"), Feature(type="od_turn", diameter=20, length=10),
-                Feature(type="taper", start_diameter=20, diameter=26, length=6),
+                Feature(type="arc", start_diameter=20, diameter=26, radius=8, length=6),
                 Feature(type="od_turn", diameter=26, length=10), Feature(type="parting")]
     job = make_job(features, blank=30, length=30)
     readiness, program = services.gcode_program(job, machine)
     result = services.gcode_simulation(job, machine, fanuc.render(program))
     assert result.ok, result.errors
-    (z0, z1, excess), = result.leftover  # the taper: manual in the planner, roughed only to its allowance
-    assert z0 == pytest.approx(-10.01) and z1 > -16.01 and excess > 0.4
+    (z0, z1, excess), = result.leftover  # the arc: a manual operation, roughed only to its allowance
+    assert z0 == pytest.approx(-10.01) and z1 > -16.01 and excess >= 0.4 - 0.001
+    assert not result.complete and result.incomplete[0].startswith("PART NOT COMPLETE: material left from Z-10.01")
+    assert result.warnings == [] or all("material" not in m for _, m in result.warnings)
+
+
+def test_a_finishing_cut_deeper_than_the_inserts_ap_max(pin):
+    # without the roughing pass of Ø24 the finishing pass would take 3.4 mm there (DNMG PF: ap max 1.5)
+    text = replace(pin[2], "G00 X24.8\nG01 Z-37.6 F0.3\nG01 X25.8\n", "")
+    assert "cuts 3.40 mm deep (per side), above the tool's ap max 1.5" in messages(run(pin, text))
 
 
 def test_drilling_in_g96_and_threading_in_g96(app):
