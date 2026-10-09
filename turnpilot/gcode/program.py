@@ -343,8 +343,135 @@ class _Builder:
         return out
 
     def other(self, op: OpData, section: Section | None):
-        """Operations added by the next commit (grooving, threading, drilling, parting)."""
-        return op.id, f"{op.tool_type}: not generated yet"
+        if op.tool_type == "grooving":
+            result = self.groove(op, section)
+        elif op.tool_type == "threading":
+            result = self.thread(op, section)
+        elif op.tool_type == "drilling":
+            result = self.drill(op)
+        elif op.tool_type == "parting":
+            result = self.parting(op)
+        else:
+            result = f"{op.tool_type}: not generated in this version"
+        return self._result(op, result)
+
+    def _above(self, z_top: float, z_bottom: float) -> float:
+        """A radius above the material between two z: the turned profile there, its allowance, the clearance."""
+        radii = [r for z, r in self.p.turned_points if z_bottom - EPS <= z <= z_top + EPS]
+        radii += [self.p.turned(z_top), self.p.turned(z_bottom)]
+        return max(radii) + self.allowance + self.m.clearance_x
+
+    # grooving: plunges -------------------------------------------------------------------------------
+    def groove(self, op: OpData, section: Section | None) -> Block | str:
+        if section is None or section.kind != "groove":
+            return "not a groove of the profile: not generated"
+        plunges_first = any(o.tool_type == "grooving" and o.mode == "rough" and o.feature_id == op.feature_id
+                            for o in self.ops)
+        if op.mode == "finish" and plunges_first:  # the pass after the plunges (a groove with a fine finish)
+            return "groove finishing pass (walls and bottom): not generated in this version"
+        w = op.insert_width
+        if not w:
+            return "the grooving insert has no width: not generated"
+        width = section.z_free - section.z_chuck
+        if w > width + 0.01:
+            return f"insert {w:g} wider than the groove {width:g}: not generated"
+        bottom = section.d_free / 2
+        start = (op.ref_diameter or section.groove_from or section.d_free) / 2
+        wall = max(0.0, start - bottom - (op.depth or 0.0)) if op.depth is not None else 0.0  # finishing allowance
+        first_edge, last_edge = section.z_free - wall, section.z_chuck + wall + w  # the insert's free-side edge
+        plunges = max(1, op.passes or 1)
+        step = (first_edge - last_edge) / (plunges - 1) if plunges > 1 else 0.0
+        offset = 0.0 if self.m.groove_reference == "toward Z0" else -w  # programmed corner vs free-side edge
+        b = self.block(op, f"GROOVE D{section.d_free:g} W{width:g}, INSERT {w:g}, {plunges} PLUNGE(S)")
+        above = self._above(section.z_free, section.z_chuck)
+        self._start(b, op)
+        b.commands.append(Rapid(x=_r3(2 * above)))
+        for i in range(plunges):
+            z = _r3(first_edge - i * step + offset)
+            b.commands += [Rapid(z=z), Feed(x=_r3(2 * (bottom + wall)), f=op.f), Rapid(x=_r3(2 * above))]
+        self._end(b)
+        b.warnings.append(f"Z is the insert's corner {self.m.groove_reference} (the operator's touch-off): check")
+        return b
+
+    # threading: G92 per pass -------------------------------------------------------------------------
+    def thread(self, op: OpData, section: Section | None) -> Block | str:
+        from ..planner import thread_infeed_plan
+
+        if section is None or not section.pitch:
+            return "not an external thread of the profile: not generated"
+        if not op.n:
+            return "no spindle speed: not generated"
+        infeed, _ = thread_infeed_plan(section.pitch, op.ap_min or 0.0, op.ap_max or 0.0) \
+            if op.ap_max else thread_infeed_plan(section.pitch, 0.0, 1.0)
+        d = section.turned_d
+        b = self.block(op, f"THREAD M{section.d_free:g}X{section.pitch:g} G92 {len(infeed)} PASSES")
+        z_start = _r3(section.z_free + self.m.thread_run_in)
+        x_start = _r3(d + 2 * self.m.clearance_x)
+        b.commands.append(Spindle("rpm", int(op.n), self.m.spindle, self.m.max_rpm))
+        b.commands.append(Rapid(self.x_safe, self.z_safe))
+        if self.m.coolant:
+            b.commands.append(Coolant(True))
+        b.commands += [Rapid(z=z_start), Rapid(x=x_start)]
+        depth = 0.0
+        for cut in infeed:
+            depth += cut
+            b.commands.append(ThreadPass(_r3(d - 2 * depth), _r3(section.z_chuck), section.pitch))
+        self._end(b)
+        if section.chamfer_chuck == 0 and section.index + 1 < len(self.p.sections) \
+                and self.p.sections[section.index + 1].kind != "groove":
+            b.warnings.append("the thread ends at a shoulder without a relief groove: G92 pulls out at the thread "
+                              "end: check")
+        if self.m.max_thread_feed is None:
+            b.warnings.append(f"check n·P = {op.n * section.pitch:g} mm/min for your machine (no threading limit "
+                              "set)")
+        return b
+
+    # drilling on the axis: G97, pecks ---------------------------------------------------------------
+    def drill(self, op: OpData) -> Block | str:
+        if not op.n or not op.depth:
+            return "no spindle speed or depth: not generated"
+        q = self.m.peck_depth
+        b = self.block(op, f"DRILL D{op.tool_diameter or 0:g} DEPTH {op.depth:g} ON THE AXIS")
+        cz = self.m.clearance_z
+        b.commands.append(Spindle("rpm", int(op.n), self.m.spindle, self.m.max_rpm))  # G97: fixed rpm on X0
+        b.commands.append(Rapid(self.x_safe, self.z_safe))
+        if self.m.coolant:
+            b.commands.append(Coolant(True))
+        b.commands += [Rapid(x=0.0), Rapid(z=_r3(cz))]
+        reached = 0.0
+        while reached < op.depth - EPS:
+            target = min(op.depth, reached + q)
+            if reached > 0:
+                b.commands.append(Rapid(z=_r3(-reached + cz)))  # back down the drilled hole
+            b.commands += [Feed(z=_r3(-target), f=op.f), Rapid(z=_r3(cz))]
+            reached = target
+        b.commands.append(Rapid(z=self.z_safe))
+        self._end(b)
+        if op.tool_diameter:
+            b.warnings.append(f"Z is the drill's tip: its full Ø stops {round(0.182 * op.tool_diameter, 2):g} mm "
+                              "shorter (140° point): check the drawing's depth")
+        b.warnings.append("the inner profile is not simulated (only the drill's path on the axis)")
+        return b
+
+    # parting ---------------------------------------------------------------------------------------
+    def parting(self, op: OpData) -> Block | str:
+        w = op.insert_width
+        if not w:
+            return "the parting insert has no width: not generated"
+        z = _r3(-self.p.length if self.m.groove_reference == "toward Z0" else -self.p.length - w)
+        x_end = _r3(max(0.0, (op.ref_diameter or self.job.blank_diameter) - 2 * (op.depth or 0.0)))
+        b = self.block(op, f"PART OFF AT Z{-self.p.length:g}, INSERT {w:g}")
+        self._start(b, op)
+        if x_end == 0:
+            b.commands.append(Comment(f"PARTING TO THE AXIS IN G96: SPINDLE RUNS UP TO G50 S{self.m.max_rpm} - "
+                                      "OPERATOR MAY SWITCH TO G97"))
+            b.warnings.append(f"parting to the axis in G96: the spindle runs up to G50 S{self.m.max_rpm}; the "
+                              "operator may switch to G97")
+        b.commands += [Rapid(z=z), Feed(x=x_end, f=op.f), Rapid(x=self.x_safe)]
+        self._end(b)
+        b.warnings.append("feed not reduced near the axis: that rule is a placeholder (not written)")
+        b.warnings.append(f"Z is the insert's corner {self.m.groove_reference} (the operator's touch-off): check")
+        return b
 
     def _finish_groups(self, finish: list[OpData]):
         by_section = {}

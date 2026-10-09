@@ -60,8 +60,9 @@ def test_facing_roughing_finishing_of_a_pin(app):
     program = blocks(job, machine)
     titles = [b.title for b in program.blocks]
     assert titles == ["FACE Z0, 1 MM STOCK", "ROUGH D30 1 X AP 0.6 FROM D32", "ROUGH D24 1 X AP 2.6 FROM D30",
-                      "ROUGH D20 1 X AP 1.6 FROM D24", "FINISH D20, D24, D30"]
-    face, r30, r24, r20, finish = program.blocks
+                      "ROUGH D20 1 X AP 1.6 FROM D24", "FINISH D20, D24, D30", "GROOVE D16 W3, INSERT 3, 1 PLUNGE(S)",
+                      "PART OFF AT Z-63, INSERT 3"]
+    face, r30, r24, r20, finish = program.blocks[:5]
     assert face.commands[0] == Spindle("css", 380, "M04", 3500)
     assert Feed(x=-0.8, f=0.25) in face.commands  # past the axis by the operator's 0.4 per side
     assert [c.z for c in face.commands if isinstance(c, Rapid) and c.x is None] == [0.5, 0.0, 3.0]  # two passes
@@ -75,8 +76,7 @@ def test_facing_roughing_finishing_of_a_pin(app):
     assert "no nose radius compensation" in finish.warnings[0]
     assert program.warnings == ["coolant not known for this machine: M08 not written; the catalogue's Vc are with "
                                 "coolant: check"]
-    grooving, parting = [op for op in job.current_operations if op.tool_type in ("grooving", "parting")]
-    assert program.skipped[grooving.id] == "grooving: not generated yet"
+    assert program.skipped == {}
 
 
 def test_the_same_pin_drawn_the_other_way_round(app):
