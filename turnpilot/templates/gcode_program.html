@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Program {{ record.id }}{% endblock %}
+{% block content %}
+<h1>Program #{{ record.id }}: {{ job.name }}</h1>
+<p class="muted">{{ record.dialect }} · calculation v{{ record.calculation_version }} ·
+  {{ record.created_at.strftime("%Y-%m-%d %H:%M") }} · {{ lines|length }} lines ·
+  <a href="{{ url_for('main.job_gcode', job_id=job.id) }}">G-code of the job</a></p>
+
+{% if demo %}
+<div class="banner banner-demo">
+  <strong>DEMO values, not from the machine's passport or the operator:</strong>
+  {% for row in demo %}{{ row.label }} {{ row.value }}{% if row.unit %} {{ row.unit }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}.
+  "Ready to run" is not possible until the operator enters them
+  (<a href="{{ url_for('main.machine') }}">Machine page</a>, <a href="{{ url_for('main.job_detail', job_id=job.id) }}">G-code set-up</a>) and the program is generated again.
+</div>
+{% endif %}
+{% if stale %}
+<div class="banner banner-stop"><strong>Out of date:</strong> {{ stale|join("; ") }}. Generate it again.</div>
+{% endif %}
+{% if sim.incomplete %}
+<div class="banner banner-stop"><strong>PART NOT COMPLETE.</strong>
+  <ul>{% for m in sim.incomplete %}<li>{{ m }}</li>{% endfor %}</ul></div>
+{% endif %}
+{% if sim.errors %}
+<div class="banner banner-stop"><strong>The simulation found {{ sim.errors|length }} error(s):</strong>
+  <ul>{% for line, m in sim.errors %}<li><a href="#L{{ line }}">line {{ line }}</a>: {{ m }}</li>{% endfor %}</ul></div>
+{% elif not sim.incomplete %}
+<div class="banner banner-ok">The simulation found no error, and the program machines the whole outer profile.</div>
+{% endif %}
+{% if record.status == "ready" %}
+<div class="banner banner-ok"><strong>Ready to run</strong>, confirmed by {{ record.confirmed_by }}
+  {{ record.confirmed_at.strftime("%Y-%m-%d %H:%M") }}.
+  {% if not stale %}<a href="{{ url_for('main.gcode_download', program_id=record.id) }}">Download the .nc file</a>.{% endif %}
+  The operator presses Start after the machine check.</div>
+{% endif %}
+
+<h2>Simulation</h2>
+<div class="card sim-card">
+  {{ drawing|safe }}
+  <div class="sim-controls">
+    <label class="small">Moves shown <input type="range" id="sim-step" min="0" value="0"></label>
+    <span class="small muted" id="sim-where"></span>
+    <span class="small legend"><span class="key rapid"></span> rapid (G00) <span class="key feed"></span> feed (G01)
+      <span class="key thread"></span> thread (G92) <span class="key stock"></span> stock left <span class="key profile"></span> finished profile</span>
+  </div>
+</div>
+
+{% if sim.warnings or sim.program_warnings %}
+<h2>Checks</h2>
+<ul class="card checks">
+  {% for line, m in sim.warnings %}<li>{% if line %}<a href="#L{{ line }}">line {{ line }}</a>: {% endif %}{{ m }}</li>{% endfor %}
+  {% for m in sim.program_warnings %}<li>{{ m }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% if sim.skipped %}
+<h2>Operations not in the program</h2>
+<ul class="card checks">{% for op_id, reason in sim.skipped.items() %}<li>operation {{ op_id }}: {{ reason }}</li>{% endfor %}</ul>
+{% endif %}
+
+<h2>Operator's check</h2>
+<form method="post" action="{{ url_for('main.gcode_ready', program_id=record.id) }}" class="card">
+  {% for key, text in checklist %}
+    <label class="check-item"><input type="checkbox" name="check-{{ key }}" value="1" {% if ticked.get(key) %}checked{% endif %}
+      {% if record.status == "ready" %}disabled{% endif %}> {{ text }}</label>
+  {% endfor %}
+  <label>Operator <input name="confirmed_by" value="{{ record.confirmed_by or '' }}" maxlength="100" {% if record.status == "ready" %}disabled{% endif %}></label>
+  {% set blocked = sim.errors or sim.incomplete or demo or stale %}
+  {% if record.status != "ready" %}
+  <button type="submit" class="primary" {% if blocked %}disabled{% endif %}>Ready to run</button>
+  {% if blocked %}<p class="small warning">Not possible:
+    {% if sim.errors %}the simulation found errors; {% endif %}{% if sim.incomplete %}the part is not complete; {% endif %}
+    {% if demo %}DEMO values are used; {% endif %}{% if stale %}the program is out of date{% endif %}</p>{% endif %}
+  {% endif %}
+</form>
+
+<h2>Program</h2>
+<div class="card program-text"><ol class="nc">
+{% for line in lines %}{% set n = loop.index %}<li id="L{{ n }}" class="{% for kind, m in flagged.get(n, []) %}nc-{{ kind }} {% endfor %}">{{ line }}{% for kind, m in flagged.get(n, []) %}<span class="nc-note">← {{ m }}</span>{% endfor %}</li>
+{% endfor %}</ol></div>
+
+<script>
+(function () {
+  var moves = document.querySelectorAll(".gcode-sim .mv");
+  var step = document.getElementById("sim-step"), where = document.getElementById("sim-where");
+  step.max = moves.length; step.value = moves.length;
+  function show() {
+    var n = +step.value;
+    for (var i = 0; i < moves.length; i++) moves[i].style.display = i < n ? "" : "none";
+    var last = moves[n - 1];
+    where.textContent = n ? n + " of " + moves.length + " moves, line " + last.getAttribute("data-line") : "no move";
+  }
+  step.addEventListener("input", show);
+  show();
+})();
+</script>
+{% endblock %}

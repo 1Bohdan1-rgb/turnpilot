@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 # Operations the generator writes (outer profile, and drilling on the axis), by tool type.
 SUPPORTED_TOOL_TYPES = ("facing", "turning_rough", "turning_finish", "grooving", "threading", "drilling", "parting")
 CONFIRMED_ORIGINS = ("catalogue", "operator")
-MAX_RPM_SOURCES = ("passport", "operator")
+# "demo": the demo command's value; a program can be looked at, never marked ready to run (services.mark_gcode_ready)
+MAX_RPM_SOURCES = ("passport", "operator", "demo")
 
 NOT_IN_AXIAL_ORDER = ("the sections' order along the axis is not known (a job not read from a DXF): a program "
                       "needs the profile from the part zero")

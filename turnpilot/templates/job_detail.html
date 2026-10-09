@@ -70,6 +70,7 @@
 <form method="post" action="{{ url_for('main.calculate', job_id=job.id) }}" class="actions">
   <button type="submit" class="primary">Calculate</button>
   {% if job.current_operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">View current operations</a>{% endif %}
+  {% if job.axial_order_known and job.current_operations %}<a href="{{ url_for('main.job_gcode', job_id=job.id) }}">G-code</a>{% endif %}
   {% if job.archived_operations %}<a href="{{ url_for('main.history', job_id=job.id) }}">Calculation history</a>{% endif %}
 </form>
 {% if job.axial_order_known %}

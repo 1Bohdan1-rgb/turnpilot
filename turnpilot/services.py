@@ -314,6 +314,136 @@ def gcode_simulation(job, machine, text, profile=None):
     return gsim.simulate(text, data)
 
 
+def is_demo(machine, name):
+    source = machine.source_of(name)
+    return source is not None and source.source == machine_spec.SOURCE_DEMO
+
+
+GCODE_CHECKLIST = (
+    ("zero", "Z0 is on the free end face and X0 on the axis; the free end is the right one"),
+    ("tools", "the tool numbers and offsets match the turret on the machine"),
+    ("clamping", "the stick-out and the jaws match the real clamping"),
+    ("spindle", "the spindle direction matches the way the tools are mounted"),
+    ("simulation", "the simulation is looked through; what is left for manual work is understood"),
+    ("machine_check", "on the machine: the control's graphics, a dry run with an offset, single block, rapid 25%"),
+)
+
+
+def gcode_settings(job, machine):
+    """The values a program uses, each with its source (the passport, the operator, DEMO)."""
+    rows = []
+    for field in (machine_spec.FIELDS_BY_NAME["max_rpm"],) + machine_spec.PROGRAMMING_FIELDS:
+        value = getattr(machine, field.name)
+        source = machine.source_of(field.name)
+        rows.append({"name": field.name, "label": field.label, "unit": field.unit,
+                     "value": machine_spec.format_value(field, value),
+                     "source": source.source if source else None, "source_label": source.label if source else "seed"})
+    setup_source = machine_spec.SOURCE_DEMO if job.gcode_setup_demo else machine_spec.SOURCE_OPERATOR
+    for name, label, unit in (("free_end", "Free end (Z0) on the drawing", ""),
+                              ("stickout_mm", "Stick-out from the jaws", "mm"),
+                              ("face_stock_mm", "Stock beyond Z0", "mm")):
+        value = getattr(job, name)
+        rows.append({"name": name, "label": label, "unit": unit, "value": "" if value is None else f"{value:g}"
+                     if isinstance(value, float) else value, "source": setup_source,
+                     "source_label": "DEMO value, not from the machine" if job.gcode_setup_demo else "the operator"})
+    return rows
+
+
+def demo_settings(settings):
+    """The values typed by the demo command: no program is ready to run while one is used."""
+    return [row for row in settings if row["source"] == machine_spec.SOURCE_DEMO and row["value"] != ""]
+
+
+def generate_gcode(job, machine):
+    """Build, print and simulate a program for the job; kept as a new GcodeProgram. (readiness, program or None)."""
+    from .gcode import fanuc
+    from .models import GcodeProgram
+
+    readiness, program = gcode_program(job, machine)
+    if program is None:
+        return readiness, None
+    text = fanuc.render(program)
+    result = gcode_simulation(job, machine, text)
+    simulation = {
+        "errors": result.errors, "warnings": result.warnings, "incomplete": result.incomplete,
+        "segments": [[s.kind, s.x0, s.z0, s.x1, s.z1, s.line, s.tool] for s in result.segments],
+        "final_stock": [round(r, 3) for r in result.final_stock[::10]], "z_top": result.z_top, "dz": 0.1,
+        "program_warnings": program.warnings, "skipped": {str(k): v for k, v in program.skipped.items()},
+    }
+    record = GcodeProgram(job=job, calculation_version=job.last_calculation_version, dialect=fanuc.NAME, text=text,
+                          sha256=hashlib.sha256(text.encode("ascii")).hexdigest(),
+                          settings=json.dumps(gcode_settings(job, machine), ensure_ascii=False),
+                          simulation=json.dumps(simulation, ensure_ascii=False))
+    db.session.add(record)
+    db.session.commit()
+    return readiness, record
+
+
+def gcode_stale(record, machine):
+    """Why a program no longer matches the job and the machine (empty: it still does)."""
+    job = record.job
+    reasons = []
+    if record.calculation_version != job.last_calculation_version:
+        reasons.append("the job was calculated again after this program")
+    if job.tools_changed_since_calculation:
+        reasons.append("tools changed since the calculation")
+    then = {row["name"]: (row["value"], row["source"]) for row in json.loads(record.settings)}
+    now = {row["name"]: (row["value"], row["source"]) for row in gcode_settings(job, machine)}
+    changed = [row["label"] for row in gcode_settings(job, machine) if then.get(row["name"]) != now[row["name"]]]
+    if changed:
+        reasons.append("values changed since this program: " + ", ".join(changed))
+    return reasons
+
+
+class GcodeError(ValueError):
+    pass
+
+
+def mark_gcode_ready(record, machine, form):
+    """The operator's "Ready to run": only a program without errors that machines the whole part, with no DEMO
+    value, still matching the job and the machine, every item of the checklist ticked and the operator's name."""
+    sim = json.loads(record.simulation)
+    problems = []
+    if sim["errors"]:
+        problems.append("the simulation found errors")
+    if sim["incomplete"]:
+        problems.append("the part is not complete")
+    demo = demo_settings(json.loads(record.settings))
+    if demo:
+        problems.append("DEMO values are used: " + ", ".join(row["label"] for row in demo))
+    problems += gcode_stale(record, machine)
+    ticked = {key: bool(form.get(f"check-{key}")) for key, _ in GCODE_CHECKLIST}
+    if not all(ticked.values()):
+        problems.append("not every item of the checklist is ticked")
+    name = (form.get("confirmed_by") or "").strip()
+    if not name:
+        problems.append("the operator's name is required")
+    if problems:
+        raise GcodeError("; ".join(problems))
+    record.status, record.checklist = "ready", json.dumps(ticked)
+    record.confirmed_by, record.confirmed_at = name[:100], datetime.now(timezone.utc)
+    db.session.commit()
+
+
+DEMO_PROGRAMMING = dict(max_rpm=3500, spindle_right_hand="M04", clearance_x=1.0, clearance_z=2.0, retract_mm=0.5,
+                        chuck_safety_mm=5.0, thread_run_in_mm=6.0, peck_depth_mm=5.0, facing_overshoot_mm=0.4,
+                        groove_reference="toward Z0", parting_overshoot_mm=0.25)
+
+
+def set_gcode_demo(machine, job=None):
+    """DEMO values to look at a program before the machine's are known: recorded with the source "demo" (never
+    ready to run). Fields the operator or the passport already gave are kept."""
+    for name, value in DEMO_PROGRAMMING.items():
+        source = machine.source_of(name)
+        if source is None or source.source == machine_spec.SOURCE_DEMO:
+            set_machine_value(machine, name, value, machine_spec.SOURCE_DEMO)
+    if job is not None and job.axial_order_known and not (job.stickout_mm and not job.gcode_setup_demo):
+        job.free_end = job.free_end or suggest_free_end(job) or "left"
+        job.stickout_mm, job.face_stock_mm = round(job.blank_length + 5, 3), 1.0
+        job.gcode_setup_demo = True
+    db.session.commit()
+
+
 PROFILE_TYPES = ("od_turn", "hex", "taper", "arc", "groove")
 
 

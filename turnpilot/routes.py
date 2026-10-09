@@ -29,6 +29,7 @@ from .models import (
     BLANK_SHAPES,
     FEATURE_TYPES,
     CatalogueDocument,
+    GcodeProgram,
     CuttingDataRow,
     DrawingExtraction,
     ISO_GROUPS,
@@ -44,6 +45,11 @@ from .models import (
 )
 
 bp = Blueprint("main", __name__)
+
+
+@bp.app_template_filter("fromjson")
+def _fromjson(text):
+    return json.loads(text) if text else {}
 
 
 class FormError(ValueError):
@@ -90,7 +96,7 @@ def machine():
                         continue
                     try:
                         value = parse_value(field, request.form.get(field.name))
-                        if value != getattr(machine, field.name):
+                        if value != getattr(machine, field.name) or services.is_demo(machine, field.name):
                             services.set_machine_value(machine, field.name, value, SOURCE_OPERATOR)
                     except ValueError as e:
                         raise FormError(str(e)) from None
@@ -105,7 +111,7 @@ def machine():
                         value = parse_value(field, request.form.get(field.name))
                     except ValueError as e:
                         raise FormError(str(e)) from None
-                    if value != getattr(machine, field.name):
+                    if value != getattr(machine, field.name) or services.is_demo(machine, field.name):
                         services.set_machine_value(machine, field.name, value, SOURCE_OPERATOR)
                 flash("Programming values saved.")
             elif request.form.get("action") == "stock":
@@ -656,6 +662,79 @@ def job_detail(job_id):
                            suggested_free_end=services.suggest_free_end(job))
 
 
+@bp.route("/jobs/<int:job_id>/gcode", methods=["GET", "POST"])
+def job_gcode(job_id):
+    """What a program needs, the values it would use with their sources, and the programs made so far."""
+    job = db.get_or_404(Job, job_id)
+    machine = _machine_or_404()
+    if request.method == "POST":
+        readiness, record = services.generate_gcode(job, machine)
+        if record is None:
+            flash("No program: " + "; ".join(readiness.blockers), "error")
+            return redirect(url_for("main.job_gcode", job_id=job.id))
+        return redirect(url_for("main.gcode_program", program_id=record.id))
+    readiness = services.gcode_readiness(job, machine)
+    settings = services.gcode_settings(job, machine)
+    ops = {op.id: op for op in job.current_operations}
+    programs = db.session.execute(db.select(GcodeProgram).filter_by(job_id=job.id)
+                                  .order_by(GcodeProgram.id.desc())).scalars().all()
+    return render_template("job_gcode.html", job=job, readiness=readiness, settings=settings, ops=ops,
+                           demo=services.demo_settings(settings), programs=programs)
+
+
+@bp.route("/gcode/<int:program_id>")
+def gcode_program(program_id):
+    from .gcode import svg
+
+    record = db.get_or_404(GcodeProgram, program_id)
+    machine = _machine_or_404()
+    job = record.job
+    sim = json.loads(record.simulation)
+    settings = json.loads(record.settings)
+    stale = services.gcode_stale(record, machine)
+    _, _, profile, _ = services.gcode_inputs(job, machine)
+    tools = {s.position: s.tool.name for s in machine.slots if s.tool}
+    setup = {row["name"]: row["value"] for row in settings}
+    drawing = svg.render(
+        sim["segments"], sim["final_stock"], sim["z_top"], sim["dz"], profile.final_points,
+        planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
+        float(setup.get("stickout_mm") or 0), float(setup.get("chuck_safety_mm") or 0),
+        [line for line, _ in sim["errors"]], tools)
+    lines = record.text.splitlines()
+    flagged = {}
+    for line, message in sim["errors"]:
+        flagged.setdefault(line, []).append(("error", message))
+    for line, message in sim["warnings"]:
+        flagged.setdefault(line, []).append(("warning", message))
+    return render_template(
+        "gcode_program.html", record=record, job=job, sim=sim, settings=settings, stale=stale, drawing=drawing,
+        lines=lines, flagged=flagged, demo=services.demo_settings(settings), checklist=services.GCODE_CHECKLIST,
+        ticked=json.loads(record.checklist) if record.checklist else {})
+
+
+@bp.route("/gcode/<int:program_id>/ready", methods=["POST"])
+def gcode_ready(program_id):
+    record = db.get_or_404(GcodeProgram, program_id)
+    try:
+        services.mark_gcode_ready(record, _machine_or_404(), request.form)
+    except services.GcodeError as e:
+        flash(f"Not ready to run: {e}.", "error")
+    else:
+        flash(f"Ready to run, confirmed by {record.confirmed_by}. The program is not sent anywhere: download it, and "
+              "the operator presses Start after the machine check.")
+    return redirect(url_for("main.gcode_program", program_id=record.id))
+
+
+@bp.route("/gcode/<int:program_id>/download")
+def gcode_download(program_id):
+    record = db.get_or_404(GcodeProgram, program_id)
+    if record.status != "ready" or services.gcode_stale(record, _machine_or_404()):
+        abort(403, "Only a program marked ready to run, still matching the job and the machine, is downloaded.")
+    name = f"O{record.job_id % 10000 or 1:04d}_job{record.job_id}_v{record.id}.nc"
+    return current_app.response_class(record.text, mimetype="text/plain",
+                                      headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 @bp.route("/jobs/<int:job_id>/gcode-setup", methods=["POST"])
 def gcode_setup(job_id):
     """The operator's set-up for a program: the free end (Z0), the stick-out, the stock beyond Z0."""
@@ -669,6 +748,7 @@ def gcode_setup(job_id):
         flash(str(e), "error")
         return redirect(url_for("main.job_detail", job_id=job.id))
     job.free_end, job.stickout_mm, job.face_stock_mm = free_end, stickout, face_stock
+    job.gcode_setup_demo = False  # saved by the operator
     db.session.commit()
     flash("G-code set-up saved.")
     return redirect(url_for("main.job_detail", job_id=job.id))

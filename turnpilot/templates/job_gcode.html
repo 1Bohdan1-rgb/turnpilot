@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}G-code{% endblock %}
+{% block content %}
+<h1>G-code: {{ job.name }}</h1>
+<p class="muted"><a href="{{ url_for('main.job_detail', job_id=job.id) }}">job</a> ·
+  <a href="{{ url_for('main.operations', job_id=job.id) }}">operations</a></p>
+<p class="muted small">A program is built by the code from the approved operations, from the part zero (Z0 on the
+  free end face, X0 on the axis), for the outer profile and drilling on the axis. It is simulated, the operator
+  checks it, and only then it can be downloaded. Nothing is sent to the machine: the operator presses Start.</p>
+
+{% if demo %}
+<div class="banner banner-demo">
+  <strong>DEMO values, not from the machine:</strong>
+  {% for row in demo %}{{ row.label }} {{ row.value }}{% if row.unit %} {{ row.unit }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}.
+  A program can be looked at, but it cannot be marked ready to run until the operator enters these values
+  (<a href="{{ url_for('main.machine') }}">Machine page</a>, <a href="{{ url_for('main.job_detail', job_id=job.id) }}">G-code set-up of the job</a>).
+</div>
+{% endif %}
+
+{% if readiness.blockers %}
+<div class="banner banner-stop">
+  <strong>No program yet:</strong>
+  <ul>{% for b in readiness.blockers %}<li>{{ b }}</li>{% endfor %}</ul>
+</div>
+{% else %}
+<form method="post" class="actions">
+  <button type="submit" class="primary">Generate and simulate</button>
+  <span class="muted small">Each generation is kept; the latest one is the one to check.</span>
+</form>
+{% endif %}
+
+{% if readiness.skipped %}
+<h2>Operations not in the program</h2>
+<table class="card">
+  <thead><tr><th>#</th><th>Operation</th><th>Why</th></tr></thead>
+  <tbody>
+  {% for op_id, reason in readiness.skipped.items() %}
+    {% set op = ops.get(op_id) %}
+    <tr><td>{{ op.sequence if op else op_id }}</td><td>{{ op.tool_type if op else "" }}{% if op %} · {{ op.feature.type }}{% endif %}</td>
+      <td class="small">{{ reason }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Values the program uses</h2>
+<table class="card">
+  <thead><tr><th>Value</th><th></th><th>Source</th></tr></thead>
+  <tbody>
+  {% for row in settings %}
+    <tr class="{% if row.source == 'demo' and row.value != '' %}row-demo{% endif %}">
+      <td>{{ row.label }}</td><td>{{ row.value or "—" }}{% if row.value and row.unit %} {{ row.unit }}{% endif %}</td>
+      <td class="small">{{ row.source_label }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if programs %}
+<h2>Programs</h2>
+<table class="card">
+  <thead><tr><th>Program</th><th>Made</th><th>Simulation</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for p in programs %}
+    {% set s = p.simulation|fromjson %}
+    <tr>
+      <td><a href="{{ url_for('main.gcode_program', program_id=p.id) }}">#{{ p.id }}</a> (calculation v{{ p.calculation_version }})</td>
+      <td>{{ p.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td>{% if s.errors %}<span class="badge badge-failed">{{ s.errors|length }} error(s)</span>{% endif %}
+        {% if s.incomplete %}<span class="badge badge-failed">part not complete</span>{% endif %}
+        {% if not s.errors and not s.incomplete %}<span class="badge badge-confirmed">clean</span>{% endif %}</td>
+      <td>{{ "ready to run" if p.status == "ready" else "to check" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

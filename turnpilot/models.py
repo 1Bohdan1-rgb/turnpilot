@@ -128,6 +128,8 @@ class MachineSpecSource(db.Model):
             return f"passport p. {self.page}" if self.page else "passport"
         if self.source == "operator":
             return f"entered by the operator {self.confirmed_at:%Y-%m-%d}"
+        if self.source == "demo":
+            return "DEMO value, not from the machine"
         return self.source
 
 
@@ -286,6 +288,9 @@ class Job(db.Model):
     free_end = db.Column(db.String(5))
     stickout_mm = db.Column(db.Float)
     face_stock_mm = db.Column(db.Float)
+    # The set-up was filled in by the demo command (`flask gcode-demo`), not by the operator: no program is ready to
+    # run until the operator saves the set-up.
+    gcode_setup_demo = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     created_at = db.Column(db.DateTime, default=_now)
 
     material = db.relationship("Material")
@@ -437,3 +442,27 @@ class DrawingExtraction(db.Model):
     @property
     def is_dxf(self):
         return self.read_mode == "dxf"
+
+
+GCODE_STATUSES = ("simulated", "ready")
+
+
+class GcodeProgram(db.Model):
+    """A generated program, its simulation and the operator's confirmation. Kept for the record: a new generation
+    makes a new row. Nothing is sent to the machine: the operator downloads the file once it is ready to run."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey("job.id", name="fk_gcode_program_job_id"), nullable=False)
+    calculation_version = db.Column(db.Integer, nullable=False)
+    dialect = db.Column(db.String(60), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    sha256 = db.Column(db.String(64), nullable=False)
+    settings = db.Column(db.Text, nullable=False)  # JSON: the machine / job values used, with their sources
+    simulation = db.Column(db.Text, nullable=False)  # JSON: errors, warnings, incomplete
+    status = db.Column(db.String(10), nullable=False, default="simulated", server_default="simulated")
+    checklist = db.Column(db.Text)  # JSON: the operator's ticks
+    confirmed_by = db.Column(db.String(100))
+    confirmed_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=_now, nullable=False)
+
+    job = db.relationship("Job")
