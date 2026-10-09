@@ -176,3 +176,21 @@ def test_power_check_through_the_app(client):
     op = rough()
     assert op.passes == 3 and op.warning is None and "ap reduced for spindle power" in op.note
     assert "PLACEHOLDER" in op.note  # the kc source is shown
+
+
+def test_above_the_nominal_power_ap_is_reduced_without_the_efficiency(app):
+    """The Zavisa 36 pin's Ø22 from Ø34.8: 2 × ap 3 would take 11.5 kW of the seed's 11 kW (no efficiency set)."""
+    from turnpilot.models import Feature, Job
+    material = _materials()["Steel 45 (C45)"]
+    job = Job(name="Pin", material=material, quantity=1, blank_diameter=38, blank_length=120, axial_order_known=True)
+    job.features = [Feature(type="od_turn", diameter=22, length=26), Feature(type="od_turn", diameter=34.8, length=52)]
+    db.session.add(job)
+    db.session.commit()
+    services.calculate_operations(job, services.get_machine())
+    rough = next(op for op in job.current_operations if op.tool_type == "turning_rough" and op.feature.diameter == 22)
+    assert (rough.ref_diameter, rough.passes, rough.ap) == (34.8, 3, 2.0)
+    assert "ap reduced for spindle power: Pc 11.51 > 11 kW (the nominal power; the drive efficiency is not set) at " \
+           "ap 3; now 3 × ap 2" in rough.note
+    assert "drive efficiency is not set" in rough.warning  # still to be checked
+    within = next(op for op in job.current_operations if op.tool_type == "turning_rough" and op.feature.diameter == 34.8)
+    assert "ap reduced" not in (within.note or "")

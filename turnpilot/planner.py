@@ -1185,6 +1185,9 @@ def _reference_diameter(step: Step, job: JobSpec, start: RoughStart | None = Non
 POWER_OK_NOTE = "Pc {pc:.2f} kW ≤ {allowed:.2f} kW ({power:g} × {eff:g}); kc {kc:.0f} N/mm² ({source})"
 POWER_REDUCED_NOTE = ("ap reduced for spindle power: Pc {pc0:.2f} > {allowed:.2f} kW ({power:g} × {eff:g}) at ap {ap0:g}; "
                       "now {passes} × ap {ap:g}, Pc {pc:.2f} kW; kc {kc:.0f} N/mm² ({source})")
+POWER_REDUCED_NOMINAL_NOTE = ("ap reduced for spindle power: Pc {pc0:.2f} > {power:g} kW (the nominal power; the drive "
+                              "efficiency is not set) at ap {ap0:g}; now {passes} × ap {ap:g}, Pc {pc:.2f} kW; "
+                              "kc {kc:.0f} N/mm² ({source})")
 POWER_AP_MIN_WARNING = ("spindle power is not enough even at the tool's ap_min {ap_min:g}: Pc {pc:.2f} > {allowed:.2f} kW; "
                         "reduce f or Vc (not changed automatically)")
 NO_KC_WARNING = "no kc1 / mc for {material}: spindle power not checked (Machine page, Materials)"
@@ -1215,15 +1218,28 @@ def _check_rough_power(op, tool, feature, job, from_diameter, allowance, power: 
     if power.power_kw is None:
         op.warnings.append(NO_POWER_WARNING.format(pc=pc, ap=op.ap))
         return
+    source = job.kc_source or "source not given"
     if power.efficiency is None:
+        # Without the efficiency the spindle's share is not known; the nominal power is an upper bound: a pass
+        # above it cannot be cut, so its ap is reduced to fit it, and the efficiency is still to be checked.
         op.warnings.append(NO_EFFICIENCY_WARNING.format(pc=pc, ap=op.ap, power=power.power_kw))
+        if pc > power.power_kw + 1e-9:
+            _reduce_ap_for_power(op, tool, feature, from_diameter, allowance, vc, kc, pc, power.power_kw,
+                                 POWER_REDUCED_NOMINAL_NOTE, power.power_kw, None, source)
         return
     allowed = power.power_kw * power.efficiency
-    source = job.kc_source or "source not given"
     if pc <= allowed + 1e-9:
         op.notes.append(POWER_OK_NOTE.format(pc=pc, allowed=allowed, power=power.power_kw, eff=power.efficiency,
                                              kc=kc, source=source))
         return
+    _reduce_ap_for_power(op, tool, feature, from_diameter, allowance, vc, kc, pc, allowed, POWER_REDUCED_NOTE,
+                         power.power_kw, power.efficiency, source)
+
+
+def _reduce_ap_for_power(op, tool, feature, from_diameter, allowance, vc, kc, pc, allowed, note, power_kw, eff,
+                         source) -> None:
+    """More, thinner passes so each fits `allowed` kW (within the tool's ap range); a warning when even ap_min
+    does not fit."""
     ap_power = allowed * 60000 / (vc * op.f * kc)
     if ap_power < tool.ap_min:
         ap_power = tool.ap_min
@@ -1231,9 +1247,8 @@ def _check_rough_power(op, tool, feature, job, from_diameter, allowance, power: 
                                                        allowed=allowed))
     ap0 = op.ap
     op.passes, op.ap = rough_passes(from_diameter, feature.diameter, min(roughing_ap_limit(tool), ap_power), allowance)
-    op.notes.append(POWER_REDUCED_NOTE.format(pc0=pc, allowed=allowed, power=power.power_kw, eff=power.efficiency,
-                                              ap0=ap0, passes=op.passes, ap=op.ap,
-                                              pc=cutting_power(vc, op.ap, op.f, kc), kc=kc, source=source))
+    op.notes.append(note.format(pc0=pc, allowed=allowed, power=power_kw, eff=eff, ap0=ap0, passes=op.passes, ap=op.ap,
+                                pc=cutting_power(vc, op.ap, op.f, kc), kc=kc, source=source))
 
 
 def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, job: JobSpec, turret,
