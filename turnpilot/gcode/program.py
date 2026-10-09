@@ -327,8 +327,8 @@ class _Builder:
                 x, z = _r3(2 * r), _r3(z)
                 if (x0, z0) == (x, z):
                     continue
-                if z < z0 - EPS and x < x0 - EPS:  # down towards the chuck: within the insert's in-copying angle?
-                    angle = math.degrees(math.atan2((x0 - x) / 2, z0 - z))
+                if z <= z0 + EPS and x < x0 - EPS:  # down towards the chuck (a step down: 90°): allowed by the insert?
+                    angle = math.degrees(math.atan2((x0 - x) / 2, z0 - z)) if z < z0 - EPS else 90.0
                     if ramp is None or angle > ramp + 0.5:
                         self.descents.append((section, z0, z, x0, x, angle))
                         b.warnings.append(
@@ -488,8 +488,20 @@ class _Builder:
         infeed, _ = thread_infeed_plan(section.pitch, op.ap_min or 0.0, op.ap_max or 0.0) \
             if op.ap_max else thread_infeed_plan(section.pitch, 0.0, 1.0)
         d = section.turned_d
-        b = self.block(op, f"THREAD M{section.d_free:g}X{section.pitch:g} G92 {len(infeed)} PASSES")
         z_start = _r3(section.z_free + self.m.thread_run_in)
+        # every pass drops to its diameter at the run-in's start: the material there (its allowance where no
+        # finishing pass is written) must stay below the deepest pass
+        root = d / 2 - sum(infeed)
+        for other in self.p.sections:
+            if other.z_chuck >= z_start - EPS or other.z_free <= section.z_free + EPS:
+                continue
+            radii = [r for z, r in self.p.turned_points if other.z_chuck - EPS <= z <= other.z_free + EPS]
+            left = max(radii) + (0.0 if other.index in self.finished else self.allowance)
+            if left > root - EPS:
+                return ("the thread's run-in passes over material above its root (a larger section, or one not "
+                        "finished by this program) towards the free end: not generated (the thread needs a free "
+                        "run-in)")
+        b = self.block(op, f"THREAD M{section.d_free:g}X{section.pitch:g} G92 {len(infeed)} PASSES")
         x_start = _r3(d + 2 * self.m.clearance_x)
         b.commands.append(Spindle("rpm", int(op.n), self.m.spindle, self.m.max_rpm))
         b.commands.append(Rapid(self.x_safe, self.z_safe))

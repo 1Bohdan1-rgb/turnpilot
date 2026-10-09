@@ -100,3 +100,24 @@ def test_the_ramp_angle_on_the_tool_form(app, client):
     assert db.session.get(Tool, tool.id).max_ramp_angle == 27
     response = client.post(f"/tools/{tool.id}/edit", data={**form, "max_ramp_angle": "95"}, follow_redirects=True)
     assert "below 90" in response.get_data(as_text=True)
+
+
+def test_a_step_down_towards_the_chuck_is_not_finished_from_this_side(app):
+    machine = ready_machine()
+    features = [Feature(type="od_turn", diameter=30, length=10), Feature(type="od_turn", diameter=24, length=10),
+                Feature(type="od_turn", diameter=34, length=10)]
+    job = make_job(features, blank=36)
+    readiness, program = services.gcode_program(job, machine)
+    finish = next(b for b in program.blocks if b.tool_type == "turning_finish")
+    assert any("goes down at 90° towards the chuck" in w for w in finish.warnings)
+
+
+def test_a_thread_whose_run_in_passes_over_a_larger_section_is_left_out(app):
+    machine = ready_machine()
+    features = [Feature(type="od_turn", diameter=30, length=3), Feature(type="od_turn", diameter=24, length=20),
+                Feature(type="thread", diameter=24, length=20, pitch=1.5, location="external"),
+                Feature(type="od_turn", diameter=34, length=10)]
+    job = make_job(features, blank=36)
+    readiness, program = services.gcode_program(job, machine)
+    thread = next(op for op in job.current_operations if op.tool_type == "threading")
+    assert program.skipped[thread.id].startswith("the thread's run-in passes over material above its root")

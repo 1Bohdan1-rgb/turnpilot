@@ -106,7 +106,7 @@ def test_demo_command(app):
     assert "DEMO values set" in result.output
     machine = services.get_machine()
     assert machine.source_of("clearance_x").source == "demo" and machine.max_rpm == 3500
-    assert job.gcode_setup_demo and job.stickout_mm == 75 and job.face_stock_mm == 1
+    assert job.gcode_setup_demo and job.stickout_mm == 76 and job.face_stock_mm == 1  # part 63 + 3 + 5 + 5
     services.set_machine_value(machine, "clearance_x", 1.5, "operator")
     runner.invoke(gcode_demo_command, [])
     assert machine.clearance_x == 1.5  # the operator's value is kept

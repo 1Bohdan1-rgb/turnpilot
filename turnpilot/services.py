@@ -439,7 +439,10 @@ def set_gcode_demo(machine, job=None):
             set_machine_value(machine, name, value, machine_spec.SOURCE_DEMO)
     if job is not None and job.axial_order_known and not (job.stickout_mm and not job.gcode_setup_demo):
         job.free_end = job.free_end or suggest_free_end(job) or "left"
-        job.stickout_mm, job.face_stock_mm = round(job.blank_length + 5, 3), 1.0
+        # DEMO: the part, the parting insert and the jaws' safety distance, plus 5 mm
+        part = sum(f.length or 0 for f in job.active_features if f.type in PROFILE_TYPES)
+        safety = machine.chuck_safety_mm or 0.0
+        job.stickout_mm, job.face_stock_mm = round(max(job.blank_length, part + 3 + safety) + 5, 3), 1.0
         job.gcode_setup_demo = True
     db.session.commit()
 
