@@ -367,7 +367,8 @@ def generate_gcode(job, machine):
     result = gcode_simulation(job, machine, text)
     simulation = {
         "errors": result.errors, "warnings": result.warnings, "incomplete": result.incomplete,
-        "segments": [[s.kind, s.x0, s.z0, s.x1, s.z1, s.line, s.tool] for s in result.segments],
+        "segments": [[s.kind, s.x0, s.z0, s.x1, s.z1, s.line, s.tool] + ([list(s.arc)] if s.arc else [])
+                     for s in result.segments],
         "final_stock": [round(r, 3) for r in result.final_stock[::10]], "z_top": result.z_top, "dz": 0.1,
         "program_warnings": program.warnings, "skipped": {str(k): v for k, v in program.skipped.items()},
     }

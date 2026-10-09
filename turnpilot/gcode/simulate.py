@@ -51,13 +51,14 @@ class SimInput:
 
 @dataclass
 class Segment:
-    kind: str  # "rapid", "feed", "thread"
+    kind: str  # "rapid", "feed", "thread", "arc"
     x0: float
     z0: float
     x1: float
     z1: float
     line: int
     tool: int | None
+    arc: tuple | None = None  # (centre z, centre radius, radius, clockwise) of an "arc"
 
 
 @dataclass
@@ -194,7 +195,46 @@ class _Sim:
         self.check_bounds(line, x, z)
         self.pos = (x, z)
 
-    def cut(self, line: int, x: float, z: float, kind: str = "feed") -> None:
+    ARC_RADIUS_TOL = 0.002  # mm: the end of an arc off its circle by more than this is an error (a Fanuc alarm too)
+
+    def arc(self, line: int, x: float, z: float, words: dict, clockwise: bool) -> None:
+        """G02 / G03: the centre from I (radius) / K, or from R (the short arc); cut in chords of 1°."""
+        x0, z0 = self.pos
+        r0, r1 = x0 / 2, x / 2
+        if "I" in words or "K" in words:
+            cr, cz = r0 + words.get("I", 0.0), z0 + words.get("K", 0.0)
+            radius = math.hypot(r0 - cr, z0 - cz)
+            end = math.hypot(r1 - cr, z - cz)
+            if abs(end - radius) > self.ARC_RADIUS_TOL:
+                self.error(line, f"the arc's end is off its circle: R{radius:.3f} at the start, R{end:.3f} at the end")
+        elif "R" in words:
+            radius = words["R"]
+            half = math.hypot(r1 - r0, z - z0) / 2
+            if half > radius + self.ARC_RADIUS_TOL:
+                self.error(line, f"no arc R{radius:g} between its ends")
+                self.pos = (x, z)
+                return
+            d = math.sqrt(max(radius ** 2 - half ** 2, 0.0))
+            mz, mr = (z0 + z) / 2, (r0 + r1) / 2
+            nz, nr = -(r1 - r0) / (2 * half), (z - z0) / (2 * half)  # a normal of the chord (left of its direction)
+            sign = -1 if clockwise else 1  # the short arc's centre: right of the chord for G02, left for G03
+            cz, cr = mz + sign * d * nz, mr + sign * d * nr
+        else:
+            self.error(line, "an arc without I / K or R")
+            self.pos = (x, z)
+            return
+        t0, t1 = math.atan2(r0 - cr, z0 - cz), math.atan2(r1 - cr, z - cz)
+        sweep = (t1 - t0) % (2 * math.pi)
+        if clockwise:
+            sweep -= 2 * math.pi
+        steps = max(2, math.ceil(abs(math.degrees(sweep))))
+        for k in range(1, steps + 1):
+            t = t0 + sweep * k / steps
+            zz, rr = (cz + radius * math.cos(t), cr + radius * math.sin(t)) if k < steps else (z, r1)
+            self.cut(line, 2 * rr, zz, record=False)
+        self.r.segments.append(Segment("arc", x0, z0, x, z, line, self.tool, (cz, cr, radius, clockwise)))
+
+    def cut(self, line: int, x: float, z: float, kind: str = "feed", record: bool = True) -> None:
         x0, z0 = self.pos
         info = self.info
         if self.spindle_on is None:
@@ -220,7 +260,8 @@ class _Sim:
                 self._remove(line, zz, r, radial=abs(x - x0) > 1e-9)
             self._check_depth(line, excess, x0, z0, x, z)
             self._check_ramp(line, excess, x0, z0, x, z)
-        self.r.segments.append(Segment(kind, x0, z0, x, z, line, self.tool))
+        if record:
+            self.r.segments.append(Segment(kind, x0, z0, x, z, line, self.tool))
         self.pos = (x, z)
 
     def _check_ramp(self, line, excess, x0, z0, x, z) -> None:
@@ -355,9 +396,9 @@ class _Sim:
             if 96 in ln.g or 97 in ln.g:
                 self.speed_checks(n)
             for g in ln.g:
-                if g in (0, 1, 92):
+                if g in (0, 1, 2, 3, 92):
                     self.motion = g
-            if "F" in words and self.motion in (1, None):
+            if "F" in words and self.motion in (1, 2, 3, None):
                 self.feed = words["F"]
             if "X" not in words and "Z" not in words:
                 continue
@@ -370,10 +411,12 @@ class _Sim:
                 self.rapid(n, x, z)
             elif self.motion == 1:
                 self.cut(n, x, z)
+            elif self.motion in (2, 3):
+                self.arc(n, x, z, words, clockwise=self.motion == 2)
             elif self.motion == 92:
                 self.thread(n, x, z, words.get("F"))
             else:
-                self.error(n, "a move without G00 / G01 / G92")
+                self.error(n, "a move without G00 / G01 / G02 / G03 / G92")
             if self.motion in (1, 92) and self.info and self.info.tool_type == "parting" and x <= TOL \
                     and self.css is not None:
                 self.warning(n, f"parting to the axis in G96: the spindle runs up to G50 S{self.limit}; the "

@@ -61,7 +61,7 @@ def test_long_comments_are_wrapped():
 @pytest.mark.parametrize("line, message", [
     ("G01 X20 F0.3", "X20 without a decimal point (Fanuc reads it in µm)"),
     ("G01 X20. F.", "F without a value"),
-    ("G02 X20. Z-1.", "G02 is not used by this generator"),
+    ("G70 P10 Q20", "G70 is not used by this generator"),
     ("M98 P1000", "M98 is not used by this generator"),
     ("g01 x20.", "lower-case letters"),
     ("(Палець)", "non-ASCII characters"),

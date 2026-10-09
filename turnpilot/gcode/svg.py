@@ -58,13 +58,23 @@ def render(segments, final_stock, z_top, dz, profile_points, stock_radius, stick
     parts.append(f'<text class="label" x="{px(z_max) - 30}" y="{base - 4}">X0</text>')
     # the moves
     errors = set(error_lines)
-    for i, (kind, x0, z0, x1, z1, line, tool) in enumerate(segments):
+    for i, segment in enumerate(segments):
+        kind, x0, z0, x1, z1, line, tool = segment[:7]
+        arc = segment[7] if len(segment) > 7 else None
         if z0 > z_max + 40 or x0 > 1e4:  # from the reference point: drawn from the edge of the view
             z0, x0 = min(z0, z_max), min(x0, 2 * max_r)
-        cls = {"rapid": "rapid", "feed": "feed", "thread": "thread"}[kind] + (" err" if line in errors else "")
+        cls = {"rapid": "rapid", "feed": "feed", "thread": "thread", "arc": "feed"}[kind] + \
+            (" err" if line in errors else "")
         title = escape(f"line {line}, T{tool:02d} {tools.get(tool, '')}: {kind}" if tool else f"line {line}: {kind}")
-        parts.append(f'<line class="mv {cls}" data-i="{i}" data-line="{line}" x1="{px(z0)}" y1="{py(x_r(x0))}" '
-                     f'x2="{px(z1)}" y2="{py(x_r(x1))}"><title>{title}</title></line>')
+        if arc:  # the radius up on the drawing turns a counter-clockwise arc (G03) clockwise on screen
+            _cz, _cr, radius, clockwise = arc
+            rad = round(radius * scale, 2)
+            parts.append(f'<path class="mv {cls}" data-i="{i}" data-line="{line}" fill="none" '
+                         f'd="M {px(z0)} {py(x_r(x0))} A {rad} {rad} 0 0 {0 if clockwise else 1} {px(z1)} '
+                         f'{py(x_r(x1))}"><title>{title}</title></path>')
+        else:
+            parts.append(f'<line class="mv {cls}" data-i="{i}" data-line="{line}" x1="{px(z0)}" y1="{py(x_r(x0))}" '
+                         f'x2="{px(z1)}" y2="{py(x_r(x1))}"><title>{title}</title></line>')
         if line in errors:
             parts.append(f'<circle class="errmark" cx="{px(z1)}" cy="{py(x_r(x1))}" r="4"><title>{title}</title>'
                          f'</circle>')

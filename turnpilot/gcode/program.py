@@ -33,6 +33,25 @@ class Feed:
 
 
 @dataclass(frozen=True)
+class ArcMove:
+    """A circular feed to (x, z) about the centre at (i, k) from the start: I along X in radius, K along Z (Fanuc).
+    clockwise: G02, else G03, as seen with Z to the right and X up (the tool's side)."""
+    x: float
+    z: float
+    i: float
+    k: float
+    clockwise: bool
+    f: float | None = None
+
+
+def arc_direction(z0: float, r0: float, z1: float, r1: float, cz: float, cr: float) -> bool:
+    """True (clockwise, G02) or False (G03) for the short arc from (z0, r0) to (z1, r1) about (cz, cr), seen with Z to
+    the right and the radius up."""
+    cross = (z0 - cz) * (r1 - cr) - (r0 - cr) * (z1 - cz)
+    return cross < 0
+
+
+@dataclass(frozen=True)
 class ThreadPass:  # one pass of a single thread cycle (G92): X the pass diameter, Z the thread end, F the pitch
     x: float
     z: float

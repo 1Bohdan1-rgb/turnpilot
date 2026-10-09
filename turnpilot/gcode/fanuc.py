@@ -10,14 +10,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .program import (Block, Comment, Coolant, Dwell, Feed, Home, OptionalStop, Program, Rapid, Spindle,
+from .program import (ArcMove, Block, Comment, Coolant, Dwell, Feed, Home, OptionalStop, Program, Rapid, Spindle,
                       ThreadPass, ToolCall, ascii_text)
 
 NAME = "Fanuc 0i-T (G code system A)"
 COMMENT_WIDTH = 60
-G_CODES = {0, 1, 4, 18, 21, 28, 40, 50, 92, 96, 97, 99}
+G_CODES = {0, 1, 2, 3, 4, 18, 21, 28, 40, 50, 92, 96, 97, 99}
 M_CODES = {1, 3, 4, 5, 8, 9, 30}
-DECIMAL_WORDS = "XZUWF"
+DECIMAL_WORDS = "XZUWFIKR"  # I / K: an arc's centre from its start (I in radius); R: an arc's radius
 INTEGER_WORDS = "NOSTP"  # P: G04 dwell in milliseconds
 
 
@@ -51,6 +51,9 @@ def _command(c) -> list[str]:
     if isinstance(c, Feed):
         return ["G01" + (f" X{number(c.x)}" if c.x is not None else "") + (f" Z{number(c.z)}" if c.z is not None
                                                                           else "")
+                + (f" {_feed(c.f)}" if c.f is not None else "")]
+    if isinstance(c, ArcMove):
+        return [("G02" if c.clockwise else "G03") + f" X{number(c.x)} Z{number(c.z)} I{number(c.i)} K{number(c.k)}"
                 + (f" {_feed(c.f)}" if c.f is not None else "")]
     if isinstance(c, ThreadPass):
         return [f"G92 X{number(c.x)} Z{number(c.z)} {_feed(c.pitch)}"]
