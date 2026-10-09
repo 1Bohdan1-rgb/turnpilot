@@ -23,7 +23,7 @@ def test_shapes_from_the_dxf_geometry(app, pin_extraction):
     shapes = services.dxf_arc_shapes(pin_extraction, app.instance_path)
     types = [f["type"] for f in json.loads(pin_extraction.parsed)["features"]]
     arc, fillet = types.index("arc"), types.index("fillet")
-    assert shapes[arc] == {"arc_shape": "convex"}  # the spherical end R9
+    assert shapes[arc] == {"arc_shape": "convex", "drawn_radius": 9.0}  # the spherical end R9
     assert shapes[fillet] == {"arc_shape": "convex", "face": "right"}  # Ø28's edge down to the Ø18 step
 
 
@@ -57,7 +57,7 @@ def test_a_concave_arc_from_the_geometry(app, client, tmp_path):
     client.post("/jobs/upload", data={"drawing": (io.BytesIO(data), "g.dxf")}, content_type="multipart/form-data")
     extraction = db.session.execute(db.select(DrawingExtraction)).scalar_one()
     shapes = services.dxf_arc_shapes(extraction, app.instance_path)
-    assert {"arc_shape": "concave"} in shapes.values()
+    assert any(v["arc_shape"] == "concave" for v in shapes.values())
 
 
 def test_operator_chooses_the_shape_by_hand(app, client):
