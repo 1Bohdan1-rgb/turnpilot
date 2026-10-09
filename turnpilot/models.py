@@ -50,6 +50,16 @@ class Machine(db.Model):
     live_tooling = db.Column(db.Boolean)
     c_axis = db.Column(db.Boolean)
     control = db.Column(db.String(100))
+    # G-code programming values (machine_spec.PROGRAMMING_FIELDS): entered by the operator, no default.
+    spindle_right_hand = db.Column(db.String(3))  # "M03" / "M04"
+    clearance_x = db.Column(db.Float)
+    clearance_z = db.Column(db.Float)
+    retract_mm = db.Column(db.Float)
+    chuck_safety_mm = db.Column(db.Float)
+    thread_run_in_mm = db.Column(db.Float)
+    peck_depth_mm = db.Column(db.Float)
+    facing_overshoot_mm = db.Column(db.Float)
+    groove_reference = db.Column(db.String(12))
 
     slots = db.relationship(
         "TurretSlot", back_populates="machine", order_by="TurretSlot.position", cascade="all, delete-orphan"
@@ -266,6 +276,11 @@ class Job(db.Model):
     # The features are in their order along the axis (a job confirmed from a DXF). A feature added by hand
     # goes to the end of the list, so it clears the flag; deleting one keeps the order.
     axial_order_known = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # G-code set-up, entered by the operator: which end of the drawing is the free end (Z0, "left" / "right"),
+    # how far the part sticks out of the jaws, and the stock beyond Z0 to face off. Empty: no program.
+    free_end = db.Column(db.String(5))
+    stickout_mm = db.Column(db.Float)
+    face_stock_mm = db.Column(db.Float)
     created_at = db.Column(db.DateTime, default=_now)
 
     material = db.relationship("Material")

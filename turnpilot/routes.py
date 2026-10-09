@@ -24,7 +24,7 @@ from .extraction_schema import (
     hex_across_flats,
     normalize_tolerance,
 )
-from .machine_spec import MACHINE_FIELDS, SOURCE_OPERATOR, format_value, parse_value
+from .machine_spec import MACHINE_FIELDS, PROGRAMMING_FIELDS, SOURCE_OPERATOR, format_value, parse_value
 from .models import (
     BLANK_SHAPES,
     FEATURE_TYPES,
@@ -99,6 +99,15 @@ def machine():
                 except services.MachineError as e:
                     raise FormError(str(e)) from None
                 flash("Machine profile saved.")
+            elif request.form.get("action") == "programming":
+                for field in PROGRAMMING_FIELDS:
+                    try:
+                        value = parse_value(field, request.form.get(field.name))
+                    except ValueError as e:
+                        raise FormError(str(e)) from None
+                    if value != getattr(machine, field.name):
+                        services.set_machine_value(machine, field.name, value, SOURCE_OPERATOR)
+                flash("Programming values saved.")
             elif request.form.get("action") == "stock":
                 text = request.form.get("hex_bar_sizes", "").strip()
                 try:
@@ -137,6 +146,7 @@ def machine():
         "machine.html", machine=machine, tools=tools, materials=materials, tool_types=TOOL_TYPES,
         catalogue_status=catalogue_status,
         iso_groups=ISO_GROUPS, machine_fields=MACHINE_FIELDS, format_value=format_value,
+        programming_fields=PROGRAMMING_FIELDS,
         hex_bar_sizes=", ".join(f"{s:g}" for s in hex_sizes),
     )
 
@@ -634,7 +644,26 @@ def jobs():
 def job_detail(job_id):
     job = db.get_or_404(Job, job_id)
     return render_template("job_detail.html", job=job, feature_types=FEATURE_TYPES, positions=POSITIONS,
-                           machine_warnings=services.machine_warnings(job, services.get_machine()))
+                           machine_warnings=services.machine_warnings(job, services.get_machine()),
+                           suggested_free_end=services.suggest_free_end(job))
+
+
+@bp.route("/jobs/<int:job_id>/gcode-setup", methods=["POST"])
+def gcode_setup(job_id):
+    """The operator's set-up for a program: the free end (Z0), the stick-out, the stock beyond Z0."""
+    job = db.get_or_404(Job, job_id)
+    try:
+        free_end = request.form.get("free_end") or None
+        if free_end not in (None, "left", "right"):
+            raise FormError("Free end: left or right")
+        stickout, face_stock = _number(request.form, "stickout_mm"), _number(request.form, "face_stock_mm")
+    except FormError as e:
+        flash(str(e), "error")
+        return redirect(url_for("main.job_detail", job_id=job.id))
+    job.free_end, job.stickout_mm, job.face_stock_mm = free_end, stickout, face_stock
+    db.session.commit()
+    flash("G-code set-up saved.")
+    return redirect(url_for("main.job_detail", job_id=job.id))
 
 
 @bp.route("/jobs/<int:job_id>/features", methods=["POST"])

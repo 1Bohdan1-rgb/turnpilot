@@ -84,7 +84,73 @@ def test_readiness_of_a_job(app):
     services.set_machine_value(machine, "max_rpm", 3500, "operator")
     db.session.commit()
     result = services.gcode_readiness(job, machine)
+    assert result.blockers == [
+        "programming values not set on the Machine page: Spindle direction for a right-hand tool, Approach "
+        "clearance in X (per side), Approach clearance in Z, Retract after a pass (per side), Safety distance to the "
+        "chuck jaws, Facing past the axis (per side), Grooving / parting insert: touched-off corner",
+        "G-code set-up of the job not set: free end (Z0), stick-out from the jaws, stock beyond Z0"]
+    set_programming(machine)
+    job.free_end, job.stickout_mm, job.face_stock_mm = "left", 75, 1
+    db.session.commit()
+    result = services.gcode_readiness(job, machine)
     assert result.ok
     taper = next(op for op in job.current_operations if op.feature.type == "taper")
     assert result.skipped[taper.id] == rd.SKIP_NO_TOOL
     assert db.session.get(Operation, result.usable[0]).tool_type == "facing"
+
+
+PROGRAMMING = dict(spindle_right_hand="M04", clearance_x=1, clearance_z=2, retract_mm=0.5, chuck_safety_mm=5,
+                   thread_run_in_mm=6, peck_depth_mm=5, facing_overshoot_mm=0.4, groove_reference="toward Z0")
+
+
+def set_programming(machine):
+    for name, value in PROGRAMMING.items():
+        services.set_machine_value(machine, name, value, "operator")
+
+
+def test_values_needed_only_by_the_operations_used():
+    labels = {}
+    programming = dict(PROGRAMMING, thread_run_in_mm=None, peck_depth_mm=None)
+    result = rd.check(True, [info()], [], "passport", programming, labels, {"free_end": "left", "stickout_mm": 50})
+    assert result.ok  # roughing needs neither the run-in nor the peck depth, and no face stock
+    result = rd.check(True, [info(), info(id=2, sequence=2, tool_type="threading")], [], "passport", programming,
+                      labels, {"free_end": "left", "stickout_mm": 50})
+    assert result.blockers == ["programming values not set on the Machine page: thread_run_in_mm"]
+
+
+def test_programming_values_on_the_machine_page(app, client):
+    page = client.get("/machine").get_data(as_text=True)
+    assert "Programming values (G-code)" in page and "Spindle direction for a right-hand tool" in page
+    response = client.post("/machine", data={"action": "programming", "spindle_right_hand": "M04", "clearance_x": "1,5"},
+                           follow_redirects=True)
+    assert "Programming values saved." in response.get_data(as_text=True)
+    machine = services.get_machine()
+    assert (machine.spindle_right_hand, machine.clearance_x, machine.clearance_z) == ("M04", 1.5, None)
+    assert machine.source_of("spindle_right_hand").source == "operator"
+    response = client.post("/machine", data={"action": "programming", "spindle_right_hand": "M05"},
+                           follow_redirects=True)
+    assert "one of M03, M04" in response.get_data(as_text=True)
+    assert services.get_machine().spindle_right_hand == "M04"
+
+
+def test_passport_reading_does_not_ask_for_programming_values():
+    from turnpilot import passport_reader
+    fields = passport_reader.RECORD_MACHINE_TOOL["input_schema"]["properties"]
+    assert "spindle_right_hand" not in fields and "clearance_x" not in fields
+
+
+def test_job_setup_and_the_suggested_free_end(app, client):
+    job = make_job()  # Ø20, Ø30, then a taper Ø20→Ø24: the largest Ø is in the middle, nothing suggested
+    assert services.suggest_free_end(job) is None
+    next(f for f in job.features if f.type == "taper").is_deleted = True  # Ø30 (the largest) on the right
+    db.session.commit()
+    page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
+    assert "G-code set-up" in page and "suggested: left" in page
+    client.post(f"/jobs/{job.id}/gcode-setup", data={"free_end": "left", "stickout_mm": "72", "face_stock_mm": "1"})
+    assert (job.free_end, job.stickout_mm, job.face_stock_mm) == ("left", 72, 1)
+    response = client.post(f"/jobs/{job.id}/gcode-setup", data={"free_end": "top"}, follow_redirects=True)
+    assert "Free end: left or right" in response.get_data(as_text=True)
+    job.axial_order_known = False
+    db.session.commit()
+    assert services.suggest_free_end(job) is None
+    assert "G-code set-up" not in client.get(f"/jobs/{job.id}").get_data(as_text=True)

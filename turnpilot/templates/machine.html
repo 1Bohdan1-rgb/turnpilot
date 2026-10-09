@@ -33,6 +33,29 @@
   <button type="submit">Save profile</button>
 </form>
 
+<h2>Programming values (G-code)</h2>
+<form method="post" class="card grid-form">
+  <input type="hidden" name="action" value="programming">
+  {% for f in programming_fields %}
+    {% set value = machine[f.name] %}
+    {% set src = machine.source_of(f.name) %}
+    <label>{{ f.label }}{% if f.unit %}, {{ f.unit }}{% endif %}
+      {% if f.kind == "choice" %}
+        <select name="{{ f.name }}">
+          <option value="" {% if value is none %}selected{% endif %}>not set</option>
+          {% for o in f.options %}<option {% if value == o %}selected{% endif %}>{{ o }}</option>{% endfor %}
+        </select>
+      {% else %}
+        <input name="{{ f.name }}" type="number" step="any" min="0" value="{{ format_value(f, value) }}" placeholder="not set">
+      {% endif %}
+      <span class="small muted">{{ src.label if src else "not set" }}{% if f.help %} · {{ f.help }}{% endif %}</span>
+    </label>
+  {% endfor %}
+  <p class="muted small">No catalogue or passport gives these: you enter them for this machine, and each is recorded
+    as the operator's. There is no default: a program is not built while a value it needs is empty.</p>
+  <button type="submit">Save programming values</button>
+</form>
+
 <h2>Bar stock</h2>
 <form method="post" class="card grid-form">
   <input type="hidden" name="action" value="stock">

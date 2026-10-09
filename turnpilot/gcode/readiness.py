@@ -21,6 +21,19 @@ TOOLS_CHANGED = "tools changed since the calculation ({names}): calculate again"
 NO_MAX_RPM = ("the machine's max spindle speed is not confirmed (passport or operator): the program cannot limit the "
               "spindle (G50)")
 
+NO_PROGRAMMING_VALUES = "programming values not set on the Machine page: {labels}"
+NO_JOB_SETUP = "G-code set-up of the job not set: {labels}"
+ALWAYS_NEEDED = ("spindle_right_hand", "clearance_x", "clearance_z", "retract_mm", "chuck_safety_mm")
+NEEDED_BY_TOOL_TYPE = {  # programming values a type of operation needs
+    "facing": ("facing_overshoot_mm",),
+    "threading": ("thread_run_in_mm",),
+    "drilling": ("peck_depth_mm",),
+    "grooving": ("groove_reference",),
+    "parting": ("groove_reference",),
+}
+JOB_SETUP_LABELS = {"free_end": "free end (Z0)", "stickout_mm": "stick-out from the jaws",
+                    "face_stock_mm": "stock beyond Z0"}
+
 SKIP_NO_TOOL = "no tool: not generated"
 SKIP_UNSUPPORTED = "{tool_type}: not generated in this version (outer profile and drilling on the axis only)"
 SKIP_CHAMFER = "a chamfer on its own: not generated (chamfers are cut with their diameter's finishing pass)"
@@ -69,7 +82,10 @@ def skip_reason(op: OperationInfo) -> str | None:
 
 
 def check(axial_order_known: bool, operations: list[OperationInfo], changed_tools: list[str],
-          max_rpm_source: str | None) -> Readiness:
+          max_rpm_source: str | None, programming: dict | None = None, labels: dict | None = None,
+          job_setup: dict | None = None) -> Readiness:
+    """programming: the machine's programming values by name (labels: their labels); job_setup: free_end,
+    stickout_mm, face_stock_mm. None: not checked (callers that only want the operations)."""
     result = Readiness()
     if not axial_order_known:
         result.blockers.append(NOT_IN_AXIAL_ORDER)
@@ -88,4 +104,16 @@ def check(axial_order_known: bool, operations: list[OperationInfo], changed_tool
             result.skipped[op.id] = reason
         else:
             result.usable.append(op.id)
+    used_types = {op.tool_type for op in operations if op.id in result.usable}
+    if programming is not None:
+        needed = list(ALWAYS_NEEDED) + [n for t in sorted(used_types) for n in NEEDED_BY_TOOL_TYPE.get(t, ())]
+        missing = [n for n in dict.fromkeys(needed) if programming.get(n) is None]
+        if missing:
+            result.blockers.append(NO_PROGRAMMING_VALUES.format(
+                labels=", ".join((labels or {}).get(n, n) for n in missing)))
+    if job_setup is not None:
+        needed = ["free_end", "stickout_mm"] + (["face_stock_mm"] if "facing" in used_types else [])
+        missing = [JOB_SETUP_LABELS[n] for n in needed if job_setup.get(n) is None]
+        if missing:
+            result.blockers.append(NO_JOB_SETUP.format(labels=", ".join(missing)))
     return result

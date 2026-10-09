@@ -72,6 +72,27 @@
   {% if job.current_operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">View current operations</a>{% endif %}
   {% if job.archived_operations %}<a href="{{ url_for('main.history', job_id=job.id) }}">Calculation history</a>{% endif %}
 </form>
+{% if job.axial_order_known %}
+<h2>G-code set-up</h2>
+<form method="post" action="{{ url_for('main.gcode_setup', job_id=job.id) }}" class="card grid-form">
+  <label>Free end (Z0) on the drawing
+    <select name="free_end">
+      <option value="" {% if not job.free_end %}selected{% endif %}>— choose —</option>
+      <option value="left" {% if job.free_end == "left" %}selected{% endif %}>left</option>
+      <option value="right" {% if job.free_end == "right" %}selected{% endif %}>right</option>
+    </select>
+    {% if suggested_free_end %}<span class="small muted">suggested: {{ suggested_free_end }} (the largest Ø is
+      held in the chuck) <span class="badge badge-check">check</span></span>{% endif %}
+  </label>
+  <label>Stick-out from the jaws, mm <input name="stickout_mm" type="number" step="any" min="0"
+    value="{{ job.stickout_mm if job.stickout_mm is not none else '' }}" placeholder="measured on the machine"></label>
+  <label>Stock beyond Z0 to face off, mm <input name="face_stock_mm" type="number" step="any" min="0"
+    value="{{ job.face_stock_mm if job.face_stock_mm is not none else '' }}"></label>
+  <p class="muted small">Z0 is on the free end face, X0 on the axis; Z is negative towards the chuck. Nothing here is
+    guessed: a program is not built while a value is empty.</p>
+  <button type="submit">Save the set-up</button>
+</form>
+{% endif %}
 {% if job.current_operations %}
 <p class="muted small">Recalculating archives the current operations. Their status and edit log stay in the history.</p>
 {% endif %}

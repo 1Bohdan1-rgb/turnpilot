@@ -234,8 +234,32 @@ def gcode_readiness(job, machine):
         for op in job.current_operations
     ]
     source = machine.source_of("max_rpm") if machine else None
+    programming = {f.name: getattr(machine, f.name) for f in machine_spec.PROGRAMMING_FIELDS} if machine else {}
+    labels = {f.name: f.label for f in machine_spec.PROGRAMMING_FIELDS}
+    job_setup = {"free_end": job.free_end, "stickout_mm": job.stickout_mm, "face_stock_mm": job.face_stock_mm}
     return readiness.check(bool(job.axial_order_known), operations,
-                           [t.name for t in job.tools_changed_since_calculation], source.source if source else None)
+                           [t.name for t in job.tools_changed_since_calculation], source.source if source else None,
+                           programming, labels, job_setup)
+
+
+PROFILE_TYPES = ("od_turn", "hex", "taper", "arc", "groove")
+
+
+def suggest_free_end(job):
+    """The end of the drawing opposite the largest Ø (the chuck holds the largest Ø, as the planner assumes);
+    None when the order is not known or the largest Ø is in the middle. A suggestion: the operator chooses."""
+    if not job.axial_order_known:
+        return None
+    sizes = [max(f.diameter or 0, f.start_diameter or 0) for f in job.active_features if f.type in PROFILE_TYPES]
+    if len(sizes) < 2:
+        return None
+    largest = max(sizes)
+    where = [i for i, d in enumerate(sizes) if d >= largest - 1e-9]
+    if where[-1] == len(sizes) - 1 and where[0] > 0:
+        return "left"
+    if where[0] == 0 and where[-1] < len(sizes) - 1:
+        return "right"
+    return None
 
 
 def _fmt(value):
