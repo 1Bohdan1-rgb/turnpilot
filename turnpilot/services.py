@@ -250,7 +250,8 @@ def gcode_inputs(job, machine, readiness=None):
     readiness = readiness or gcode_readiness(job, machine)
     features = [gprofile.FeatureData(id=f.id, type=f.type, diameter=f.diameter, start_diameter=f.start_diameter,
                                      length=f.length, pitch=f.pitch, radius=f.radius, face=f.face,
-                                     location=f.location, across_flats=f.across_flats)
+                                     location=f.location, across_flats=f.across_flats, arc_convex=f.arc_convex,
+                                     drawn_radius=f.drawn_radius)
                 for f in job.active_features]
     profile = gprofile.build(features, job.free_end or "left")
     by_id = {op.id: op for op in job.current_operations}
@@ -1138,7 +1139,8 @@ def dxf_arc_shapes(extraction, instance_path):
         if feature.type == "arc" and section.prim.arc:
             mid = (section.x0 + section.x1) / 2
             chord = (section.r_at(section.x0) + section.r_at(section.x1)) / 2
-            shapes[i] = {"arc_shape": "convex" if section.r_at(mid) > chord + 1e-6 else "concave"}
+            shapes[i] = {"arc_shape": "convex" if section.r_at(mid) > chord + 1e-6 else "concave",
+                         "drawn_radius": round(section.prim.arc[2], 3)}
         elif feature.type == "fillet":
             k = fillets_seen.get(section.index, 0)
             fillets_seen[section.index] = k + 1

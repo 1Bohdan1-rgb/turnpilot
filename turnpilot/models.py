@@ -353,6 +353,8 @@ class Feature(db.Model):
     face = db.Column(db.String(10))  # chamfers, fillets: "left" / "right" end face (on the drawing)
     # arcs and fillets: bulging away from the axis (True) or into it (False); empty: not known, not programmed
     arc_convex = db.Column(db.Boolean)
+    # arcs from a DXF: the radius drawn, when it differs from the dimension the operator has to choose (the job page)
+    drawn_radius = db.Column(db.Float)
     confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 

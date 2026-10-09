@@ -24,7 +24,15 @@
       <td>{{ ((f.ra_param or "Ra") ~ " " ~ f.ra) if f.ra is not none else "" }}</td>
       <td>{{ f.pitch if f.pitch is not none else "" }}</td>
       <td>{{ f.start_diameter if f.start_diameter is not none else "" }}</td>
-      <td>{{ f.radius if f.radius is not none else "" }}</td>
+      <td>{{ f.radius if f.radius is not none else "" }}
+        {% if f.type in ("arc", "fillet") %}<span class="small muted">{{ {True: "convex", False: "concave"}.get(f.arc_convex, "shape?") }}{% if f.type == "fillet" and f.face %}, {{ f.face }}{% endif %}</span>{% endif %}
+        {% if f.type == "arc" and f.drawn_radius is not none and f.radius is not none and (f.drawn_radius - f.radius)|abs > 0.01 %}
+          <div class="warning small">drawn R{{ f.drawn_radius }} ≠ dimensioned R{{ f.radius }}: not programmed until you choose
+            <form method="post" action="{{ url_for('main.choose_arc_radius', job_id=job.id, feature_id=f.id) }}" class="inline-form">
+              <button name="radius" value="dimension" class="small">R{{ f.radius }} (dimension)</button>
+              <button name="radius" value="drawn" class="small">R{{ f.drawn_radius }} (drawn)</button>
+            </form></div>
+        {% endif %}</td>
       <td>{{ f.across_flats if f.across_flats is not none else "" }}</td>
       <td>{{ "%.2f"|format(f.confidence) if f.confidence is not none else "" }}</td>
       <td>

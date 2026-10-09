@@ -43,10 +43,11 @@ def test_profile_from_the_free_end_on_the_right():
     assert p.turned(0) == 20 and p.turned(-50) == 9  # the taper's Ø40 end; the Ø20 chamfer at the chuck side
 
 
-def test_fillets_are_not_modelled_and_said_so():
+def test_a_fillet_without_its_side_or_shape_is_not_modelled_and_said_so():
     p = gp.build([fd(1, "od_turn", diameter=20, length=10), fd(2, "fillet", radius=2),
                   fd(3, "od_turn", diameter=30, length=10)], "left")
-    assert p.warnings == ["transition R2 (row 2): not in the profile (cut as a sharp corner)"]
+    assert p.warnings == ["transition R2 (row 2): its side or shape is not known, not in the profile (cut as a sharp "
+                          "corner)"]
 
 
 def blocks(app_job, machine):

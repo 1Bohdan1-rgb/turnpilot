@@ -782,6 +782,23 @@ def add_feature(job_id):
     return redirect(url_for("main.job_detail", job_id=job.id))
 
 
+@bp.route("/jobs/<int:job_id>/features/<int:feature_id>/radius", methods=["POST"])
+def choose_arc_radius(job_id, feature_id):
+    """An arc whose drawn radius differs from its dimension: the operator chooses the one to program."""
+    feature = db.get_or_404(Feature, feature_id)
+    if feature.job_id != job_id or feature.type != "arc" or feature.drawn_radius is None:
+        abort(404)
+    choice = request.form.get("radius")
+    if choice == "drawn":
+        feature.radius = feature.drawn_radius
+    elif choice != "dimension":
+        abort(400)
+    feature.drawn_radius = feature.radius  # resolved: they agree now
+    db.session.commit()
+    flash(f"Arc radius R{feature.radius:g} chosen. Calculate the job again.")
+    return redirect(url_for("main.job_detail", job_id=job_id))
+
+
 @bp.route("/jobs/<int:job_id>/features/<int:feature_id>/delete", methods=["POST"])
 def delete_feature(job_id, feature_id):
     feature = db.get_or_404(Feature, feature_id)
@@ -1165,6 +1182,7 @@ def confirm_extraction(extraction_id):
             raise FormError(f"{NOT_TURNED_BANNER}. Tick “I understand, create anyway” to create the job.")
         job = _job_from_form(form)
         features = []
+        shapes = services.dxf_arc_shapes(extraction, current_app.instance_path)
         for i in range(_number(form, "feature_count", int, positive=False) or 0):
             if not form.get(f"f{i}-include"):
                 continue
@@ -1173,6 +1191,8 @@ def confirm_extraction(extraction_id):
                 feature.confidence = _number(form, f"f{i}-confidence", positive=False)
             except FormError as e:
                 raise FormError(f"Feature {i + 1}: {e}") from None
+            if feature.type == "arc" and i in shapes:
+                feature.drawn_radius = shapes[i].get("drawn_radius")  # compared with the dimension (the profile)
             features.append(feature)
         # The checkboxes add facing/parting only when the drawing rows do not already have them.
         if form.get("add_face") and not any(f.type == "face" for f in features):
