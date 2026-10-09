@@ -265,6 +265,7 @@ def gcode_inputs(job, machine, readiness=None):
             depth=op.depth, insert_width=op.insert_width, ref_diameter=op.ref_diameter,
             ap_min=tool.ap_min if tool else None, ap_max=tool.ap_max if tool else None,
             tool_diameter=tool.diameter if tool else None, pitch=op.feature.pitch,
+            max_ramp_angle=tool.max_ramp_angle if tool else None,
             warnings=tuple(w.strip() for w in (op.warning or "").split(";") if w.strip())))
     stock = planner.stock_diameter(job.blank_shape or "round", job.blank_diameter)
     job_data = gprogram.JobData(id=job.id, name=job.name, material=job.material.name, blank_diameter=stock,
@@ -277,7 +278,7 @@ def gcode_inputs(job, machine, readiness=None):
         chuck_safety=machine.chuck_safety_mm or 0.0, coolant=machine.coolant, thread_run_in=machine.thread_run_in_mm,
         peck_depth=machine.peck_depth_mm, facing_overshoot=machine.facing_overshoot_mm,
         groove_reference=machine.groove_reference, min_rpm=machine.min_rpm, max_thread_feed=machine.max_thread_feed,
-        control=machine.control)
+        control=machine.control, parting_overshoot=machine.parting_overshoot_mm, groove_dwell=machine.groove_dwell_s)
     return job_data, machine_data, profile, ops
 
 
@@ -301,12 +302,14 @@ def gcode_simulation(job, machine, text, profile=None):
     tools = {}
     for slot in machine.slots:
         if slot.tool is not None:
-            tools[slot.position] = gsim.ToolInfo(slot.tool.type, slot.tool.ap_max, slot.tool.insert_width)
+            tools[slot.position] = gsim.ToolInfo(slot.tool.type, slot.tool.ap_max, slot.tool.insert_width,
+                                                 slot.tool.max_ramp_angle)
     data = gsim.SimInput(
         profile=profile, stock_radius=planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
         face_stock=job.face_stock_mm or 0.0, stickout=job.stickout_mm or 0.0,
         chuck_safety=machine.chuck_safety_mm or 0.0, max_rpm=machine.max_rpm, spindle=machine.spindle_right_hand,
         tools=tools, groove_reference=machine.groove_reference, facing_overshoot=machine.facing_overshoot_mm or 0.0,
+        parting_overshoot=machine.parting_overshoot_mm or 0.0,
         min_rpm=machine.min_rpm, max_thread_feed=machine.max_thread_feed)
     return gsim.simulate(text, data)
 

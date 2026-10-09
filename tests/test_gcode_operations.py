@@ -91,9 +91,9 @@ def test_drilling_on_the_axis_in_g97_with_pecks(app):
 def test_parting_to_the_axis_warns_about_g96(app):
     machine = ready_machine()
     parting = block(program_of(make_job(), machine), "parting")
-    assert parting.commands[2] == Comment("PARTING TO THE AXIS IN G96: SPINDLE RUNS UP TO G50 S3500 - OPERATOR MAY "
-                                          "SWITCH TO G97")
-    assert parting.commands[3:5] == [Rapid(z=-63.0), Feed(x=0.0, f=0.1)]
+    assert parting.commands[2] == Comment("PARTING PAST THE AXIS TO X-0.5 IN G96: SPINDLE RUNS UP TO G50 S3500 - "
+                                          "OPERATOR MAY SWITCH TO G97")
+    assert parting.commands[3:5] == [Rapid(z=-63.0), Feed(x=-0.5, f=0.1)]  # the operator's 0.25 per side
     assert parting.warnings[0].startswith("parting to the axis in G96")
 
 

@@ -61,9 +61,10 @@ def test_the_jaws(pin):
 
 
 def test_below_the_axis(pin):
-    text = replace(pin[2], "G01 X0. F0.1", "G01 X-2. F0.1")  # parting past the axis
+    text = replace(pin[2], "G01 X-0.5 F0.1", "G01 X-2. F0.1")  # parting further past the axis than set
     assert "X-2. below the axis" in messages(run(pin, text))
-    assert "X-0.8 below the axis" not in messages(run(pin))  # facing past it by the operator's overshoot
+    clean = messages(run(pin))  # facing and parting past it by the operator's overshoots
+    assert "X-0.8 below the axis" not in clean and "X-0.5 below the axis" not in clean
 
 
 def test_spindle_rules(pin):

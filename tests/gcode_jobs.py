@@ -6,7 +6,7 @@ from turnpilot.models import Feature, Job, Material, db
 
 PROGRAMMING = dict(max_rpm=3500, spindle_right_hand="M04", clearance_x=1, clearance_z=2, retract_mm=0.5,
                    chuck_safety_mm=5, thread_run_in_mm=6, peck_depth_mm=5, facing_overshoot_mm=0.4,
-                   groove_reference="toward Z0")
+                   groove_reference="toward Z0", parting_overshoot_mm=0.25)
 
 
 def ready_machine(**changes):

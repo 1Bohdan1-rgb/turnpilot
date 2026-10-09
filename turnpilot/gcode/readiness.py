@@ -29,7 +29,7 @@ NEEDED_BY_TOOL_TYPE = {  # programming values a type of operation needs
     "threading": ("thread_run_in_mm",),
     "drilling": ("peck_depth_mm",),
     "grooving": ("groove_reference",),
-    "parting": ("groove_reference",),
+    "parting": ("groove_reference", "parting_overshoot_mm"),
 }
 JOB_SETUP_LABELS = {"free_end": "free end (Z0)", "stickout_mm": "stick-out from the jaws",
                     "face_stock_mm": "stock beyond Z0"}

@@ -60,6 +60,8 @@ class Machine(db.Model):
     peck_depth_mm = db.Column(db.Float)
     facing_overshoot_mm = db.Column(db.Float)
     groove_reference = db.Column(db.String(12))
+    parting_overshoot_mm = db.Column(db.Float)
+    groove_dwell_s = db.Column(db.Float)  # optional: empty, no dwell at a groove's bottom
 
     slots = db.relationship(
         "TurretSlot", back_populates="machine", order_by="TurretSlot.position", cascade="all, delete-orphan"
@@ -145,6 +147,9 @@ class Tool(db.Model):
     insert_width = db.Column(db.Float)  # mm, grooving / parting inserts
     diameter = db.Column(db.Float)  # mm, drills: the hole they make
     max_depth = db.Column(db.Float)  # mm, drills: the deepest hole they reach (e.g. 3 × D for a 3×D drill)
+    # Turning tools: the steepest angle (degrees to the axis) the insert in its holder may cut going down towards
+    # the chuck (the catalogue's max in-copying angle). Empty: not known, no such move is programmed for it.
+    max_ramp_angle = db.Column(db.Float)
     source = db.Column(db.String(300))  # where the Vc / f / ap ranges come from: catalogue, insert grade, page
     # The catalogue's recommended values: the planner takes these instead of positions in the ranges. vc_points:
     # Vc at given feeds, "0.1:455, 0.4:305, 0.8:215" (linear between them), or one Vc for every feed ("125").

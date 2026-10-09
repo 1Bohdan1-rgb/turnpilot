@@ -48,6 +48,11 @@ class Spindle:
 
 
 @dataclass(frozen=True)
+class Dwell:
+    seconds: float
+
+
+@dataclass(frozen=True)
 class Coolant:
     on: bool
 
@@ -113,6 +118,8 @@ class MachineData:
     peck_depth: float | None = None
     facing_overshoot: float | None = None  # per side
     groove_reference: str | None = None  # "toward Z0" / "toward chuck"
+    parting_overshoot: float | None = None  # per side
+    groove_dwell: float | None = None  # seconds at a groove's bottom; None: no dwell
     min_rpm: int | None = None
     max_thread_feed: float | None = None
     control: str | None = None
@@ -152,6 +159,7 @@ class OpData:
     ap_min: float | None = None
     ap_max: float | None = None
     tool_diameter: float | None = None
+    max_ramp_angle: float | None = None  # turning: the insert's max in-copying angle, degrees
     pitch: float | None = None  # threading: the feature's pitch
     warnings: tuple = ()  # the planner's warnings on the operation
 
@@ -170,6 +178,8 @@ class _Builder:
         self.finished: set[int] = set()  # sections whose finishing pass is written
         self.roughed: list[tuple[float, float, float]] = []  # (z from, z to, radius) of the passes written
         self.covered: list[str] = []  # operations whose material earlier passes already took
+        self.descents: list[tuple] = []  # contour segments the finishing tool may not cut (too steep down)
+        self.back_chamfer_done = False
         self.allowance = max((op.ap or 0.0 for op in ops if op.tool_type == "turning_finish"), default=0.0)
 
     # spindle and coolant
@@ -295,23 +305,9 @@ class _Builder:
                           for s, op in group if op is not None)
         b = self.block(first_op, f"FINISH {names}", [op.id for _, op in group if op is not None])
         self._start(b, first_op)
-        first = sections[0]
         rnose = nose_radius_from_insert(first_op.insert_code)
-        cz = self.m.clearance_z
-        if first.index == 0:
-            r_top = self.p.turned_points[0][1]
-            if first.chamfer_free:  # onto the chamfer along its 45° line, from Z+clearance
-                b.commands += [Rapid(z=_r3(cz)), Rapid(x=_r3(2 * max(r_top - cz, 0.0))),
-                               Feed(x=_r3(2 * r_top), z=0.0, f=first_op.f)]
-            else:
-                b.commands += [Rapid(z=_r3(cz)), Rapid(x=_r3(2 * r_top)), Feed(z=0.0, f=first_op.f)]
-        else:
-            z_face = first.z_free
-            above = max(r for z, r in self.p.turned_points if z >= z_face - EPS) + self.allowance + self.m.retract
-            r_prev = self._own_radius(self.p.sections[first.index - 1], False)  # the neighbour at this face
-            b.commands += [Rapid(x=_r3(2 * above)),
-                           Rapid(z=_r3(z_face + self.allowance + self.m.clearance_z)),
-                           Feed(x=_r3(2 * r_prev), f=first_op.f), Feed(z=_r3(z_face))]
+        ramp = first_op.max_ramp_angle
+        on_contour = False
         current_f = first_op.f
         current_vc = round(first_op.vc)
         for section, op in group:
@@ -320,14 +316,33 @@ class _Builder:
             if op is not None and round(op.vc) != current_vc:
                 current_vc = round(op.vc)
                 b.commands.append(Spindle("css", current_vc))
+            if not on_contour:
+                self._entry(b, section, current_f)
+                on_contour = True
             for z, r in self._contour(section):
-                here = _position(b.commands)
-                if here != (_r3(2 * r), _r3(z)):
-                    b.commands.append(Feed(x=_r3(2 * r), z=_r3(z), f=current_f))
+                x0, z0 = _position(b.commands)
+                x, z = _r3(2 * r), _r3(z)
+                if (x0, z0) == (x, z):
+                    continue
+                if z < z0 - EPS and x < x0 - EPS:  # down towards the chuck: within the insert's in-copying angle?
+                    angle = math.degrees(math.atan2((x0 - x) / 2, z0 - z))
+                    if ramp is None or angle > ramp + 0.5:
+                        self.descents.append((section, z0, z, x0, x, angle))
+                        b.warnings.append(
+                            f"Z{z0:g} to Z{z:g} goes down at {angle:.0f}° towards the chuck: "
+                            + ("the tool's max in-copying angle is not set" if ramp is None
+                               else f"above the tool's max in-copying angle {ramp:g}°")
+                            + ": not cut by this tool")
+                        b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe)]
+                        on_contour = False
+                        break
+                b.commands.append(Feed(x=x, z=z, f=current_f))
             if op is not None:
                 self.finished.add(section.index)
-        b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe)]
+        if on_contour:
+            b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe)]
         self._end(b)
+        sections = [s for s, _ in group]
         chamfers = [s for s in sections if s.chamfer_free or s.chamfer_chuck]
         if chamfers and rnose:
             offset = round(rnose * (math.sqrt(2) - 1), 3)
@@ -342,6 +357,24 @@ class _Builder:
                                   f"({math.degrees(angle):.1f}° to the axis) comes out about {offset:g} mm (normal) "
                                   f"fuller than drawn (rε {rnose:g}): check")
         return b
+
+    def _entry(self, b: Block, first: Section, f: float) -> None:
+        """Onto the contour at a section's free-end side: from Z+clearance at the free end (a chamfer along its
+        line), else above the material on the free-end side, then down beside the face."""
+        cz = self.m.clearance_z
+        if first.index == 0:
+            r_top = self.p.turned_points[0][1]
+            if first.chamfer_free:
+                b.commands += [Rapid(z=_r3(cz)), Rapid(x=_r3(2 * max(r_top - cz, 0.0))),
+                               Feed(x=_r3(2 * r_top), z=0.0, f=f)]
+            else:
+                b.commands += [Rapid(z=_r3(cz)), Rapid(x=_r3(2 * r_top)), Feed(z=0.0, f=f)]
+            return
+        z_face = first.z_free
+        above = max(r for z, r in self.p.turned_points if z >= z_face - EPS) + self.allowance + self.m.retract
+        r_prev = self._own_radius(self.p.sections[first.index - 1], False)  # the neighbour at this face
+        b.commands += [Rapid(x=_r3(2 * above)), Rapid(z=_r3(z_face + self.allowance + cz)),
+                       Feed(x=_r3(2 * r_prev), f=f), Feed(z=_r3(z_face))]
 
     def _contour(self, section: Section) -> list[tuple[float, float]]:
         """The turned profile's points of a section, from its free-end side to its chuck side."""
@@ -433,7 +466,10 @@ class _Builder:
         b.commands.append(Rapid(x=_r3(2 * above)))
         for i in range(plunges):
             z = _r3(first_edge - i * step + offset)
-            b.commands += [Rapid(z=z), Feed(x=_r3(2 * (bottom + wall)), f=op.f), Rapid(x=_r3(2 * above))]
+            b.commands += [Rapid(z=z), Feed(x=_r3(2 * (bottom + wall)), f=op.f)]
+            if self.m.groove_dwell:
+                b.commands.append(Dwell(self.m.groove_dwell))
+            b.commands.append(Rapid(x=_r3(2 * above)))
         self._end(b)
         b.warnings.append(f"Z is the insert's corner {self.m.groove_reference} (the operator's touch-off): check")
         return b
@@ -503,13 +539,28 @@ class _Builder:
         w = op.insert_width
         if not w:
             return "the parting insert has no width: not generated"
-        z = _r3(-self.p.length if self.m.groove_reference == "toward Z0" else -self.p.length - w)
+        length = self.p.length
+        offset = 0.0 if self.m.groove_reference == "toward Z0" else -w  # programmed corner vs the Z0-side corner
+        z = _r3(-length + offset)
         x_end = _r3(max(0.0, (op.ref_diameter or self.job.blank_diameter) - 2 * (op.depth or 0.0)))
-        b = self.block(op, f"PART OFF AT Z{-self.p.length:g}, INSERT {w:g}")
+        b = self.block(op, f"PART OFF AT Z{-length:g}, INSERT {w:g}")
         self._start(b, op)
+        back = self._back_chamfer()
+        if back is not None:  # the part's back chamfer, with the insert's Z0-side corner, before parting
+            r, c = back
+            b.commands += [Comment(f"BACK CHAMFER {c:g}X45 WITH THE INSERT'S CORNER: SLOT FIRST, THEN ALONG THE "
+                                   "CHAMFER"),
+                           Rapid(z=z), Feed(x=_r3(2 * (r - c)), f=op.f), Rapid(x=self.x_safe),
+                           Rapid(z=_r3(-length + c + self.m.clearance_x + offset)),
+                           Rapid(x=_r3(2 * (r + self.m.clearance_x))),
+                           Feed(x=_r3(2 * (r - c)), z=_r3(-length + offset), f=op.f), Rapid(x=self.x_safe)]
+            b.warnings.append(f"the back chamfer {c:g}×45° is cut with the parting insert's corner (side load): "
+                              "check the insert allows it")
+            self.back_chamfer_done = True
         if x_end == 0:
-            b.commands.append(Comment(f"PARTING TO THE AXIS IN G96: SPINDLE RUNS UP TO G50 S{self.m.max_rpm} - "
-                                      "OPERATOR MAY SWITCH TO G97"))
+            x_end = _r3(-2 * (self.m.parting_overshoot or 0.0))
+            b.commands.append(Comment(f"PARTING PAST THE AXIS TO X{x_end:g} IN G96: SPINDLE RUNS UP TO G50 "
+                                      f"S{self.m.max_rpm} - OPERATOR MAY SWITCH TO G97"))
             b.warnings.append(f"parting to the axis in G96: the spindle runs up to G50 S{self.m.max_rpm}; the "
                               "operator may switch to G97")
         b.commands += [Rapid(z=z), Feed(x=x_end, f=op.f), Rapid(x=self.x_safe)]
@@ -517,6 +568,15 @@ class _Builder:
         b.warnings.append("feed not reduced near the axis: that rule is a placeholder (not written)")
         b.warnings.append(f"Z is the insert's corner {self.m.groove_reference} (the operator's touch-off): check")
         return b
+
+    def _back_chamfer(self) -> tuple[float, float] | None:
+        """(radius, leg) of a chamfer at the part's back end that the finishing tool left (too steep for it)."""
+        last = self.p.sections[-1] if self.p.sections else None
+        if last is None or not last.chamfer_chuck or last.kind not in ("od_turn", "hex"):
+            return None
+        if not any(section is last for section, *_ in self.descents):
+            return None
+        return last.turned_d / 2, last.chamfer_chuck
 
     def _finish_groups(self, finish: list[OpData]):
         by_section = {}
@@ -604,4 +664,9 @@ def build(job: JobData, machine: MachineData, profile: Profile, ops: list[OpData
             op_id, reason = item
             program.skipped[op_id] = reason
     program.notes += builder.covered
+    for section, z0, z1, x0, x1, angle in builder.descents:
+        if builder.back_chamfer_done and section is profile.sections[-1] and abs(z1 + profile.length) < EPS:
+            continue
+        program.warnings.append(f"Z{z0:g} to Z{z1:g} (D{x0:g} to D{x1:g}, {angle:.0f}° down towards the chuck) is not "
+                                "cut: a tool that may go down at that angle, or a second set-up")
     return program

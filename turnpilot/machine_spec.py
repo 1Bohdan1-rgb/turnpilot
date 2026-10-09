@@ -63,6 +63,10 @@ PROGRAMMING_FIELDS = (
                  help="no centre pip left; about the nose radius"),
     MachineField("groove_reference", "Grooving / parting insert: touched-off corner", "", "choice",
                  help="the corner the Z offset is set to", options=GROOVE_REFERENCE_OPTIONS),
+    MachineField("parting_overshoot_mm", "Parting past the axis (per side)", "mm", "float",
+                 help="the part comes off cleanly"),
+    MachineField("groove_dwell_s", "Dwell at a groove's bottom", "s", "float",
+                 help="optional: empty, no dwell (G04)"),
 )
 FIELDS_BY_NAME = {f.name: f for f in MACHINE_FIELDS + PROGRAMMING_FIELDS}
 

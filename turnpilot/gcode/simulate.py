@@ -2,7 +2,8 @@
 checks what the machine would do. The tool is its imaginary tip point (grooving and parting inserts: their width);
 the stock is a radius per z on a 0.01 mm grid, from the stock beyond Z0 to the jaws.
 
-Errors (the program is not ready to run): a turning cut deeper than the tool's ap max, a rapid through material (both orders of the axes, as a Fanuc control
+Errors (the program is not ready to run): a turning cut deeper than the tool's ap max, a turning cut down towards
+the chuck steeper than the insert's max in-copying angle (or with that angle not known), a rapid through material (both orders of the axes, as a Fanuc control
 may move them separately), a cut below the finished profile, a tool point at the jaws, X below the axis (beyond the
 facing overshoot), G96 while drilling, a speed above G50 or the machine's max, G96 without G50, a spindle direction
 other than the operator's, G92 outside G97, n·P above the machine's threading limit, a tool change away from the
@@ -28,6 +29,7 @@ class ToolInfo:
     tool_type: str
     edge: float | None = None  # the insert's cutting edge length along Z for a radial feed (its ap_max)
     width: float | None = None  # grooving / parting insert width
+    max_ramp: float | None = None  # turning: the max in-copying angle (degrees) going down towards the chuck
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,7 @@ class SimInput:
     tools: dict  # turret position -> ToolInfo
     groove_reference: str | None = None
     facing_overshoot: float = 0.0
+    parting_overshoot: float = 0.0
     min_rpm: int | None = None
     max_thread_feed: float | None = None
 
@@ -216,8 +219,25 @@ class _Sim:
                     excess.append((zz, self.stock[i] - r))
                 self._remove(line, zz, r, radial=abs(x - x0) > 1e-9)
             self._check_depth(line, excess, x0, z0, x, z)
+            self._check_ramp(line, excess, x0, z0, x, z)
         self.r.segments.append(Segment(kind, x0, z0, x, z, line, self.tool))
         self.pos = (x, z)
+
+    def _check_ramp(self, line, excess, x0, z0, x, z) -> None:
+        """A turning insert cutting down towards the chuck steeper than its holder allows (the catalogue's max
+        in-copying angle): an error, also when the angle is not known."""
+        info = self.info
+        if not info or info.tool_type not in ("turning_rough", "turning_finish", "facing"):
+            return
+        if not (z < z0 - 1e-9 and x < x0 - 1e-9) or not any(e > TOL for _, e in excess):
+            return
+        angle = math.degrees(math.atan2((x0 - x) / 2, z0 - z))
+        if info.max_ramp is None:
+            self.error(line, f"goes down at {angle:.0f}° towards the chuck in material: the tool's max in-copying "
+                             "angle is not set")
+        elif angle > info.max_ramp + 0.5:
+            self.error(line, f"goes down at {angle:.0f}° towards the chuck, above the tool's max in-copying angle "
+                             f"{info.max_ramp:g}°")
 
     def _check_depth(self, line, excess, x0, z0, x, z) -> None:
         """A turning insert cutting deeper than its ap max (the catalogue's) along more than ap max of its way: an
@@ -269,7 +289,8 @@ class _Sim:
                              f"Z{fanuc.number(self.z_jaws)})")
         info = self.info
         if x < -TOL:
-            allowed = info and info.tool_type == "facing" and x >= -2 * self.d.facing_overshoot - TOL
+            allowed = info and (info.tool_type == "facing" and x >= -2 * self.d.facing_overshoot - TOL
+                                or info.tool_type == "parting" and x >= -2 * self.d.parting_overshoot - TOL)
             if not allowed:
                 self.error(line, f"X{fanuc.number(x)} below the axis")
 
@@ -291,6 +312,8 @@ class _Sim:
         seen_end = False
         for ln in parsed.lines:
             words, n = ln.words, ln.number
+            if 4 in ln.g:  # a dwell: no motion
+                continue
             if 28 in ln.g:
                 if "U" in words:
                     self.homed_x = True

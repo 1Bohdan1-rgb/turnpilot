@@ -10,15 +10,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .program import (Block, Comment, Coolant, Feed, Home, OptionalStop, Program, Rapid, Spindle, ThreadPass,
-                      ToolCall, ascii_text)
+from .program import (Block, Comment, Coolant, Dwell, Feed, Home, OptionalStop, Program, Rapid, Spindle,
+                      ThreadPass, ToolCall, ascii_text)
 
 NAME = "Fanuc 0i-T (G code system A)"
 COMMENT_WIDTH = 60
-G_CODES = {0, 1, 18, 21, 28, 40, 50, 92, 96, 97, 99}
+G_CODES = {0, 1, 4, 18, 21, 28, 40, 50, 92, 96, 97, 99}
 M_CODES = {1, 3, 4, 5, 8, 9, 30}
 DECIMAL_WORDS = "XZUWF"
-INTEGER_WORDS = "NOST"
+INTEGER_WORDS = "NOSTP"  # P: G04 dwell in milliseconds
 
 
 def number(value: float) -> str:
@@ -58,6 +58,8 @@ def _command(c) -> list[str]:
         lines = [f"G50 S{c.limit}"] if c.limit else []
         g = "G96" if c.mode == "css" else "G97"
         return lines + [f"{g} S{c.value}" + (f" {c.direction}" if c.direction else "")]
+    if isinstance(c, Dwell):
+        return [f"G04 P{round(c.seconds * 1000)}"]
     if isinstance(c, Coolant):
         return ["M08" if c.on else "M09"]
     if isinstance(c, Home):

@@ -87,7 +87,8 @@ def test_readiness_of_a_job(app):
     assert result.blockers == [
         "programming values not set on the Machine page: Spindle direction for a right-hand tool, Approach "
         "clearance in X (per side), Approach clearance in Z, Retract after a pass (per side), Safety distance to the "
-        "chuck jaws, Facing past the axis (per side), Grooving / parting insert: touched-off corner",
+        "chuck jaws, Facing past the axis (per side), Grooving / parting insert: touched-off corner, Parting past the "
+        "axis (per side)",
         "G-code set-up of the job not set: free end (Z0), stick-out from the jaws, stock beyond Z0"]
     set_programming(machine)
     job.free_end, job.stickout_mm, job.face_stock_mm = "left", 75, 1
@@ -100,7 +101,8 @@ def test_readiness_of_a_job(app):
 
 
 PROGRAMMING = dict(spindle_right_hand="M04", clearance_x=1, clearance_z=2, retract_mm=0.5, chuck_safety_mm=5,
-                   thread_run_in_mm=6, peck_depth_mm=5, facing_overshoot_mm=0.4, groove_reference="toward Z0")
+                   thread_run_in_mm=6, peck_depth_mm=5, facing_overshoot_mm=0.4, groove_reference="toward Z0",
+                   parting_overshoot_mm=0.25)
 
 
 def set_programming(machine):

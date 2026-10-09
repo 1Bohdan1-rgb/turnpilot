@@ -431,6 +431,13 @@ def catalogue_file(document_id):
     return send_from_directory(services.catalogues_dir(current_app.instance_path), document.stored_filename)
 
 
+def _ramp_angle(form):
+    angle = _number(form, "max_ramp_angle")
+    if angle is not None and angle >= 90:
+        raise FormError("Max in-copying angle: degrees to the axis, below 90")
+    return angle
+
+
 def _tool_fields(form):
     """The editable fields of a tool from its form (not its type) or raise FormError."""
     name = form.get("name", "").strip()
@@ -461,6 +468,7 @@ def _tool_fields(form):
         insert_width=_number(form, "insert_width"),
         diameter=_number(form, "diameter"),
         max_depth=_number(form, "max_depth"),
+        max_ramp_angle=_ramp_angle(form),
         source=form.get("source", "").strip()[:300] or None,
         **values,
     )
