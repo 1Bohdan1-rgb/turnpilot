@@ -88,6 +88,8 @@ def render(program: Program) -> str:
     lines = ["%", f"O{program.number:04d} " + comment_lines(program.job_title or "TURNPILOT")[0]]
     for text in program.header:
         lines += comment_lines(text)
+    for note in program.notes:
+        lines += comment_lines(note)
     for op_id, reason in sorted(program.skipped.items()):
         lines += comment_lines(f"NOT IN THIS PROGRAM: OPERATION {op_id}: {reason}")
     for warning in program.warnings:

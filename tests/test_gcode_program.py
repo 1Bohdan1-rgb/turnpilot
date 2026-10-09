@@ -60,7 +60,7 @@ def test_facing_roughing_finishing_of_a_pin(app):
     program = blocks(job, machine)
     titles = [b.title for b in program.blocks]
     assert titles == ["FACE Z0, 1 MM STOCK", "ROUGH D30 1 X AP 0.6 FROM D32", "ROUGH D24 1 X AP 2.6 FROM D30",
-                      "ROUGH D20 1 X AP 1.6 FROM D24", "FINISH D20, D24, D30", "GROOVE D16 W3, INSERT 3, 1 PLUNGE(S)",
+                      "ROUGH D20 1 X AP 1.6 FROM D24", "FINISH D20, D24, D30", "GROOVE D16 W3, INSERT 3, 1 PLUNGE",
                       "PART OFF AT Z-63, INSERT 3"]
     face, r30, r24, r20, finish = program.blocks[:5]
     assert face.commands[0] == Spindle("css", 380, "M04", 3500)
@@ -127,3 +127,27 @@ def test_finishing_split_at_a_section_without_a_finishing_pass(app):
 
 def test_comments_are_ascii():
     assert ascii_text("Завіса 36 (палець) Ø22×1,5") == "ZAVISA 36 PALETS D22X1,5"
+
+
+def test_sections_of_one_diameter_are_roughed_once(app):
+    machine = ready_machine()
+    features = [Feature(type="od_turn", diameter=30, length=10),
+                Feature(type="groove", diameter=27, start_diameter=30, length=3),
+                Feature(type="od_turn", diameter=30, length=20)]
+    job = make_job(features)
+    program = blocks(job, machine)
+    roughs = [b for b in program.blocks if b.tool_type == "turning_rough"]
+    assert len(roughs) == 1 and Feed(z=-33.0, f=0.3) in roughs[0].commands  # over both sections and the groove
+    second = next(op for op in job.current_operations if op.tool_type == "turning_rough"
+                  and op.id not in roughs[0].op_ids)
+    assert program.notes == [f"operation {second.id} (rough Ø30): the passes before it already took the material "
+                             "down to its Ø"]
+    assert second.id not in program.skipped
+
+
+def test_the_planners_warnings_go_into_the_block(app):
+    machine = ready_machine()
+    job = make_job()
+    program = blocks(job, machine)
+    rough = next(b for b in program.blocks if b.tool_type == "turning_rough")
+    assert any(w.startswith("check the spindle power") for w in rough.warnings)  # no drive efficiency in the seed

@@ -264,7 +264,8 @@ def gcode_inputs(job, machine, readiness=None):
             insert_code=tool.insert_code if tool else None, vc=op.vc, n=op.n, f=op.f, ap=op.ap, passes=op.passes,
             depth=op.depth, insert_width=op.insert_width, ref_diameter=op.ref_diameter,
             ap_min=tool.ap_min if tool else None, ap_max=tool.ap_max if tool else None,
-            tool_diameter=tool.diameter if tool else None, pitch=op.feature.pitch))
+            tool_diameter=tool.diameter if tool else None, pitch=op.feature.pitch,
+            warnings=tuple(w.strip() for w in (op.warning or "").split(";") if w.strip())))
     stock = planner.stock_diameter(job.blank_shape or "round", job.blank_diameter)
     job_data = gprogram.JobData(id=job.id, name=job.name, material=job.material.name, blank_diameter=stock,
                                 blank_label=f"{job.blank_label} x {job.blank_length:g}",

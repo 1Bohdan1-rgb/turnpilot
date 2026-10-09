@@ -93,6 +93,7 @@ class Program:
     blocks: list[Block] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)  # the whole program
     skipped: dict[int, str] = field(default_factory=dict)  # operation id -> why it is not in the program
+    notes: list[str] = field(default_factory=list)  # information for the whole program
     spindle_off_at_end: bool = True
 
 
@@ -152,6 +153,7 @@ class OpData:
     ap_max: float | None = None
     tool_diameter: float | None = None
     pitch: float | None = None  # threading: the feature's pitch
+    warnings: tuple = ()  # the planner's warnings on the operation
 
 
 def _r3(value: float) -> float:
@@ -166,6 +168,8 @@ class _Builder:
         self.x_safe = _r3(job.blank_diameter + 2 * machine.clearance_x)
         self.z_safe = _r3((job.face_stock or 0.0) + machine.clearance_z)
         self.finished: set[int] = set()  # sections whose finishing pass is written
+        self.roughed: list[tuple[float, float, float]] = []  # (z from, z to, radius) of the passes written
+        self.covered: list[str] = []  # operations whose material earlier passes already took
         self.allowance = max((op.ap or 0.0 for op in ops if op.tool_type == "turning_finish"), default=0.0)
 
     # spindle and coolant
@@ -183,7 +187,11 @@ class _Builder:
             block.commands.append(Coolant(False))
 
     def block(self, op: OpData, title: str, op_ids=None) -> Block:
-        return Block(op.sequence, title, op.position, op.tool_name, op_ids or [op.id], op.tool_type)
+        b = Block(op.sequence, title, op.position, op.tool_name, op_ids or [op.id], op.tool_type)
+        for o in self.ops:  # the planner's warnings of the operations in the block (the operator approved them)
+            if o.id in b.op_ids:
+                b.warnings += [w for w in o.warnings if w not in b.warnings]
+        return b
 
     # facing ------------------------------------------------------------------------------------------
     def facing(self, op: OpData) -> Block | str:
@@ -241,7 +249,14 @@ class _Builder:
                         "not generated")
             shoulder = self._scan(z_mid, True, level)
             z_end = -self.p.length if shoulder is None else min(shoulder + allowance, section.z_free)
+            if self._roughed_to(z_end, radius):
+                continue  # an earlier pass already took the material down to this radius over the span
             passes.append((radius, _r3(z_end)))
+        if not passes:
+            self.covered.append(f"operation {op.id} (rough Ø{section.turned_d:g}): the passes before it already "
+                                f"took the material down to its Ø")
+            return b  # no commands: left out of the program
+        self.roughed += [(0.0, z_end, radius) for radius, z_end in passes]
         self._start(b, op)
         for radius, z_end in passes:
             b.commands += [Rapid(x=_r3(2 * radius)), Feed(z=z_end, f=op.f),
@@ -250,6 +265,12 @@ class _Builder:
         if allowance:
             b.notes.append(f"leaves {allowance:g} mm per side for finishing")
         return b
+
+    def _roughed_to(self, z_end: float, radius: float) -> bool:
+        """Earlier passes left no material above radius between Z0 and z_end."""
+        cuts = [(lo, r) for _, lo, r in self.roughed if r <= radius + EPS]
+        reach = min((lo for lo, _ in cuts), default=None)
+        return reach is not None and reach <= z_end + EPS
 
     # finishing contour -------------------------------------------------------------------------------
     def finish(self, group: list[tuple[Section, OpData | None]]) -> Block:
@@ -383,7 +404,8 @@ class _Builder:
         plunges = max(1, op.passes or 1)
         step = (first_edge - last_edge) / (plunges - 1) if plunges > 1 else 0.0
         offset = 0.0 if self.m.groove_reference == "toward Z0" else -w  # programmed corner vs free-side edge
-        b = self.block(op, f"GROOVE D{section.d_free:g} W{width:g}, INSERT {w:g}, {plunges} PLUNGE(S)")
+        b = self.block(op, f"GROOVE D{section.d_free:g} W{width:g}, INSERT {w:g}, {plunges} "
+                           + ("PLUNGE" if plunges == 1 else "PLUNGES"))
         above = self._above(section.z_free, section.z_chuck)
         self._start(b, op)
         b.commands.append(Rapid(x=_r3(2 * above)))
@@ -559,4 +581,5 @@ def build(job: JobData, machine: MachineData, profile: Profile, ops: list[OpData
         else:
             op_id, reason = item
             program.skipped[op_id] = reason
+    program.notes += builder.covered
     return program

@@ -22,7 +22,7 @@ def test_one_plunge_groove(app):
     machine = ready_machine()
     program = program_of(make_job(), machine)
     groove = block(program, "grooving")
-    assert groove.title == "GROOVE D16 W3, INSERT 3, 1 PLUNGE(S)"
+    assert groove.title == "GROOVE D16 W3, INSERT 3, 1 PLUNGE"
     assert groove.commands[2:6] == [Rapid(x=26.8), Rapid(z=-15.0), Feed(x=16.0, f=0.07), Rapid(x=26.8)]
 
 

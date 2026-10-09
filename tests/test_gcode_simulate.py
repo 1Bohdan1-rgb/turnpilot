@@ -78,9 +78,7 @@ def test_spindle_rules(pin):
 
 
 def test_a_tool_change_away_from_the_reference_point(pin):
-    text = replace(pin[2], "M01\nN4 (T02 ROUGH TURNING CNMG P - ROUGH D30 1 X AP 0.6 FROM D32)\n"
-                           "(LEAVES 0.4 MM PER SIDE FOR FINISHING)\nG28 U0.\nG28 W0.\n",
-                   "M01\nN4 (T02 ROUGH TURNING CNMG P - ROUGH D30 1 X AP 0.6 FROM D32)\n")
+    text = replace(pin[2], "G28 U0.\nG28 W0.\nT0202", "T0202")
     assert "tool change away from the reference point (G28 U0. then G28 W0. first)" in messages(run(pin, text))
 
 
