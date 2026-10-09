@@ -65,6 +65,8 @@ Stages, in this order:
    (2 calls); the hold-out waits for the user's expected answer.
 6. G-code from the part zero (Z0 on the end face, X0 on the axis) from the DXF contour coordinates: the outer
    profile first, one control, simulation required.
+   **Built 2026-10-09** (see "Stage 6: G-code"): the operator checked the Zavisa 36 pin program as a turner; ready
+   to run waits for the machine's real values (passport, the operator's programming values).
 
 ## Number check, stage 1 (2026-09-30)
 - `pdf_text.py` reads the numbers of a CAD PDF with vector text:
@@ -704,6 +706,44 @@ cutting-data`). The files frozen by `dxf-blind-freeze` are untouched.
 - Demo DB: the P1.2 file was imported once (24 rows "read", none confirmed): until the operator confirms them,
   every operation shows "(check)". The catalogue PDFs are uploaded (CatalogueDocument 1 TT, 2 SRT).
 
+## Stage 6: G-code (built 2026-10-09)
+Plan agreed with the user: R1 Fanuc 0i-T (system A) first; R2 explicit moves and G92 per pass, no canned cycles;
+R3 every value not in a catalogue / passport is the operator's, no default; R4 no G41/G42 (chamfers, tapers:
+check); R5 no confirmed max rpm, no program. The operator's additions: drilling only in G97 (G96 on the axis is an
+error); the spindle direction for a right-hand tool is an operator value (and a checklist item); parting to the
+axis in G96 is a check. Commits da80770 … f36e507 and the docs commit; migrations e304ff3c2963, 209c6b4145de,
+d82ea01ebe01, d032e6444de3 (DB backups `instance/turnpilot.db.bak-2026-10-09-*`). Files frozen by
+`dxf-blind-freeze` untouched (the profile comes from the confirmed rows, not from `dxf_reader`).
+- `turnpilot/gcode/`: readiness (approved operations of a DXF job, unchanged tools, max rpm passport / operator /
+  demo, programming values and job set-up present; an operation goes in only with cutting data from confirmed
+  catalogue rows or the operator: `Operation.cutting_data_origin`), profile (r(z) turned / final), program
+  (neutral commands, the builders), fanuc (print, strict read back), simulate, svg.
+- The operator's remarks on the first real program (Zavisa 36 pin), all done:
+  - the taper is roughed (steps from its larger end's neighbour, then along its line) and finished in the contour;
+    the planner no longer makes a taper manual (fillets and arcs stay manual);
+  - the planner reduces ap above the nominal power when the drive efficiency is not set;
+  - a section is roughed from its neighbour as the neighbour's roughing leaves it (+ 2 × the finishing allowance);
+  - the finishing contour does not go down towards the chuck steeper than `Tool.max_ramp_angle` (empty = not
+    allowed); the back chamfer at the parted end is cut with the parting insert's corner after a slot;
+  - parting past the axis (`parting_overshoot_mm`); an optional groove dwell (`groove_dwell_s`, G04 P ms).
+- Checks the simulation added and the bugs they found: a turning cut deeper than ap max over more than ap max
+  of its way (found the unroughed taper and a groove bridged at the nominal Ø instead of the turned one); a cut
+  down steeper than the in-copying angle; PART NOT COMPLETE for material left; a thread's run-in over material
+  above its root (деталь 1: M22 after the R10 sphere).
+- Page: job → G-code (blockers, left-out operations, values with sources, programs), program page (SVG with a step
+  slider, errors / PART NOT COMPLETE / checks, the text with flagged lines, checklist and name, Ready to run,
+  download only when ready and not out of date). DEMO values: `flask gcode-demo [--job ID]`, source "demo",
+  banner; Ready to run impossible until the operator saves them.
+- Real files (local, `tools/gcode_real.py`, DEMO values, C45, all P1.2 rows confirmed, operations approved in a
+  temporary DB): Zavisa 36 bushing and pin: 0 errors, complete; деталь 1: 0 errors, not complete (R10 sphere
+  manual, groove 2 mm narrower than the insert, M22 left out: its run-in over the sphere); НД 012: 0 errors, not
+  complete (the arcs R12.5 / R20.46 manual). Programs in `instance/gcode_*.nc`.
+- Not done: arcs / fillets (G02/G03), a groove's finishing pass, boring and internal threads, G41/G42, other
+  dialects (Haas / Sinumerik need their manuals), re-chucking. The in-copying angle of T4's holder and the real
+  machine values are to be entered by the operator.
+- In the user's DB the 3 graph rows (T6, T8 feeds) are not confirmed: grooving and parting are left out of a
+  program until they are, so the Zavisa pin's back chamfer would also be left (PART NOT COMPLETE).
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -713,7 +753,7 @@ cutting-data`). The files frozen by `dxf-blind-freeze` are untouched.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 873 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 955 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

@@ -341,6 +341,46 @@ It has not yet been checked on DXF files it has never seen. That blind check is 
 frozen under the tag `dxf-blind-freeze` (md5 in `tools/dxf_blind_freeze.json`, checked at the start of the
 run). Criterion: ≥ 90% of the outer-profile dimensions bound right, summed over all the new parts.
 
+## G-code from the part zero (no model)
+
+A program is built by the code from the approved operations of a DXF job (the sections' order along the axis is
+known), simulated, checked by the operator and only then downloaded. Nothing is sent to the machine: the operator
+presses Start after the machine check.
+
+- **Zero and profile:** Z0 on the free end face the operator chose (suggested: opposite the largest Ø), X0 on the
+  axis, Z negative towards the chuck; the profile is built from the confirmed rows (grooves bridged at the
+  smaller turned neighbour, threads at their reduced major Ø, chamfers, tapers).
+- **What is written** (Fanuc 0i-T, G code system A; explicit moves, no canned cycles so that the simulation reads
+  exactly what the machine does): facing past the axis; roughing from the chuck side, each section from its
+  neighbour as the neighbour's roughing leaves it, a taper in steps and then along its line; one finishing
+  contour (tapers and free-side chamfers included); grooves by the touched-off corner, an optional dwell (G04);
+  threads with one G92 per pass (C77 / C82) in G97; drilling on the axis in G97 with pecks; a back chamfer with
+  the parting insert's corner; parting past the axis. G50 S (the max spindle speed) before every G96; M03 / M04
+  as the operator set it for a right-hand tool; G28 U0. / W0. before each tool; every number with a decimal
+  point; comments in upper-case ASCII.
+- **Not written:** boring, internal threads, taps, arcs and fillets (manual), a groove's finishing pass, cuts down
+  towards the chuck steeper than the insert's max in-copying angle (set per tool; unknown = not allowed),
+  re-chucking, hex flats, nose radius compensation (chamfers and tapers come out slightly fuller: a check).
+- **Every number has a source:** cutting data only from confirmed catalogue rows or the operator (an operation
+  with the tool's own values is left out); the max spindle speed from the passport or the operator; clearances,
+  retract, jaws' safety distance, run-in, peck depth, overshoots, touched-off corner and dwell are the operator's
+  programming values (Machine page), with no default; the stick-out and the stock beyond Z0 are the job's G-code
+  set-up. `flask gcode-demo [--job ID]` fills the empty ones with DEMO values (source "demo") to look at a
+  program: a banner names them and "Ready to run" stays off until the operator saves them.
+- **Simulation** (it reads the printed text, strictly): the stock as a radius per z, the tool as its tip (a
+  grooving / parting insert: its width). Errors: a rapid through material (also if the axes move one after the
+  other), a cut below the finished profile, a turning cut deeper than the insert's ap max, a cut down towards the
+  chuck steeper than the insert allows, the jaws' safety distance, X below the axis, G96 while drilling, G96
+  without G50, speeds above the limits, the wrong spindle direction, G92 outside G97, n·P above the threading
+  limit, a tool change away from the reference point. Material left on the part: PART NOT COMPLETE.
+- **The page** (job → G-code): an SVG of the moves over the blank, the jaws, the stock left and the finished
+  profile, with a step slider; the errors and checks linked to the program's lines; the operator's checklist
+  (zero, tools and offsets, clamping, spindle direction, simulation, the machine check) and name. "Ready to run"
+  only without errors, with the whole part machined, without DEMO values, and while the program still matches the
+  job and the machine; then the .nc file can be downloaded.
+- **Tests:** golden programs of two synthetic parts (`tests/fixtures/gcode/`), and bad programs the simulation
+  must catch. `tools/gcode_real.py` runs real DXF files locally (their programs stay in `instance/`).
+
 ## Stack
 
 Python, Flask, SQLAlchemy (Flask-SQLAlchemy), Flask-Migrate (Alembic), SQLite, Jinja2 with plain CSS,
@@ -401,12 +441,15 @@ turnpilot/
   cutting_data.py  catalogue rows -> a tool's ap / f / Vc for a material group (with the source note)
   catalogue_file.py  import of a hand-typed catalogue file (docs/turnpilot_catalog_*.md)
   catalogue_reader.py  catalogue PDF: pages, search, the record_cutting_data reading and its checks
+  gcode/           readiness, profile (r(z) from the part zero), program (neutral commands), fanuc (print /
+                   read back), simulate (the checks), svg (the drawing)
+  commands.py      `flask gcode-demo`
   passport_reader.py, machine_spec.py  machine passport reading, machine fields with sources
   routes.py        pages
   seed.py          seed data and `seed` CLI command
   templates/, static/
 migrations/        Alembic migrations (Flask-Migrate)
-tools/             generate_drawings.py, eval_extraction.py, eval_catalogue.py, dxf_blind_check.py
+tools/             generate_drawings.py, eval_extraction.py, eval_catalogue.py, dxf_blind_check.py, gcode_real.py
 docs/              eval_results.md, turnpilot_catalog_P1.2.md (Sandvik 2020 numbers and pages, steel P1.2)
 tests/             pytest suite; fixtures/drawings/ test drawings + expected answers
 ```
