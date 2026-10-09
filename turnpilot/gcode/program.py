@@ -251,13 +251,16 @@ class _Builder:
         b = self.block(op, f"ROUGH {name} {op.passes} X AP {op.ap:g} FROM D{op.ref_diameter:g}")
         target = min(section.d_free, section.d_chuck) / 2 if section.kind == "taper" else section.turned_d / 2
         allowance = max(0.0, op.ref_diameter / 2 - op.passes * op.ap - target)
+        if abs(allowance - self.allowance) < 0.01:  # the planner's ap is rounded: the finishing tool's ap exactly
+            allowance = self.allowance
+        step = (op.ref_diameter / 2 - target - allowance) / op.passes  # equal passes down to target + allowance
         # the scans start where the section is lowest (a taper: its smaller end)
         z_mid = (section.z_free + section.z_chuck) / 2
         if section.kind == "taper":
             z_mid = section.z_free if section.d_free <= section.d_chuck else section.z_chuck
         passes = []
         for i in range(1, op.passes + 1):
-            radius = op.ref_diameter / 2 - i * op.ap
+            radius = op.ref_diameter / 2 - i * step
             level = radius - allowance
             if self._scan(z_mid, False, level) is not None:
                 return ("a larger diameter between this section and the free end: roughing it needs plunging, "
