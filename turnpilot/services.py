@@ -291,6 +291,25 @@ def gcode_program(job, machine):
     return readiness, gprogram.build(job_data, machine_data, profile, ops, readiness.skipped)
 
 
+def gcode_simulation(job, machine, text, profile=None):
+    """The simulation of a program's text for this job and machine (gcode.simulate)."""
+    from .gcode import simulate as gsim
+
+    if profile is None:
+        _, _, profile, _ = gcode_inputs(job, machine)
+    tools = {}
+    for slot in machine.slots:
+        if slot.tool is not None:
+            tools[slot.position] = gsim.ToolInfo(slot.tool.type, slot.tool.ap_max, slot.tool.insert_width)
+    data = gsim.SimInput(
+        profile=profile, stock_radius=planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
+        face_stock=job.face_stock_mm or 0.0, stickout=job.stickout_mm or 0.0,
+        chuck_safety=machine.chuck_safety_mm or 0.0, max_rpm=machine.max_rpm, spindle=machine.spindle_right_hand,
+        tools=tools, groove_reference=machine.groove_reference, facing_overshoot=machine.facing_overshoot_mm or 0.0,
+        min_rpm=machine.min_rpm, max_thread_feed=machine.max_thread_feed)
+    return gsim.simulate(text, data)
+
+
 PROFILE_TYPES = ("od_turn", "hex", "taper", "arc", "groove")
 
 
