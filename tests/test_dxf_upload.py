@@ -119,7 +119,7 @@ def test_confirm_each_part_as_its_own_job(client, no_api, tmp_path):
     assert (arc.start_diameter, arc.radius, arc.length, arc.diameter) == (18, 9, 9, None)
     client.post(f"/jobs/{job.id}/calculate")
     manual = db.session.execute(db.select(Operation).filter_by(tool_type="manual")).scalars().all()
-    assert {op.feature.type for op in manual} == {"taper", "fillet", "arc"}
+    assert {op.feature.type for op in manual} == {"fillet", "arc"}  # a taper is turned
 
     # the other part is still to be reviewed, and its page links to the job of this one
     page = client.get(f"/extractions/{shaft.id}/review").get_data(as_text=True)

@@ -28,9 +28,10 @@ RZ_PER_RA = 4.0
 def rz_to_ra(rz: float) -> float:
     """Approximate Ra (µm) for an Rz value: Ra ≈ Rz / 4 (GOST 2789)."""
     return round(rz / RZ_PER_RA, 3)
-# Tapers, fillets and arcs (formed sections) are recognised on drawings but not planned automatically yet.
+# Fillets and arcs (formed sections) are recognised on drawings but not planned automatically yet. A taper is turned
+# like a cylinder: roughed in steps from its larger end's side, then finished along its line.
 MANUAL_OPERATION_WARNING = "manual operation"
-MANUAL_FEATURE_TYPES = ("taper", "fillet", "arc")
+MANUAL_FEATURE_TYPES = ("fillet", "arc")
 # A hex is turned to its diameter across corners, then its flats are milled with a driven tool.
 HEX_CORNERS_NOTE = "diameter across corners of the hex"
 NO_MILLING_TOOL = "manual operation: no driven tool in the turret, mill the hex on a milling machine"
@@ -353,6 +354,27 @@ def rough_starts(features, turned_diameter, stock: float) -> tuple[dict[int, Rou
     both_sides = bool(roots) and any(k < roots[0] for k in turned if k not in pits) and \
         any(k > roots[-1] for k in turned if k not in pits)
     return starts, both_sides
+
+
+TAPER_STEPS_NOTE = "taper: stepped roughing passes, the finishing pass cuts its line"
+
+
+def taper_starts(features, turned_diameter, stock: float, axial_order: bool) -> dict[int, RoughStart]:
+    """The diameter each taper (by id()) is roughed from: its neighbour on the larger end's side when that is a
+    turned section at least as large (the order along the axis known), else the bar."""
+    profile = [f for f in features if f.type in PROFILE_SECTION_TYPES or f.type == "groove"]
+    starts = {}
+    for k, f in enumerate(profile):
+        if f.type != "taper" or not f.diameter or not f.start_diameter:
+            continue
+        large = max(f.diameter, f.start_diameter)
+        j = k - 1 if f.start_diameter >= f.diameter else k + 1
+        neighbour = profile[j] if axial_order and 0 <= j < len(profile) else None
+        if neighbour is not None and neighbour.type in TURNED_SECTION_TYPES and turned_diameter(neighbour)                 and turned_diameter(neighbour) >= large - 1e-9:
+            starts[id(f)] = RoughStart(turned_diameter(neighbour), from_bar=False)
+        else:
+            starts[id(f)] = RoughStart(stock, from_bar=True)
+    return starts
 
 
 def thread_depth(pitch: float) -> float:
@@ -851,6 +873,11 @@ def feature_to_steps(feature: FeatureSpec, hex_bar: float | None = None, hole: H
             Step(feature, "turning_finish", "finish", "finish"),
             Step(feature, "milling", "finish", "mill"),
         ]
+    if t == "taper":
+        return [
+            Step(feature, "turning_rough", "rough", "rough"),
+            Step(feature, "turning_finish", "finish", "finish"),
+        ]
     if t in MANUAL_FEATURE_TYPES:
         return [Step(feature, "manual", "finish", "finish")]
     raise ValueError(f"Unknown feature type: {t}")
@@ -1222,10 +1249,11 @@ def _check_rough_power(op, tool, feature, job, from_diameter, allowance, power: 
     if power.efficiency is None:
         # Without the efficiency the spindle's share is not known; the nominal power is an upper bound: a pass
         # above it cannot be cut, so its ap is reduced to fit it, and the efficiency is still to be checked.
-        op.warnings.append(NO_EFFICIENCY_WARNING.format(pc=pc, ap=op.ap, power=power.power_kw))
         if pc > power.power_kw + 1e-9:
             _reduce_ap_for_power(op, tool, feature, from_diameter, allowance, vc, kc, pc, power.power_kw,
                                  POWER_REDUCED_NOMINAL_NOTE, power.power_kw, None, source)
+            pc = cutting_power(vc, op.ap, op.f, kc)
+        op.warnings.append(NO_EFFICIENCY_WARNING.format(pc=pc, ap=op.ap, power=power.power_kw))
         return
     allowed = power.power_kw * power.efficiency
     if pc <= allowed + 1e-9:
@@ -1607,7 +1635,12 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     elif limited:
         op.notes.append(f"n limited to machine max {max_rpm} rpm")
 
-    if step.tool_type == "turning_rough" and feature.diameter is not None:
+    if step.tool_type == "turning_rough" and feature.type == "taper" and feature.diameter and feature.start_diameter:
+        # down to its smaller end; the passes stop short of the taper's line (gcode / the operator)
+        small = replace(feature, diameter=min(feature.diameter, feature.start_diameter))
+        _plan_rough_turning(op, tool, small, job, turret, start, power)
+        op.notes.append(TAPER_STEPS_NOTE)
+    elif step.tool_type == "turning_rough" and feature.diameter is not None:
         _plan_rough_turning(op, tool, feature, job, turret, start, power)
     elif step.tool_type == "grooving" and step.mode == "finish" and groove_needs_finish(feature):
         _plan_groove_finish(op, tool, feature, job)
@@ -1655,6 +1688,7 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
         return thread_major_diameter(f.diameter, pitch) if pitch and f.diameter else f.diameter
 
     starts, both_sides = rough_starts(features, turned_diameter, job.stock_diameter) if job.axial_order else ({}, False)
+    starts.update(taper_starts(features, turned_diameter, job.stock_diameter, job.axial_order))
 
     steps = [s for f in features if id(f) not in chamfer_hosts for s in feature_to_steps(f, hex_bar, holes.get(id(f)))]
     drilling = [s for s in steps if s.tool_type == "drilling"]

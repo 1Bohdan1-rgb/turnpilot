@@ -10,8 +10,8 @@ def make_job(axial=True):
     steel = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     job = Job(name="Pin", material=steel, quantity=1, blank_diameter=32, blank_length=70, axial_order_known=axial)
     job.features = [Feature(type="face"), Feature(type="od_turn", diameter=20, length=20),
-                    Feature(type="od_turn", diameter=30, length=30), Feature(type="taper", start_diameter=20,
-                                                                             diameter=24, length=5),
+                    Feature(type="od_turn", diameter=30, length=30), Feature(type="arc", start_diameter=20,
+                                                                             diameter=24, radius=8, length=5),
                     Feature(type="parting")]
     db.session.add(job)
     db.session.commit()
@@ -33,7 +33,7 @@ def test_origin_of_the_cutting_data(app):
     confirm_p12_catalogue()
     services.calculate_operations(job, machine)
     origins = {(op.tool_type, op.cutting_data_origin) for op in job.current_operations}
-    assert ("turning_rough", "catalogue") in origins and ("manual", None) in origins  # the taper: no tool
+    assert ("turning_rough", "catalogue") in origins and ("manual", None) in origins  # the arc: no tool
     rough = next(op for op in job.current_operations if op.tool_type == "turning_rough")
     services.apply_operation_edit(rough, machine, rough.turret_position, rough.vc, 0.25, rough.ap, rough.passes)
     assert rough.cutting_data_origin == "operator"
@@ -94,8 +94,8 @@ def test_readiness_of_a_job(app):
     db.session.commit()
     result = services.gcode_readiness(job, machine)
     assert result.ok
-    taper = next(op for op in job.current_operations if op.feature.type == "taper")
-    assert result.skipped[taper.id] == rd.SKIP_NO_TOOL
+    arc = next(op for op in job.current_operations if op.feature.type == "arc")
+    assert result.skipped[arc.id] == rd.SKIP_NO_TOOL
     assert db.session.get(Operation, result.usable[0]).tool_type == "facing"
 
 
@@ -140,9 +140,9 @@ def test_passport_reading_does_not_ask_for_programming_values():
 
 
 def test_job_setup_and_the_suggested_free_end(app, client):
-    job = make_job()  # Ø20, Ø30, then a taper Ø20→Ø24: the largest Ø is in the middle, nothing suggested
+    job = make_job()  # Ø20, Ø30, then an arc Ø20→Ø24: the largest Ø is in the middle, nothing suggested
     assert services.suggest_free_end(job) is None
-    next(f for f in job.features if f.type == "taper").is_deleted = True  # Ø30 (the largest) on the right
+    next(f for f in job.features if f.type == "arc").is_deleted = True  # Ø30 (the largest) on the right
     db.session.commit()
     page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
     assert "G-code set-up" in page and "suggested: left" in page

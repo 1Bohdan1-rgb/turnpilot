@@ -484,7 +484,7 @@ def test_bore_ra_check_uses_own_marks_not_general_ra(app, client):
     assert page.count(BORE_RA_WARNING) == 2  # the bore gets general Ra, but the check runs on own marks
 
 
-def test_confirm_keeps_taper_and_fillet_and_plans_them_as_manual(app, client):
+def test_confirm_keeps_taper_and_fillet_the_fillet_is_manual(app, client):
     _use_model(app, GOST_SHAFT)
     _upload(client)
     form = {
@@ -503,7 +503,7 @@ def test_confirm_keeps_taper_and_fillet_and_plans_them_as_manual(app, client):
     assert fillet.radius == 10
 
     page = client.post(f"/jobs/{job.id}/calculate", follow_redirects=True).data.decode()
-    assert page.count("⚠ manual operation") == 2
+    assert page.count("⚠ manual operation") == 1  # the fillet; the taper is roughed and finished
 
 
 # --- no repeated API calls ------------------------------------------------------------------

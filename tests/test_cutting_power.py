@@ -191,6 +191,6 @@ def test_above_the_nominal_power_ap_is_reduced_without_the_efficiency(app):
     assert (rough.ref_diameter, rough.passes, rough.ap) == (34.8, 3, 2.0)
     assert "ap reduced for spindle power: Pc 11.51 > 11 kW (the nominal power; the drive efficiency is not set) at " \
            "ap 3; now 3 × ap 2" in rough.note
-    assert "drive efficiency is not set" in rough.warning  # still to be checked
+    assert "check the spindle power: Pc 7.67 kW at ap 2," in rough.warning  # after the reduction; still to check
     within = next(op for op in job.current_operations if op.tool_type == "turning_rough" and op.feature.diameter == 34.8)
     assert "ap reduced" not in (within.note or "")

@@ -1,3 +1,4 @@
+from dataclasses import replace
 import math
 
 import pytest
@@ -532,7 +533,7 @@ def test_chamfer_still_merged_on_thread_diameter(turret):
 from turnpilot.planner import MANUAL_OPERATION_WARNING  # noqa: E402
 
 
-def test_taper_fillet_and_arc_become_manual_operations(turret):
+def test_fillet_and_arc_become_manual_operations_a_taper_is_turned(turret):
     job = JobSpec("P", 85, 150, (
         FeatureSpec(1, "od_turn", diameter=60, length=60),
         FeatureSpec(2, "taper", diameter=55, start_diameter=60, length=30),
@@ -541,7 +542,10 @@ def test_taper_fillet_and_arc_become_manual_operations(turret):
     ))
     ops = plan_job(job, turret, max_rpm=4000)
     manual = [op for op in ops if op.tool_type == "manual"]
-    assert [op.feature_id for op in manual] == [2, 3, 4]
+    assert [op.feature_id for op in manual] == [3, 4]
+    taper = [op for op in ops if op.feature_id == 2]
+    assert [(op.tool_type, op.mode) for op in taper] == [("turning_rough", "rough"), ("turning_finish", "finish")]
+    assert all(op.tool_id and op.vc and op.f for op in taper)
     for op in manual:
         assert op.warnings == [MANUAL_OPERATION_WARNING]
         assert op.tool_id is None and op.n is None
@@ -645,3 +649,18 @@ def test_thread_longer_than_every_section_still_warned():
     )
     assert thread_section(features[2], features) is features[1]
     assert geometry_warnings(features, None) == ["thread Ø10 is 8 long, longer than its section (6)"]
+
+
+def test_a_taper_is_roughed_from_its_larger_ends_neighbour(turret):
+    """Zavisa 36 pin: Ø22 then a taper Ø22 → Ø13 at the free end; the taper's steps start at Ø22."""
+    job = JobSpec("P", 38, 120, (
+        FeatureSpec(1, "od_turn", diameter=34.8, length=52.5), FeatureSpec(2, "od_turn", diameter=22, length=26),
+        FeatureSpec(3, "taper", start_diameter=22, diameter=13, length=6),
+    ), axial_order=True)
+    rough = next(op for op in plan_job(job, turret, max_rpm=4000) if op.feature_id == 3 and op.mode == "rough")
+    allowance = float(next(n for n in rough.notes if n.startswith("leaves")).split()[1])
+    assert rough.ref_diameter == 22 and rough.passes * rough.ap == pytest.approx((22 - 13) / 2 - allowance)
+    assert "roughed from Ø22, the neighbouring section towards the chuck" in rough.notes
+    no_order = replace(job, axial_order=False)
+    rough = next(op for op in plan_job(no_order, turret, max_rpm=4000) if op.feature_id == 3 and op.mode == "rough")
+    assert rough.ref_diameter == 38  # from the bar
