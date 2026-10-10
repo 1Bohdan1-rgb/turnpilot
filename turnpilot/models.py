@@ -362,6 +362,13 @@ class Feature(db.Model):
     arc_convex = db.Column(db.Boolean)
     # arcs from a DXF: the radius drawn, when it differs from the dimension the operator has to choose (the job page)
     drawn_radius = db.Column(db.Float)
+    # The operator's decision on an arc whose drawn radius ≠ its dimension: both values as they were, which was
+    # taken ("dimension" / "drawn" / "operator": their own value), when, and their note.
+    radius_dimension = db.Column(db.Float)
+    radius_geometry = db.Column(db.Float)
+    radius_source = db.Column(db.String(20))
+    radius_decided_at = db.Column(db.DateTime)
+    radius_note = db.Column(db.String(200))
     confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 

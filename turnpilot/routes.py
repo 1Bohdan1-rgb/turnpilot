@@ -711,7 +711,8 @@ def job_detail(job_id):
     job = db.get_or_404(Job, job_id)
     return render_template("job_detail.html", job=job, feature_types=FEATURE_TYPES, positions=POSITIONS,
                            machine_warnings=services.machine_warnings(job, services.get_machine()),
-                           suggested_free_end=services.suggest_free_end(job))
+                           suggested_free_end=services.suggest_free_end(job),
+                           conflicts=services.radius_conflicts(job) if job.axial_order_known else {})
 
 
 @bp.route("/jobs/<int:job_id>/gcode", methods=["GET", "POST"])
@@ -825,13 +826,30 @@ def choose_arc_radius(job_id, feature_id):
     if feature.job_id != job_id or feature.type != "arc" or feature.drawn_radius is None:
         abort(404)
     choice = request.form.get("radius")
-    if choice == "drawn":
-        feature.radius = feature.drawn_radius
-    elif choice != "dimension":
+    dimension, geometry = feature.radius, feature.drawn_radius
+    if choice == "dimension":
+        radius = dimension
+    elif choice == "drawn":
+        radius = geometry
+    elif choice == "own":
+        try:
+            radius = _number(request.form, "own_radius", required=True)
+        except FormError as e:
+            flash(f"Own radius: {e}", "error")
+            return redirect(url_for("main.job_detail", job_id=job_id))
+    else:
         abort(400)
-    feature.drawn_radius = feature.radius  # resolved: they agree now
+    problem = services.check_own_radius(feature.job, feature, radius)
+    if problem:
+        flash(f"R{radius:g} not saved: {problem}.", "error")
+        return redirect(url_for("main.job_detail", job_id=job_id))
+    feature.radius_dimension, feature.radius_geometry = dimension, geometry
+    feature.radius, feature.drawn_radius = radius, radius  # resolved: they agree now
+    feature.radius_source = {"dimension": "dimension", "drawn": "drawn", "own": "operator"}[choice]
+    feature.radius_decided_at = datetime.now(timezone.utc)
+    feature.radius_note = (request.form.get("note") or "").strip()[:200] or None
     db.session.commit()
-    flash(f"Arc radius R{feature.radius:g} chosen. Calculate the job again.")
+    flash(f"Arc radius R{radius:g} chosen (the operator's decision). Calculate the job again.")
     return redirect(url_for("main.job_detail", job_id=job_id))
 
 

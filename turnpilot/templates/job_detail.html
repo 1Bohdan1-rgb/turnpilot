@@ -27,12 +27,19 @@
       <td>{{ f.radius if f.radius is not none else "" }}
         {% if f.type in ("arc", "fillet") %}<span class="small muted">{{ {True: "convex", False: "concave"}.get(f.arc_convex, "shape?") }}{% if f.type == "fillet" and f.face %}, {{ f.face }}{% endif %}</span>{% endif %}
         {% if f.type == "arc" and f.drawn_radius is not none and f.radius is not none and (f.drawn_radius - f.radius)|abs > 0.01 %}
-          <div class="warning small">drawn R{{ f.drawn_radius }} ≠ dimensioned R{{ f.radius }}: not programmed until you choose
+          <div class="warning small">{% set c = conflicts.get(f.id) %}{% if c %}Z{{ c.z_free|round(3) }} to Z{{ c.z_chuck|round(3) }} (D{{ c.d_free }} to D{{ c.d_chuck }}): {% endif %}dimension R{{ f.radius }} ≠ geometry R{{ f.drawn_radius }}: not programmed until you decide
             <form method="post" action="{{ url_for('main.choose_arc_radius', job_id=job.id, feature_id=f.id) }}" class="inline-form">
-              <button name="radius" value="dimension" class="small">R{{ f.radius }} (dimension)</button>
-              <button name="radius" value="drawn" class="small">R{{ f.drawn_radius }} (drawn)</button>
+              <button name="radius" value="dimension" class="small">Take the dimension R{{ f.radius }}</button>
+              <button name="radius" value="drawn" class="small">Take the geometry R{{ f.drawn_radius }}</button>
+              <input name="own_radius" type="number" step="any" min="0" placeholder="own R" aria-label="Own radius">
+              <button name="radius" value="own" class="small">Take my value</button>
+              <input name="note" maxlength="200" placeholder="note (optional), e.g. confirmed by the designer" aria-label="Note">
             </form></div>
-        {% endif %}</td>
+        {% endif %}
+        {% if f.type == "arc" and f.radius_source %}<div class="small muted">R{{ f.radius }}: the operator's decision
+          ({{ {"dimension": "the dimension", "drawn": "the geometry", "operator": "own value"}[f.radius_source] }};
+          dimension R{{ f.radius_dimension }}, geometry R{{ f.radius_geometry }}),
+          {{ f.radius_decided_at.strftime("%Y-%m-%d %H:%M") }}{% if f.radius_note %}: {{ f.radius_note }}{% endif %}</div>{% endif %}</td>
       <td>{{ f.across_flats if f.across_flats is not none else "" }}</td>
       <td>{{ "%.2f"|format(f.confidence) if f.confidence is not none else "" }}</td>
       <td>

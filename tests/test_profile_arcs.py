@@ -73,10 +73,10 @@ def test_the_operator_chooses_the_radius(app, client):
                     Feature(type="arc", start_diameter=30, diameter=20, length=8, radius=20.46, arc_convex=True,
                             drawn_radius=51.61)], approve=False)
     page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
-    assert "drawn R51.61 ≠ dimensioned R20.46" in page
+    assert "dimension R20.46 ≠ geometry R51.61" in page
     arc = next(f for f in job.features if f.type == "arc")
     client.post(f"/jobs/{job.id}/features/{arc.id}/radius", data={"radius": "drawn"})
     assert (arc.radius, arc.drawn_radius) == (51.61, 51.61)
-    assert "≠ dimensioned" not in client.get(f"/jobs/{job.id}").get_data(as_text=True)
+    assert "≠ geometry" not in client.get(f"/jobs/{job.id}").get_data(as_text=True)
     assert client.post(f"/jobs/{job.id}/features/{arc.id}/radius", data={"radius": "x"}).status_code == 400
     db.session.refresh(arc)

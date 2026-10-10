@@ -245,18 +245,53 @@ def gcode_readiness(job, machine):
                            programming, labels, job_setup)
 
 
+def job_profile(job, radius_of=None):
+    """The job's outer profile from the part zero (gcode.profile); radius_of: {feature id: radius} to try instead."""
+    from .gcode import profile as gprofile
+
+    radius_of = radius_of or {}
+    features = [gprofile.FeatureData(id=f.id, type=f.type, diameter=f.diameter, start_diameter=f.start_diameter,
+                                     length=f.length, pitch=f.pitch, radius=radius_of.get(f.id, f.radius),
+                                     face=f.face, location=f.location, across_flats=f.across_flats,
+                                     arc_convex=f.arc_convex,
+                                     drawn_radius=radius_of.get(f.id, f.drawn_radius))
+                for f in job.active_features]
+    return gprofile.build(features, job.free_end or "left")
+
+
+def radius_conflicts(job):
+    """{feature id: section} of the arcs whose drawn radius ≠ their dimension, waiting for the operator."""
+    return {s.feature_id: s for s in job_profile(job).sections
+            if s.kind == "arc" and s.arc_problem and s.arc_problem.startswith("drawn R")}
+
+
+def check_own_radius(job, feature, radius):
+    """None when an arc of this radius goes through the section's ends (its shape as known), else why, with the
+    smallest radius possible (half the chord)."""
+    import math
+
+    from .gcode import profile as gprofile
+
+    section = next((s for s in job_profile(job).sections if s.feature_id == feature.id), None)
+    if section is None:
+        return "the arc is not in the profile (no order along the axis, or a row before it is incomplete)"
+    p0, p1 = (section.z_free, section.d_free / 2), (section.z_chuck, section.d_chuck / 2)
+    smallest = math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / 2
+    if feature.arc_convex is None:
+        return "its shape (convex / concave) is not known"
+    arc, why = gprofile.arc_through(p0, p1, radius, feature.arc_convex)
+    if arc is None:
+        return f"{why}; the smallest R through the ends Z{p0[0]:g} D{2 * p0[1]:g} and Z{p1[0]:g} D{2 * p1[1]:g} is " \
+               f"R{smallest:.3f} (half the chord)"
+    return None
+
+
 def gcode_inputs(job, machine, readiness=None):
     """The generator's inputs from the database: the job, the machine, the profile, the usable operations."""
-    from .gcode import profile as gprofile
     from .gcode import program as gprogram
 
     readiness = readiness or gcode_readiness(job, machine)
-    features = [gprofile.FeatureData(id=f.id, type=f.type, diameter=f.diameter, start_diameter=f.start_diameter,
-                                     length=f.length, pitch=f.pitch, radius=f.radius, face=f.face,
-                                     location=f.location, across_flats=f.across_flats, arc_convex=f.arc_convex,
-                                     drawn_radius=f.drawn_radius)
-                for f in job.active_features]
-    profile = gprofile.build(features, job.free_end or "left")
+    profile = job_profile(job)
     by_id = {op.id: op for op in job.current_operations}
     ops = []
     for op_id in readiness.usable:
@@ -319,7 +354,12 @@ def gcode_simulation(job, machine, text, profile=None):
         tools=tools, groove_reference=machine.groove_reference, facing_overshoot=machine.facing_overshoot_mm or 0.0,
         parting_overshoot=machine.parting_overshoot_mm or 0.0,
         min_rpm=machine.min_rpm, max_thread_feed=machine.max_thread_feed)
-    return gsim.simulate(text, data)
+    result = gsim.simulate(text, data)
+    for section in profile.sections:  # an arc waiting for the operator's radius: never ready to run
+        if section.kind == "arc" and section.arc_problem and section.arc_problem.startswith("drawn R"):
+            result.errors.append((0, f"Z{section.z_free:g} to Z{section.z_chuck:g} (D{section.d_free:g} to "
+                                     f"D{section.d_chuck:g}): arc {section.arc_problem} (the operator's decision)"))
+    return result
 
 
 def is_demo(machine, name):
