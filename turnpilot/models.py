@@ -152,6 +152,10 @@ class Tool(db.Model):
     # Turning tools: the steepest angle (degrees to the axis) the insert in its holder may cut going down towards
     # the chuck (the catalogue's max in-copying angle). Empty: not known, no such move is programmed for it.
     max_ramp_angle = db.Column(db.Float)
+    # Turning tools: the nose radius rε (empty: from the insert code) and the imaginary tip's direction number T
+    # (0-9, as on the control's offset page; empty: not known, no nose radius compensation for this tool).
+    nose_radius = db.Column(db.Float)
+    tip_direction = db.Column(db.Integer)
     source = db.Column(db.String(300))  # where the Vc / f / ap ranges come from: catalogue, insert grade, page
     # The catalogue's recommended values: the planner takes these instead of positions in the ranges. vc_points:
     # Vc at given feeds, "0.1:455, 0.4:305, 0.8:215" (linear between them), or one Vc for every feed ("125").

@@ -140,6 +140,7 @@ def _tool_spec(tool):
         ap_rec=tool.ap_rec,
         f_rec=tool.f_rec,
         vc_points=planner.parse_vc_points(tool.vc_points),
+        nose_radius=tool.nose_radius,
     )
 
 
@@ -268,6 +269,8 @@ def gcode_inputs(job, machine, readiness=None):
             ap_min=tool.ap_min if tool else None, ap_max=tool.ap_max if tool else None,
             tool_diameter=tool.diameter if tool else None, pitch=op.feature.pitch,
             max_ramp_angle=tool.max_ramp_angle if tool else None,
+            nose_radius=(tool.nose_radius or planner.insert_nose_radius(tool.insert_code)) if tool else None,
+            tip_direction=tool.tip_direction if tool else None,
             warnings=tuple(w.strip() for w in (op.warning or "").split(";") if w.strip())))
     stock = planner.stock_diameter(job.blank_shape or "round", job.blank_diameter)
     job_data = gprogram.JobData(id=job.id, name=job.name, material=job.material.name, blank_diameter=stock,
@@ -304,8 +307,9 @@ def gcode_simulation(job, machine, text, profile=None):
     tools = {}
     for slot in machine.slots:
         if slot.tool is not None:
-            tools[slot.position] = gsim.ToolInfo(slot.tool.type, slot.tool.ap_max, slot.tool.insert_width,
-                                                 slot.tool.max_ramp_angle)
+            tools[slot.position] = gsim.ToolInfo(
+                slot.tool.type, slot.tool.ap_max, slot.tool.insert_width, slot.tool.max_ramp_angle,
+                slot.tool.nose_radius or planner.insert_nose_radius(slot.tool.insert_code), slot.tool.tip_direction)
     data = gsim.SimInput(
         profile=profile, stock_radius=planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
         face_stock=job.face_stock_mm or 0.0, stickout=job.stickout_mm or 0.0,

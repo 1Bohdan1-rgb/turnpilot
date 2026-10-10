@@ -22,6 +22,10 @@
     <input name="diameter" type="number" step="any" min="0" value="{{ tool.diameter if tool.diameter is not none else '' }}"></label>
   <label>Max depth, mm (drills)
     <input name="max_depth" type="number" step="any" min="0" value="{{ tool.max_depth if tool.max_depth is not none else '' }}"></label>
+  <label>Nose radius rε, mm (empty: from the insert code)
+    <input name="nose_radius" type="number" step="any" min="0" value="{{ tool.nose_radius if tool.nose_radius is not none else '' }}"></label>
+  <label>Tip direction T (0–9, as on the control's offset page; empty: no compensation)
+    <input name="tip_direction" type="number" step="1" min="0" max="9" value="{{ tool.tip_direction if tool.tip_direction is not none else '' }}"></label>
   <label>Max in-copying angle, ° (turning: down towards the chuck; catalogue, for the holder)
     <input name="max_ramp_angle" type="number" step="any" min="0" max="89" value="{{ tool.max_ramp_angle if tool.max_ramp_angle is not none else '' }}"></label>
   <label>ap rec (catalogue)

@@ -30,6 +30,8 @@ class ToolInfo:
     edge: float | None = None  # the insert's cutting edge length along Z for a radial feed (its ap_max)
     width: float | None = None  # grooving / parting insert width
     max_ramp: float | None = None  # turning: the max in-copying angle (degrees) going down towards the chuck
+    nose_radius: float | None = None  # turning: rε
+    tip_direction: int | None = None  # turning: the imaginary tip's number T (0-9)
 
 
 @dataclass(frozen=True)

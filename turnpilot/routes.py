@@ -437,6 +437,13 @@ def catalogue_file(document_id):
     return send_from_directory(services.catalogues_dir(current_app.instance_path), document.stored_filename)
 
 
+def _tip_direction(form):
+    value = _number(form, "tip_direction", int, positive=False)
+    if value is not None and not 0 <= value <= 9:
+        raise FormError("Tip direction T: 0 to 9, as on the control's offset page")
+    return value
+
+
 def _ramp_angle(form):
     angle = _number(form, "max_ramp_angle")
     if angle is not None and angle >= 90:
@@ -475,6 +482,8 @@ def _tool_fields(form):
         diameter=_number(form, "diameter"),
         max_depth=_number(form, "max_depth"),
         max_ramp_angle=_ramp_angle(form),
+        nose_radius=_number(form, "nose_radius"),
+        tip_direction=_tip_direction(form),
         source=form.get("source", "").strip()[:300] or None,
         **values,
     )

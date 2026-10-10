@@ -142,7 +142,7 @@
           {% if tool.vc_points %}<br>Vc(f) {{ tool.vc_points }}{% endif %}
         </td>
         <td>{{ tool.insert_width if tool.insert_width is not none else "" }}</td>
-        <td>{{ tool.diameter if tool.diameter is not none else "" }}{% if tool.max_depth %}<br><span class="small">max depth {{ tool.max_depth }}</span>{% endif %}{% if tool.max_ramp_angle is not none %}<br><span class="small">in-copying ≤ {{ tool.max_ramp_angle }}°</span>{% endif %}</td>
+        <td>{{ tool.diameter if tool.diameter is not none else "" }}{% if tool.max_depth %}<br><span class="small">max depth {{ tool.max_depth }}</span>{% endif %}{% if tool.max_ramp_angle is not none %}<br><span class="small">in-copying ≤ {{ tool.max_ramp_angle }}°</span>{% endif %}{% if tool.nose_radius is not none %}<br><span class="small">rε {{ tool.nose_radius }}</span>{% endif %}{% if tool.tip_direction is not none %}<br><span class="small">T{{ tool.tip_direction }}</span>{% endif %}</td>
         <td class="small">{{ tool.source or "" }}</td>
         <td class="small">{% for group, geometry, vc in catalogue_status.get(tool.id, []) %}
           {{ group }}: ap/f {{ "✓" if geometry else "—" }}, Vc {{ "✓" if vc else "—" }}<br>
@@ -187,6 +187,8 @@
   <label>Diameter, mm (drills) <input name="diameter" type="number" step="any" min="0"></label>
   <label>Max depth, mm (drills) <input name="max_depth" type="number" step="any" min="0"></label>
   <label>Max in-copying angle, ° (turning: down towards the chuck; catalogue, for the holder) <input name="max_ramp_angle" type="number" step="any" min="0" max="89"></label>
+  <label>Nose radius rε, mm (empty: from the insert code) <input name="nose_radius" type="number" step="any" min="0"></label>
+  <label>Tip direction T (0–9, the control's offset page; empty: no compensation) <input name="tip_direction" type="number" step="1" min="0" max="9"></label>
   <label>ap rec (catalogue) <input name="ap_rec" type="number" step="any" min="0"></label>
   <label>f rec (catalogue) <input name="f_rec" type="number" step="any" min="0"></label>
   <label>Vc at f (catalogue) <input name="vc_points" maxlength="200" placeholder="0.1:455, 0.4:305, 0.8:215"></label>

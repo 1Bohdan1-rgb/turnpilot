@@ -95,6 +95,7 @@ class ToolSpec:
     # catalogue rows (catalogue_note), or what is the tool's own value and needs a check (catalogue_warning).
     catalogue_note: str | None = None
     catalogue_warning: str | None = None
+    nose_radius: float | None = None  # the operator's rε; None: from the insert code
 
 
 @dataclass(frozen=True)
@@ -248,6 +249,20 @@ def spindle_speed(vc: float, diameter: float, max_rpm: int) -> tuple[int, bool]:
 
 def _lerp(lo: float, hi: float, t: float) -> float:
     return lo + (hi - lo) * t
+
+
+def insert_nose_radius(insert_code: str | None) -> float | None:
+    """The nose radius (mm) an ISO turning insert code gives ('CNMG 120408' -> 0.8); None when it gives none."""
+    if insert_code:
+        match = re.search(r"(\d{2})(\d{2})(\d{2})(?!\d)", insert_code)
+        if match and int(match.group(3)) > 0:
+            return int(match.group(3)) / 10
+    return None
+
+
+def tool_nose_radius(tool) -> float:
+    """The operator's rε of a tool, else its insert code's, else the default (for the finishing feed only)."""
+    return getattr(tool, "nose_radius", None) or nose_radius_from_insert(tool.insert_code)
 
 
 def nose_radius_from_insert(insert_code: str | None) -> float:
@@ -836,7 +851,7 @@ def cutting_data(tool: ToolSpec, mode: str, ra: float | None = None) -> tuple[fl
     if tool.f_rec is not None:
         f = tool.f_rec
         if mode == "finish" and ra:
-            f = finish_feed_from_ra(ra, nose_radius_from_insert(tool.insert_code), tool.f_min, tool.f_max)
+            f = finish_feed_from_ra(ra, tool_nose_radius(tool), tool.f_min, tool.f_max)
         ap = finishing_ap(tool) if mode == "finish" else roughing_ap_limit(tool)
         if tool.vc_points:
             vc = vc_at(tool.vc_points, f)
@@ -851,7 +866,7 @@ def cutting_data(tool: ToolSpec, mode: str, ra: float | None = None) -> tuple[fl
         vc = _lerp(tool.vc_min, tool.vc_max, NEAR_MAX)
         ap = tool.ap_min
         if ra:
-            f = finish_feed_from_ra(ra, nose_radius_from_insert(tool.insert_code), tool.f_min, tool.f_max)
+            f = finish_feed_from_ra(ra, tool_nose_radius(tool), tool.f_min, tool.f_max)
         else:
             f = _lerp(tool.f_min, tool.f_max, NEAR_MIN)
     return round(vc, 1), round(f, 3), round(ap, 2)

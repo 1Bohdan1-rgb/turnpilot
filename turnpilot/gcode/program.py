@@ -13,7 +13,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from ..planner import nose_radius_from_insert
 from .profile import EPS, Arc, Profile, Section, Segment
 
 # --- commands -----------------------------------------------------------------------------------------
@@ -179,6 +178,8 @@ class OpData:
     ap_max: float | None = None
     tool_diameter: float | None = None
     max_ramp_angle: float | None = None  # turning: the insert's max in-copying angle, degrees
+    nose_radius: float | None = None  # turning: rε (the operator's, else the insert code's); None: not known
+    tip_direction: int | None = None  # turning: the imaginary tip's number T (0-9); None: not known
     pitch: float | None = None  # threading: the feature's pitch
     warnings: tuple = ()  # the planner's warnings on the operation
 
@@ -358,7 +359,7 @@ class _Builder:
         names = ", ".join(_section_name(s) for s, op in group if op is not None)
         b = self.block(first_op, f"FINISH {names}", [op.id for _, op in group if op is not None])
         self._start(b, first_op)
-        rnose = nose_radius_from_insert(first_op.insert_code)
+        rnose = first_op.nose_radius
         ramp = first_op.max_ramp_angle
         on_contour = False
         current_f = first_op.f
