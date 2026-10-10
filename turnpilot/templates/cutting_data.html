@@ -82,27 +82,4 @@
   <label>Note <input name="note" maxlength="300"></label>
   <button type="submit">Enter and confirm</button>
 </form>
-<h2>Enter a row by hand</h2>
-<form method="post" action="{{ url_for('main.add_cutting_data') }}" class="card grid-form">
-  <p class="muted small">For values the catalogue gives only as a graph (tick "from a graph"), or a catalogue that
-    is not uploaded. A row you enter is confirmed by you; the catalogue and its page are required.</p>
-  <label>Kind <select name="kind"><option value="geometry">geometry: ap / f of an insert or drill</option>
-    <option value="grade_vc">grade_vc: Vc of a grade</option></select></label>
-  <label>Insert / drill code (geometry) <input name="insert_code" placeholder="N123G2-0300-0003-GM"></label>
-  <label>Grade (grade_vc) <input name="grade" placeholder="GC4325"></label>
-  <label>Application (grade_vc) <select name="application"><option value="">—</option>
-    {% for a in applications %}<option>{{ a }}</option>{% endfor %}</select></label>
-  <label>Material group <input name="material_group" placeholder="P1.2" required></label>
-  <label>ap min <input name="ap_min"></label><label>ap rec <input name="ap_rec"></label><label>ap max <input name="ap_max"></label>
-  <label>f min <input name="f_min"></label><label>f rec <input name="f_rec"></label><label>f max <input name="f_max"></label>
-  <label>Vc(f) <input name="vc_points" placeholder="0.05:315, 0.5:140 or 195"></label>
-  <label>Vc min <input name="vc_min"></label><label>Vc max <input name="vc_max"></label>
-  <label>Coolant <select name="coolant"><option value="">not stated</option><option value="yes">yes</option><option value="no">no</option></select></label>
-  <label>Catalogue <input name="catalogue" placeholder="Sandvik Coromant Turning tools 2020" required></label>
-  <label>Page <input name="page" placeholder="B139" required></label>
-  <label class="inline"><input type="checkbox" name="from_graph" value="1"> from a graph</label>
-  <label class="inline"><input type="checkbox" name="replace" value="1"> replace a confirmed row with other values</label>
-  <label>Note <input name="note" maxlength="300"></label>
-  <button type="submit">Enter and confirm</button>
-</form>
 {% endblock %}

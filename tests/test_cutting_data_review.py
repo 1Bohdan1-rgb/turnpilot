@@ -126,3 +126,7 @@ def test_page_titles_are_plain(app, client):
     for url in ("/cutting-data", "/cutting-data/review", "/cutting-data/catalogues"):
         title = re.search(r"<title>(.*?)</title>", client.get(url).get_data(as_text=True), re.S).group(1)
         assert "<" not in title and len(title) < 60, url
+
+
+def test_the_hand_entry_form_is_on_the_page_once(app, client):
+    assert client.get("/cutting-data").get_data(as_text=True).count("Enter a row by hand") == 1
