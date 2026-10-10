@@ -148,7 +148,9 @@ class Tool(db.Model):
     ap_max = db.Column(db.Float, nullable=False)
     insert_width = db.Column(db.Float)  # mm, grooving / parting inserts
     diameter = db.Column(db.Float)  # mm, drills: the hole they make
-    max_depth = db.Column(db.Float)  # mm, drills: the deepest hole they reach (e.g. 3 × D for a 3×D drill)
+    max_depth = db.Column(db.Float)  # mm, drills: the deepest hole they reach (e.g. 3 × D for a 3×D drill);
+    # grooving: the holder's max cutting depth
+    holder_code = db.Column(db.String(50))  # the holder's code, the operator's (e.g. RF123E08-2525B); empty: not known
     # Turning tools: the steepest angle (degrees to the axis) the insert in its holder may cut going down towards
     # the chuck (the catalogue's max in-copying angle). Empty: not known, no such move is programmed for it.
     max_ramp_angle = db.Column(db.Float)

@@ -85,7 +85,7 @@ class ToolSpec:
     ap_max: float
     insert_width: float | None = None  # grooving / parting inserts
     diameter: float | None = None  # drills: the hole they make
-    max_depth: float | None = None  # drills: the deepest hole they reach
+    max_depth: float | None = None  # drills: the deepest hole they reach; grooving: the holder's max depth
     source: str | None = None  # where the Vc / f / ap ranges come from
     # The catalogue's recommended ap and f, and Vc at given feeds ((f, vc), ...; one point: Vc for every f).
     ap_rec: float | None = None
@@ -1213,14 +1213,41 @@ def groove_plunges(width: float, insert_width: float) -> tuple[int, float]:
     return plunges, round((width - insert_width) / (plunges - 1), 3)
 
 
-def select_grooving_tool(width: float | None, iso_group: str,
-                         turret: list[TurretEntry]) -> tuple[TurretEntry | None, str | None]:
+def seat_size(code: str | None, holder: bool = False) -> str | None:
+    """The seat size letter of a CoroCut 1-2 insert ('N123E2-0200-0002-GM' -> 'E') or holder ('RF123E08-2525B',
+    'LF123E08-2020B' -> 'E'); None for other codes."""
+    if not code:
+        return None
+    code = re.sub(r"\s+", "", code).upper()
+    m = re.match(r"[RL]?F?123([A-Z])\d{2}" if holder else r"N123([A-Z])\d", code)
+    return m.group(1) if m else None
+
+
+def seat_mismatch(insert_code: str | None, holder_code: str | None) -> str | None:
+    """Why the insert does not go into the holder (another seat size), or None."""
+    insert, holder = seat_size(insert_code), seat_size(holder_code, holder=True)
+    if insert and holder and insert != holder:
+        return (f"the insert {insert_code} has seat size {insert}, the holder {holder_code} seat size {holder}: "
+                "it does not fit")
+    return None
+
+
+def select_grooving_tool(width: float | None, iso_group: str, turret: list[TurretEntry],
+                         depth: float | None = None) -> tuple[TurretEntry | None, str | None]:
     """The grooving tool for a groove of `width`: of the inserts not wider than the groove, the widest (fewest
-    plunges). A groove narrower than every insert gets no tool and a warning (not cut wider than drawn).
-    Without a width, or when no insert width is known, the choice is select_tool's."""
+    plunges). A groove narrower than every insert gets no tool and a warning (not cut wider than drawn), and so does
+    one deeper (per side) than every holder's max depth. Without a width, or when no insert width is known, the
+    choice is select_tool's."""
     entry, warning = select_tool("grooving", iso_group, turret)
     if entry is None or width is None:
         return entry, warning
+    if depth is not None:
+        deep = [e for e in turret if e.tool.type == "grooving" and e.tool.max_depth
+                and depth > e.tool.max_depth + GROOVE_WIDTH_TOL_MM]
+        turret = [e for e in turret if e not in deep]
+        if deep and not any(e.tool.type == "grooving" and iso_group in e.tool.iso_group for e in turret):
+            return None, (f"Groove {depth:g} mm deep is deeper than the grooving holders reach "
+                          f"({max(e.tool.max_depth for e in deep):g} mm): a holder for deeper grooves is needed.")
     sized = [e for e in turret if e.tool.type == "grooving" and iso_group in e.tool.iso_group and e.tool.insert_width]
     if not sized:
         return entry, None
@@ -1655,7 +1682,9 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
 
     rough_boring_fallback = False
     if step.tool_type == "grooving":
-        entry, warning = select_grooving_tool(feature.length, job.iso_group, turret)
+        depth = (feature.start_diameter - feature.diameter) / 2 \
+            if feature.start_diameter and feature.diameter else None
+        entry, warning = select_grooving_tool(feature.length, job.iso_group, turret, depth)
     elif step.tool_type == "boring" and step.mode == "rough":
         # a rough boring tool when there is one; else the finishing boring bar roughs too
         entry, warning = select_tool("boring_rough", job.iso_group, turret)

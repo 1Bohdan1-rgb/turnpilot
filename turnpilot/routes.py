@@ -444,6 +444,14 @@ def _tip_direction(form):
     return value
 
 
+def _holder_code(form):
+    code = form.get("holder_code", "").strip()[:50] or None
+    problem = planner.seat_mismatch(form.get("insert_code", "").strip(), code)
+    if problem:
+        raise FormError(f"Holder: {problem}")
+    return code
+
+
 def _ramp_angle(form):
     angle = _number(form, "max_ramp_angle")
     if angle is not None and angle >= 90:
@@ -481,6 +489,7 @@ def _tool_fields(form):
         insert_width=_number(form, "insert_width"),
         diameter=_number(form, "diameter"),
         max_depth=_number(form, "max_depth"),
+        holder_code=_holder_code(form),
         max_ramp_angle=_ramp_angle(form),
         nose_radius=_number(form, "nose_radius"),
         tip_direction=_tip_direction(form),

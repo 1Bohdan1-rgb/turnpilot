@@ -77,10 +77,18 @@ for _position, _d, _code, _page, (_fmin, _frec, _fmax) in (
         vc_min=100, vc_max=150, f_min=_fmin, f_max=_fmax, ap_min=_d / 2, ap_max=_d / 2, diameter=_d,
         max_depth=3 * _d, f_rec=_frec, vc_points="125", source=DRILL_SOURCE.format(code=_page))
 
-# In the tool library but not in the turret. PLACEHOLDER, NOT validated (aluminium, not checked).
+# In the tool library but not in the turret (the operator chooses a position).
+# VCGT: PLACEHOLDER, NOT validated (aluminium, not checked).
+# Grooving 2 mm (CoroCut 1-2, seat E): steel P1.2; f read from a graph; the holder (R/LF123E08-2020B or -2525B,
+# max depth 8 mm, TT B29) is the operator's choice, so its code is left empty.
 LIBRARY_TOOLS = [
     dict(name="Finish turning VCGT (N)", type="turning_finish", insert_code="VCGT 160404", grade="H10",
          iso_group="N", vc_min=300, vc_max=600, f_min=0.05, f_max=0.2, ap_min=0.2, ap_max=1.5),
+    dict(name="Grooving 2 mm", type="grooving", insert_code="N123E2-0200-0002-GM", grade="GC4325",
+         iso_group="P", vc_min=140, vc_max=315, f_min=0.03, f_max=0.10, ap_min=2.0, ap_max=2.0, insert_width=2.0,
+         nose_radius=0.2, max_depth=8.0, f_rec=0.07, vc_points="0.05:315, 0.5:140",
+         source=f"{CATALOGUE_P12}: B10-B11 (insert, PDF 314-315), B139 (f, graph, PDF 443), B130 (Vc), "
+                "B29 (holder R/LF123E08, max depth 8, PDF 333)"),
 ]
 
 
