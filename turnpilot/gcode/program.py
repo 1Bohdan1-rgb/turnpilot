@@ -382,6 +382,14 @@ class _Builder:
             if not on_contour:
                 self._entry(b, section, current_f)
                 on_contour = True
+            if self.comp and op is None and self._short_step_after(section, rnose):
+                # a bridged groove whose far side steps up by less than rε: the nose cannot turn into that step
+                # under G42 (an interference), so the contour goes straight across the groove to the next section
+                x0, z0 = _position(b.commands)
+                nxt = self.p.sections[section.index + 1].segments()[0]
+                if not self._contour_line(b, section, x0, z0, nxt.r0, nxt.z0, ramp, current_f):
+                    on_contour = False
+                continue
             for segment in section.segments():
                 x0, z0 = _position(b.commands)
                 if (x0, z0) != (_r3(2 * segment.r0), _r3(segment.z0)):  # onto the segment's start (a step)
@@ -400,7 +408,10 @@ class _Builder:
             if op is not None:
                 self.finished.add(section.index)
         if on_contour:
-            self._leave(b)
+            last = group[-1][0]
+            nxt = self.p.sections[last.index + 1] if last.index + 1 < len(self.p.sections) else None
+            self._leave(b, shoulder=nxt is not None
+                        and nxt.segments()[0].r0 > _position(b.commands)[0] / 2 + EPS)  # as it is turned
         self._end(b)
         if self.comp:  # the control keeps the nose on the drawn chamfers, tapers and arcs
             b.notes.append(f"nose radius compensation G42: the contour as drawn (offset R{rnose:g} "
@@ -468,25 +479,37 @@ class _Builder:
                else f"above the tool's max in-copying angle {ramp:g}°") + ": not cut by this tool")
         self._leave(b)
 
-    def _leave(self, b) -> None:
-        """Off the contour: up to the safe X (compensation cancelled on this move), then back in Z."""
+    def _leave(self, b, shoulder: bool = False) -> None:
+        """Off the contour: up to the safe X, then back in Z. Compensation is cancelled on the move up; at the face of
+        a larger section not finished in this contour (an inner corner) it stays on up that face, so the nose follows
+        the face, and is cancelled on the move back in Z."""
+        if self.comp and shoulder:
+            b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe, comp="G40")]
+            return
         b.commands += [Feed(x=self.x_safe, comp="G40" if self.comp else None), Rapid(z=self.z_safe)]
+
+    def _short_step_after(self, groove: Section, rnose: float) -> bool:
+        """A groove bridged in the contour whose next section starts higher than the bridge by less than rε."""
+        if groove.kind != "groove" or groove.index + 1 >= len(self.p.sections):
+            return False
+        rise = self.p.sections[groove.index + 1].segments()[0].r0 - groove.segments()[0].r0
+        return EPS < rise < rnose - EPS
 
     def _entry(self, b: Block, first: Section, f: float) -> None:
         """Onto the contour at a section's free-end side: from Z+clearance at the free end (a chamfer along its
         line), else above the material on the free-end side, then down beside the face.
 
         With compensation, G42 starts on the move onto the contour's first line (the start-up block: at its end the
-        nose stands square to the next move). A contour starting on the axis (a spherical end) is entered along the
-        end face down to X0 Z0: the start-up ends with the nose on the axis, square to the arc, never across it."""
+        nose stands square to the next move), and at the free end the tool comes in along the first segment's line
+        (no inner corner in the air before the part, which the nose could not reach round)."""
         cz = self.m.clearance_z
         g42 = "G42" if self.comp else None
+        if first.index == 0 and self.comp:
+            self._compensated_entry(b, first, f)
+            return
         if first.index == 0:
             r_top = self.p.turned_points[0][1]
-            if self.comp and r_top < EPS:  # on the axis: along the face; the start-up is longer than rε
-                lead = _r3(2 * (self.m.clearance_x + self.compensated[b.tool_position][1]))
-                b.commands += [Rapid(z=_r3(cz)), Rapid(x=lead), Feed(z=0.0, f=f), Feed(x=0.0, comp=g42)]
-            elif first.chamfer_free:
+            if first.chamfer_free:
                 b.commands += [Rapid(z=_r3(cz)), Rapid(x=_r3(2 * max(r_top - cz, 0.0)), comp=g42),
                                Feed(x=_r3(2 * r_top), z=0.0, f=f)]
             else:
@@ -497,6 +520,29 @@ class _Builder:
         r_prev = self._own_radius(self.p.sections[first.index - 1], False)  # the neighbour at this face
         b.commands += [Rapid(x=_r3(2 * above)), Rapid(z=_r3(z_face + self.allowance + cz)),
                        Feed(x=_r3(2 * r_prev), f=f, comp=g42), Feed(z=_r3(z_face))]
+
+    def _compensated_entry(self, b: Block, first: Section, f: float) -> None:
+        """Onto the free end under G42, along the first segment's line from Z+clearance: a rising line or arc (a
+        chamfer, a taper, a convex end) is met straight, without a corner. Where that line reaches the axis before
+        Z+clearance (a steep start, a spherical end at X0 Z0) the tool comes down beside the face to the axis there:
+        the start-up ends with the nose on the axis, square to the line, never across it."""
+        cz, rnose = self.m.clearance_z, self.compensated[b.tool_position][1]
+        segment = first.segments()[0]
+        z0, r0 = segment.z0, self.p.turned_points[0][1]
+        tz, tr = _tangent(segment)
+        if tr <= EPS:  # level or going down: along the level line
+            b.commands += [Rapid(z=_r3(z0 + cz)), Rapid(x=_r3(2 * r0), comp="G42"), Feed(z=_r3(z0), f=f)]
+            return
+        back = min(cz, r0 * -tz / tr) if tz < -EPS else 0.0  # how far back in Z the line stays above the axis
+        r_start = r0 - tr * back / -tz if tz < -EPS else 0.0
+        if back >= cz - EPS:  # from Z+clearance on the line
+            b.commands += [Rapid(z=_r3(z0 + cz)), Rapid(x=_r3(2 * r_start), comp="G42"),
+                           Feed(x=_r3(2 * r0), z=_r3(z0), f=f)]
+            return
+        lead = _r3(2 * (self.m.clearance_x + rnose))  # beside the face: the start-up is longer than rε
+        b.commands += [Rapid(z=_r3(z0 + cz)), Rapid(x=lead), Feed(z=_r3(z0 + back), f=f), Feed(x=0.0, comp="G42")]
+        if back > EPS:
+            b.commands.append(Feed(x=_r3(2 * r0), z=_r3(z0)))
 
     def _contour(self, section: Section) -> list[tuple[float, float]]:
         """The turned profile's points of a section, from its free-end side to its chuck side."""
@@ -761,6 +807,20 @@ def _scaled(arc: Arc, offset: Arc, z: float, r: float) -> tuple[float, float]:
     """A point of an arc moved along its radius onto a concentric one."""
     length = math.hypot(z - arc.cz, r - arc.cr) or 1.0
     return arc.cz + (z - arc.cz) * offset.radius / length, arc.cr + (r - arc.cr) * offset.radius / length
+
+
+def _tangent(segment: Segment) -> tuple[float, float]:
+    """The unit direction (z, r) of a segment at its free-end start, towards the chuck."""
+    dz, dr = segment.z1 - segment.z0, segment.r1 - segment.r0
+    if segment.arc is not None:
+        a = segment.arc
+        uz, ur = segment.z0 - a.cz, segment.r0 - a.cr
+        tz, tr = -ur, uz
+        if tz * dz + tr * dr < 0:
+            tz, tr = -tz, -tr
+        dz, dr = tz, tr
+    length = math.hypot(dz, dr) or 1.0
+    return dz / length, dr / length
 
 
 def _steepest_descent(segment: Segment) -> float | None:

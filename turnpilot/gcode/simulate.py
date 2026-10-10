@@ -391,18 +391,21 @@ class _Sim:
                     excess.append((zz, before[i] - (rr - radius)))
         length = self.d.profile.length
         edge = info.edge if abs(x - x0) > 1e-9 and info.edge else 0.0
+        gouged: dict[int, float] = {}
         for zz, rr in samples:
             for i, low in self._disc(zz, rr, radius):
                 low = max(low, 0.0)
                 if self.stock[i] > low:
                     self.stock[i] = low
-                zi = self.z(i)
-                if -length + TOL < zi < -TOL and low < self.final[i] - TOL:
-                    self.error(line, f"cuts below the finished profile at Z{fanuc.number(zi)} "
-                                     f"(D{fanuc.number(2 * low)} < D{fanuc.number(2 * self.final[i])})")
+                if low < self.final[i] - TOL and low < gouged.get(i, math.inf):
+                    gouged[i] = low  # the deepest per cell, reported after the move (one message per cell)
             if edge:  # the insert's edge beside the nose, as for the tip point
                 for i in self.indices(zz, zz + edge):
                     self.stock[i] = min(self.stock[i], max(rr - radius, 0.0))
+        for i, low in sorted(gouged.items()):
+            if -length + TOL < self.z(i) < -TOL:
+                self.error(line, f"cuts below the finished profile at Z{fanuc.number(self.z(i))} "
+                                 f"(D{fanuc.number(2 * low)} < D{fanuc.number(2 * self.final[i])})")
         self._check_depth(line, excess, x0, z0, x, z)
         self._check_ramp(line, excess, x0, z0, x, z)
         if kind == "feed":
@@ -676,6 +679,8 @@ class _Sim:
         self.rapid(line, x0, z)
         self.rapid(line, x0, z0)
 
+    CORNER_DEG = 2.0  # a turn of the finished profile above this is a corner (an arc's polyline turns 1° a point)
+
     def _inner_corners(self) -> list[tuple[float, float]]:
         """The finished profile's inner corners (z, r) along the part: a nose circle cannot reach into them."""
         points = []
@@ -685,14 +690,17 @@ class _Sim:
         out = []
         for a, v, b in zip(points, points[1:], points[2:]):
             t_in, t_out = (v[0] - a[0], v[1] - a[1]), (b[0] - v[0], b[1] - v[1])
-            if t_in[0] * t_out[1] - t_in[1] * t_out[0] < -1e-9 and -self.d.profile.length < v[0] < 0:
+            turn = math.degrees(math.atan2(t_in[0] * t_out[1] - t_in[1] * t_out[0],
+                                           t_in[0] * t_out[0] + t_in[1] * t_out[1]))
+            if turn < -self.CORNER_DEG and -self.d.profile.length < v[0] < 0:
                 out.append(v)
         return out
 
     def finish(self) -> None:
         length = self.d.profile.length
         self.r.final_stock = list(self.stock)
-        # the material a nose circle leaves in an inner corner: a warning, not a part left unfinished
+        # the material a nose circle leaves in an inner corner (within rε·√2 of it, at most rε thick): a warning,
+        # not a part left unfinished
         nose = min(self.nose_used) if self.nose_used else None
         corners = self._inner_corners() if nose else []
         fillets: dict[tuple[float, float], float] = {}
@@ -704,7 +712,7 @@ class _Sim:
             target = 0.0 if z > TOL else self.final[i]
             excess = r - target
             corner = next((v for v in corners if math.hypot(z - v[0], r - v[1]) <= nose * math.sqrt(2) + 0.02),
-                          None) if excess > 0.01 else None
+                          None) if corners and 0.01 < excess <= nose + 0.01 else None
             if corner is not None:
                 fillets[corner] = max(fillets.get(corner, 0.0), excess)
             if excess > 0.01 and corner is None:

@@ -6,6 +6,7 @@ from test_gcode_arc_program import sphere_job
 from test_gcode_compensation import finishing_tool, program
 
 from turnpilot import services
+from turnpilot.models import Feature
 from turnpilot.gcode import nose
 
 
@@ -170,3 +171,59 @@ def test_a_concave_arc_smaller_than_the_nose_is_an_interference():
     _, errors = nose.compensated_paths(moves, "G42", 0.4, 3, cancelled=True)
     assert (3, "the arc R0.3 is smaller than the nose radius 0.4 on the tool's side: the nose does not fit (an "
                "interference)") in errors
+
+
+def test_leaving_at_a_larger_section_keeps_g42_up_its_face(app):
+    # НД 012's case: the contour ends at a taper's larger end, and the next section (an arc waiting for the operator's
+    # radius) stands higher: G40 on the move up would bring the nose into that face, so G40 goes on the move in Z
+    machine = ready_machine()
+    finishing_tool()
+    job = make_job([Feature(type="od_turn", diameter=20, length=10),
+                    Feature(type="taper", start_diameter=20, diameter=25, length=5),
+                    Feature(type="arc", start_diameter=30, diameter=20, length=8, radius=20.46, arc_convex=True,
+                            drawn_radius=51.61)], blank=32, length=30, stickout=35)
+    _, text, result = program(job, machine)
+    assert "G01 X25. Z-15. F0.15\nG01 X34.\nG00 G40 Z3." in text
+    assert not any(m.startswith("cuts below") for m in messages(result)), messages(result)
+
+
+def test_a_groove_bridged_before_a_step_lower_than_the_nose(app):
+    # деталь 1's case: the bridge at Ø20 would end in a 0.25 mm step up to Ø20.5, shorter than rε 0.4 (under G42 an
+    # interference): the contour goes straight across the groove instead
+    machine = ready_machine()
+    finishing_tool()
+    job = make_job([Feature(type="od_turn", diameter=20, length=10),
+                    Feature(type="groove", diameter=16, start_diameter=20, length=3),
+                    Feature(type="od_turn", diameter=20.5, length=10), Feature(type="od_turn", diameter=30, length=5)],
+                   blank=32, length=30, stickout=35)
+    _, text, result = program(job, machine)
+    assert "G01 X20. Z-10. F0.15\nG01 X20.5 Z-13. F0.15\nG01 X20.5 Z-23. F0.15" in text
+    assert result.ok, result.errors
+
+
+def test_inner_corners_are_corners_not_the_chords_of_an_arc(app):
+    from turnpilot.gcode import simulate as gsim
+    machine = ready_machine()
+
+    def corners(features):
+        _, _, profile, _ = services.gcode_inputs(make_job(features, blank=32, length=50, stickout=50), machine)
+        return gsim._Sim(gsim.SimInput(profile=profile, stock_radius=16, face_stock=1, stickout=50, chuck_safety=5,
+                                       max_rpm=3500, spindle="M04", tools={}))._inner_corners()
+
+    # a concave arc turns 120° in 1° chords: no corner; both its rims are outer edges
+    assert corners([Feature(type="od_turn", diameter=30, length=10),
+                    Feature(type="arc", start_diameter=30, diameter=30, length=17.32, radius=10, arc_convex=False),
+                    Feature(type="od_turn", diameter=30, length=10)]) == []
+    # the pin: the groove's bottom corners and Ø24 meeting the Ø30's chamfer
+    assert corners(None) == [(-15.0, 8.0), (-18.0, 8.0), (-38.0, 12.0)]
+
+
+def test_a_gouge_along_the_whole_contour_is_quick(pin):
+    # one message per cell, the deepest: formatting one per circle made a mass gouge take minutes (НД 012, 2026-10-10)
+    import time
+    job, machine, text, _ = pin
+    finishing_tool(tip_direction=0)
+    start = time.perf_counter()
+    found = simulate(job, machine, text.replace(" G42", "").replace(" G40", "")).errors
+    assert time.perf_counter() - start < 20
+    assert len(found) == len(set(found)) > 1000

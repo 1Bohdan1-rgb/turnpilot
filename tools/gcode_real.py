@@ -5,8 +5,12 @@ upload, confirm the rows as read (arc shapes as the review page fills them; an a
 dimensioned stays for the operator to choose), calculate, approve every operation (in this temporary database only), the
 P1.2 catalogue file confirmed, DEMO programming values (`flask gcode-demo`), generate, simulate. The programs go to
 instance/gcode_<file>_part<n>.nc with a summary; they are drafts for the operator, never ready to run (DEMO).
+--tip-direction 4=3 gives the tool at turret position 4 the tip direction T3 in the temporary database (a value typed
+here, not the operator's), so its finishing contour is written with nose radius compensation; the files then end in
+_comp.nc.
 
     python tools/gcode_real.py "real_dxf/Zavisa 36.dxf" [--blank 38x120] [--material "Steel 45 (C45)"]
+        [--tip-direction 4=3]
 """
 from __future__ import annotations
 
@@ -24,7 +28,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from conftest import confirm_p12_catalogue  # noqa: E402
 
 from turnpilot import create_app, services  # noqa: E402
-from turnpilot.models import DrawingExtraction, Job, Material, db  # noqa: E402
+from turnpilot.models import DrawingExtraction, Job, Material, TurretSlot, db  # noqa: E402
 from turnpilot.seed import seed_database  # noqa: E402
 
 
@@ -53,8 +57,11 @@ def main(argv=None):
     parser.add_argument("dxf", nargs="+")
     parser.add_argument("--blank", help="DxL, e.g. 38x120 (else the blank suggested on the review page)")
     parser.add_argument("--material", default="Steel 45 (C45)")
+    parser.add_argument("--tip-direction", action="append", default=[], metavar="POSITION=T",
+                        help="the tip direction T of the tool at a turret position (typed here, not the operator's)")
     args = parser.parse_args(argv)
     blank = tuple(float(v) for v in args.blank.lower().split("x")) if args.blank else None
+    tips = {int(k): int(v) for k, v in (item.split("=") for item in args.tip_direction)}
     out_dir = ROOT / "instance"
     with tempfile.TemporaryDirectory() as tmp:
         app = create_app({"SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp}/check.db", "ANTHROPIC_MODEL": "none"},
@@ -63,6 +70,11 @@ def main(argv=None):
             db.create_all()
             seed_database()
             confirm_p12_catalogue()
+            for position, tip in tips.items():
+                slot = db.session.execute(db.select(TurretSlot).filter_by(position=position)).scalar_one()
+                slot.tool.tip_direction = tip
+                print(f"T{position:02d} {slot.tool.name}: tip direction T{tip} (typed here, not the operator's)")
+            db.session.commit()
             material = db.session.execute(db.select(Material).filter_by(name=args.material)).scalar_one()
             client = app.test_client()
             for path in map(Path, args.dxf):
@@ -71,9 +83,13 @@ def main(argv=None):
                 extractions = db.session.execute(db.select(DrawingExtraction).filter_by(
                     original_filename=path.name)).scalars().all()
                 for n, extraction in enumerate(extractions, start=1):
-                    client.post(f"/extractions/{extraction.id}/confirm",
-                                data=confirm_form(extraction, material.id, blank, tmp))
+                    response = client.post(f"/extractions/{extraction.id}/confirm",
+                                           data=confirm_form(extraction, material.id, blank, tmp))
                     db.session.refresh(extraction)
+                    if extraction.job_id is None:
+                        print(f"{path.name} part {n}: not confirmed (HTTP {response.status_code}; no blank on the "
+                              "drawing? give --blank)")
+                        continue
                     job = db.session.get(Job, extraction.job_id)
                     machine = services.get_machine()
                     services.calculate_operations(job, machine)
@@ -86,7 +102,7 @@ def main(argv=None):
                     if record is None:
                         print(f"{path.name} part {n}: no program: {'; '.join(readiness.blockers)}")
                         continue
-                    target = out_dir / f"gcode_{stem}_part{n}.nc"
+                    target = out_dir / f"gcode_{stem}_part{n}{'_comp' if tips else ''}.nc"
                     target.write_text(record.text, encoding="ascii", newline="\n")
                     sim = json.loads(record.simulation)
                     print(f"{path.name} part {n}: {target.relative_to(ROOT)}: {len(record.text.splitlines())} lines, "
@@ -94,6 +110,9 @@ def main(argv=None):
                           f", skipped {len(sim['skipped'])}")
                     for line, message in sim["errors"]:
                         print(f"  error line {line}: {message}")
+                    for line, message in sim["warnings"]:
+                        if not line:
+                            print(f"  {message}")
                     for message in sim["incomplete"]:
                         print(f"  {message}")
                     for op_id, reason in sim["skipped"].items():
