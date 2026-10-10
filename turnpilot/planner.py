@@ -28,10 +28,11 @@ RZ_PER_RA = 4.0
 def rz_to_ra(rz: float) -> float:
     """Approximate Ra (µm) for an Rz value: Ra ≈ Rz / 4 (GOST 2789)."""
     return round(rz / RZ_PER_RA, 3)
-# Fillets and arcs (formed sections) are recognised on drawings but not planned automatically yet. A taper is turned
-# like a cylinder: roughed in steps from its larger end's side, then finished along its line.
+# A taper and an arc are turned like a cylinder: roughed in steps from their larger end's side, then finished along
+# their line. A fillet is cut with its section's finishing pass when the order along the axis is known (a DXF job);
+# otherwise it stays a manual operation.
 MANUAL_OPERATION_WARNING = "manual operation"
-MANUAL_FEATURE_TYPES = ("fillet", "arc")
+MANUAL_FEATURE_TYPES = ("fillet",)
 # A hex is turned to its diameter across corners, then its flats are milled with a driven tool.
 HEX_CORNERS_NOTE = "diameter across corners of the hex"
 NO_MILLING_TOOL = "manual operation: no driven tool in the turret, mill the hex on a milling machine"
@@ -116,6 +117,7 @@ class FeatureSpec:
     ra_from_rz: float | None = None  # the Rz written on the drawing when ra was converted from it
     location: str | None = None  # chamfer / thread: "external" / "internal"
     across_flats: float | None = None  # hex: size across flats S; diameter is across corners
+    arc_convex: bool | None = None  # arc: bulging away from the axis
 
 
 def hex_corners(feature) -> float | None:
@@ -368,24 +370,45 @@ def rough_starts(features, turned_diameter, stock: float) -> tuple[dict[int, Rou
 
 
 TAPER_STEPS_NOTE = "taper: stepped roughing passes, the finishing pass cuts its line"
+ARC_STEPS_NOTE = "arc: stepped roughing passes, then one along the arc; the finishing pass cuts the arc"
 
 
 def taper_starts(features, turned_diameter, stock: float, axial_order: bool) -> dict[int, RoughStart]:
-    """The diameter each taper (by id()) is roughed from: its neighbour on the larger end's side when that is a
-    turned section at least as large (the order along the axis known), else the bar."""
+    """The diameter each taper or arc (by id()) is roughed from: its neighbour on the larger end's side when that is
+    a turned section at least as large (the order along the axis known), else the bar. An arc may end on the axis
+    (its Ø empty: 0)."""
     profile = [f for f in features if f.type in PROFILE_SECTION_TYPES or f.type == "groove"]
     starts = {}
     for k, f in enumerate(profile):
-        if f.type != "taper" or not f.diameter or not f.start_diameter:
+        end, start = f.diameter or 0.0, f.start_diameter or 0.0
+        if f.type not in ("taper", "arc") or not max(end, start):
             continue
-        large = max(f.diameter, f.start_diameter)
-        j = k - 1 if f.start_diameter >= f.diameter else k + 1
+        large = max(end, start)
+        j = k - 1 if start >= end else k + 1
         neighbour = profile[j] if axial_order and 0 <= j < len(profile) else None
         if neighbour is not None and neighbour.type in TURNED_SECTION_TYPES and turned_diameter(neighbour)                 and turned_diameter(neighbour) >= large - 1e-9:
             starts[id(f)] = RoughStart(turned_diameter(neighbour), from_bar=False)
         else:
             starts[id(f)] = RoughStart(stock, from_bar=True)
     return starts
+
+
+def arc_lowest_diameter(feature) -> float | None:
+    """The smallest Ø along an arc: its smaller end, or (a concave arc) its bottom; None when its shape or the circle
+    through its ends with its radius is not known."""
+    d0, d1 = feature.start_diameter or 0.0, feature.diameter or 0.0
+    if feature.arc_convex is None or not feature.radius or not feature.length:
+        return None
+    if feature.arc_convex:
+        return min(d0, d1)
+    half = math.hypot(feature.length, (d1 - d0) / 2) / 2
+    if half > feature.radius:
+        return None
+    rise = math.sqrt(feature.radius ** 2 - half ** 2)  # the centre beyond the chord, away from the axis
+    mid = (d0 + d1) / 4
+    nr = feature.length / (2 * half)  # the chord's normal, its radial part
+    centre_r = mid + rise * nr
+    return round(2 * (centre_r - feature.radius), 3)
 
 
 def thread_depth(pitch: float) -> float:
@@ -884,7 +907,7 @@ def feature_to_steps(feature: FeatureSpec, hex_bar: float | None = None, hole: H
             Step(feature, "turning_finish", "finish", "finish"),
             Step(feature, "milling", "finish", "mill"),
         ]
-    if t == "taper":
+    if t in ("taper", "arc"):
         return [
             Step(feature, "turning_rough", "rough", "rough"),
             Step(feature, "turning_finish", "finish", "finish"),
@@ -1655,6 +1678,13 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         small = replace(feature, diameter=min(feature.diameter, feature.start_diameter))
         _plan_rough_turning(op, tool, small, job, turret, start, power)
         op.notes.append(TAPER_STEPS_NOTE)
+    elif step.tool_type == "turning_rough" and feature.type == "arc":
+        lowest = arc_lowest_diameter(feature)
+        if lowest is None:
+            op.warnings.append("arc: its shape or its circle is not known: roughing not planned")
+        else:
+            _plan_rough_turning(op, tool, replace(feature, diameter=lowest), job, turret, start, power)
+            op.notes.append(ARC_STEPS_NOTE)
     elif step.tool_type == "turning_rough" and feature.diameter is not None:
         _plan_rough_turning(op, tool, feature, job, turret, start, power)
     elif step.tool_type == "grooving" and step.mode == "finish" and groove_needs_finish(feature):
@@ -1707,7 +1737,9 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
     allowance, _ = finish_allowance(job.iso_group, turret)
     starts = {key: with_allowance(start, allowance) for key, start in starts.items()}
 
-    steps = [s for f in features if id(f) not in chamfer_hosts for s in feature_to_steps(f, hex_bar, holes.get(id(f)))]
+    # with the order along the axis a fillet is cut with its section's finishing pass (gcode): no own operation
+    steps = [s for f in features if id(f) not in chamfer_hosts and not (f.type == "fillet" and job.axial_order)
+             for s in feature_to_steps(f, hex_bar, holes.get(id(f)))]
     drilling = [s for s in steps if s.tool_type == "drilling"]
     if drilling:  # one centring for the holes on the axis, before the first drill; on the first hole's row
         first_hole = next(f for f in features if id(f) in holes)

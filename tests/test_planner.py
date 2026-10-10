@@ -533,7 +533,7 @@ def test_chamfer_still_merged_on_thread_diameter(turret):
 from turnpilot.planner import MANUAL_OPERATION_WARNING  # noqa: E402
 
 
-def test_fillet_and_arc_become_manual_operations_a_taper_is_turned(turret):
+def test_a_fillet_becomes_a_manual_operation_a_taper_and_an_arc_are_turned(turret):
     job = JobSpec("P", 85, 150, (
         FeatureSpec(1, "od_turn", diameter=60, length=60),
         FeatureSpec(2, "taper", diameter=55, start_diameter=60, length=30),
@@ -542,7 +542,9 @@ def test_fillet_and_arc_become_manual_operations_a_taper_is_turned(turret):
     ))
     ops = plan_job(job, turret, max_rpm=4000)
     manual = [op for op in ops if op.tool_type == "manual"]
-    assert [op.feature_id for op in manual] == [3, 4]
+    assert [op.feature_id for op in manual] == [3]  # without the order along the axis a fillet stays manual
+    arc = [op for op in ops if op.feature_id == 4]
+    assert [(op.tool_type, op.mode) for op in arc] == [("turning_rough", "rough"), ("turning_finish", "finish")]
     taper = [op for op in ops if op.feature_id == 2]
     assert [(op.tool_type, op.mode) for op in taper] == [("turning_rough", "rough"), ("turning_finish", "finish")]
     assert all(op.tool_id and op.vc and op.f for op in taper)

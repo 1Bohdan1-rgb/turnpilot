@@ -166,6 +166,7 @@ def job_spec(job):
             # normalized again for features saved before decimal commas were converted
             start_diameter=f.start_diameter, tolerance=normalize_tolerance(f.tolerance), radius=f.radius,
             across_flats=f.across_flats if f.type == "hex" else None,
+            arc_convex=f.arc_convex if f.type == "arc" else None,
         )
         for f in job.active_features
     )

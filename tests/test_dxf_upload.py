@@ -119,7 +119,7 @@ def test_confirm_each_part_as_its_own_job(client, no_api, tmp_path):
     assert (arc.start_diameter, arc.radius, arc.length, arc.diameter) == (18, 9, 9, None)
     client.post(f"/jobs/{job.id}/calculate")
     manual = db.session.execute(db.select(Operation).filter_by(tool_type="manual")).scalars().all()
-    assert {op.feature.type for op in manual} == {"fillet", "arc"}  # a taper is turned
+    assert manual == []  # a taper and an arc are turned; with the order along the axis a fillet goes with its section
 
     # the other part is still to be reviewed, and its page links to the job of this one
     page = client.get(f"/extractions/{shaft.id}/review").get_data(as_text=True)
@@ -162,7 +162,7 @@ def test_dxf_job_is_roughed_from_the_neighbouring_sections(client, no_api, tmp_p
 
     def rough():
         ops = db.session.execute(db.select(Operation).filter_by(tool_type="turning_rough", is_archived=False)).scalars()
-        return {op.feature.diameter: op for op in ops}
+        return {op.feature.diameter: op for op in ops if op.feature.type != "arc"}
 
     client.post(f"/jobs/{job.id}/calculate")
     by_diameter = rough()

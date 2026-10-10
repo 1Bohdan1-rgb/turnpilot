@@ -33,7 +33,7 @@ def test_origin_of_the_cutting_data(app):
     confirm_p12_catalogue()
     services.calculate_operations(job, machine)
     origins = {(op.tool_type, op.cutting_data_origin) for op in job.current_operations}
-    assert ("turning_rough", "catalogue") in origins and ("manual", None) in origins  # the arc: no tool
+    assert ("turning_rough", "catalogue") in origins and all(origin for _, origin in origins)
     rough = next(op for op in job.current_operations if op.tool_type == "turning_rough")
     services.apply_operation_edit(rough, machine, rough.turret_position, rough.vc, 0.25, rough.ap, rough.passes)
     assert rough.cutting_data_origin == "operator"
@@ -95,8 +95,7 @@ def test_readiness_of_a_job(app):
     db.session.commit()
     result = services.gcode_readiness(job, machine)
     assert result.ok
-    arc = next(op for op in job.current_operations if op.feature.type == "arc")
-    assert result.skipped[arc.id] == rd.SKIP_NO_TOOL
+    assert result.skipped == {}  # the arc is turned too (the generator says why it is not programmed)
     assert db.session.get(Operation, result.usable[0]).tool_type == "facing"
 
 

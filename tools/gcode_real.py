@@ -1,7 +1,8 @@
 """Programs for real KOMPAS DXF files, for a local look (the drawings are not in git, nor are their programs).
 
 Each part of the sheet goes the app's whole way in a temporary database (the app's own database is not touched):
-upload, confirm the rows as read, calculate, approve every operation (in this temporary database only), the
+upload, confirm the rows as read (arc shapes as the review page fills them; an arc drawn with another radius than
+dimensioned stays for the operator to choose), calculate, approve every operation (in this temporary database only), the
 P1.2 catalogue file confirmed, DEMO programming values (`flask gcode-demo`), generate, simulate. The programs go to
 instance/gcode_<file>_part<n>.nc with a summary; they are drafts for the operator, never ready to run (DEMO).
 
@@ -27,7 +28,7 @@ from turnpilot.models import DrawingExtraction, Job, Material, db  # noqa: E402
 from turnpilot.seed import seed_database  # noqa: E402
 
 
-def confirm_form(extraction, material_id, blank):
+def confirm_form(extraction, material_id, blank, instance_path):
     data = json.loads(extraction.parsed)
     diameter, length = blank or (data.get("blank_diameter"), data.get("blank_length"))
     form = {"name": data.get("part_name") or Path(extraction.original_filename).stem, "material_id": str(material_id),
@@ -40,6 +41,10 @@ def confirm_form(extraction, material_id, blank):
             if f.get(key) is not None:
                 form[f"f{i}-{key}"] = str(f[key])
         form[f"f{i}-position"] = " ".join(p for p in (f.get("location"), f.get("face")) if p)
+    for i, shape in services.dxf_arc_shapes(extraction, instance_path).items():  # as the review page fills them
+        form[f"f{i}-arc_shape"] = shape["arc_shape"]
+        if shape.get("face"):
+            form[f"f{i}-position"] = f"external {shape['face']}"
     return form
 
 
@@ -67,7 +72,7 @@ def main(argv=None):
                     original_filename=path.name)).scalars().all()
                 for n, extraction in enumerate(extractions, start=1):
                     client.post(f"/extractions/{extraction.id}/confirm",
-                                data=confirm_form(extraction, material.id, blank))
+                                data=confirm_form(extraction, material.id, blank, tmp))
                     db.session.refresh(extraction)
                     job = db.session.get(Job, extraction.job_id)
                     machine = services.get_machine()

@@ -151,10 +151,12 @@ class Section:
                 return [Segment(zf, r, zc, r)]
             return [Segment(zf, self.d_free / 2, zc, self.d_chuck / 2, self.arc)]
         r = self.turned_d / 2
+        nominal = self.d_free / 2  # a thread's chamfer is drawn from its nominal Ø: it ends lower on the turned one
         out, z_start, z_end = [], zf, zc
         if self.chamfer_free:
-            out.append(Segment(zf, r - self.chamfer_free, zf - self.chamfer_free, r))
-            z_start = zf - self.chamfer_free
+            foot = nominal - self.chamfer_free
+            out.append(Segment(zf, foot, zf - (r - foot), r))
+            z_start = zf - (r - foot)
         elif self.fillet_free:
             radius, convex = self.fillet_free
             centre = Arc(zf - radius, r - radius if convex else r + radius, radius, convex)
@@ -162,8 +164,9 @@ class Section:
             z_start = zf - radius
         tail = []
         if self.chamfer_chuck:
-            tail.append(Segment(zc + self.chamfer_chuck, r, zc, r - self.chamfer_chuck))
-            z_end = zc + self.chamfer_chuck
+            foot = nominal - self.chamfer_chuck
+            tail.append(Segment(zc + (r - foot), r, zc, foot))
+            z_end = zc + (r - foot)
         elif self.fillet_chuck:
             radius, convex = self.fillet_chuck
             centre = Arc(zc + radius, r - radius if convex else r + radius, radius, convex)

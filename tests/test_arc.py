@@ -42,5 +42,8 @@ def test_arc_through_the_app(client):
     arc = db.session.execute(db.select(Feature).filter_by(type="arc")).scalar_one()
     assert (arc.diameter, arc.start_diameter, arc.radius, arc.length) == (20, 36, 12, 10)
     client.post(f"/jobs/{job.id}/calculate")
-    op = db.session.execute(db.select(Operation).filter_by(feature_id=arc.id)).scalar_one()
-    assert op.tool_type == "manual" and MANUAL_OPERATION_WARNING in op.warning
+    ops = db.session.execute(db.select(Operation).filter_by(feature_id=arc.id)).scalars().all()
+    # an arc is turned like a taper; without its shape (convex / concave) the roughing is not planned
+    assert [op.tool_type for op in ops] == ["turning_rough", "turning_finish"]
+    assert "arc: its shape or its circle is not known: roughing not planned" in ops[0].warning
+    assert not any(MANUAL_OPERATION_WARNING in (op.warning or "") for op in ops)

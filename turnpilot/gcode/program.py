@@ -14,7 +14,7 @@ import math
 from dataclasses import dataclass, field
 
 from ..planner import nose_radius_from_insert
-from .profile import EPS, Profile, Section
+from .profile import EPS, Arc, Profile, Section, Segment
 
 # --- commands -----------------------------------------------------------------------------------------
 
@@ -265,18 +265,20 @@ class _Builder:
             return None  # no stock left: nothing to write
         if op.ref_diameter is None or op.ap is None:
             return "no start diameter or depth of cut: not generated"
-        name = (f"TAPER D{section.d_free:g}-D{section.d_chuck:g}" if section.kind == "taper"
-                else f"D{section.turned_d:g}")
+        if section.kind == "arc" and section.arc is None:
+            return f"the arc is not programmed: {section.arc_problem}"
+        name = _section_name(section)
         b = self.block(op, f"ROUGH {name} {op.passes} X AP {op.ap:g} FROM D{op.ref_diameter:g}")
-        target = min(section.d_free, section.d_chuck) / 2 if section.kind == "taper" else section.turned_d / 2
+        own = [p for segment in section.segments() for p in segment.points()]  # its own, not a neighbour's step
+        target = min(r for _, r in own) if section.kind in ("taper", "arc") else section.turned_d / 2
         allowance = max(0.0, op.ref_diameter / 2 - op.passes * op.ap - target)
         if abs(allowance - self.allowance) < 0.01:  # the planner's ap is rounded: the finishing tool's ap exactly
             allowance = self.allowance
         step = (op.ref_diameter / 2 - target - allowance) / op.passes  # equal passes down to target + allowance
         # the scans start where the section is lowest (a taper: its smaller end)
         z_mid = (section.z_free + section.z_chuck) / 2
-        if section.kind == "taper":
-            z_mid = section.z_free if section.d_free <= section.d_chuck else section.z_chuck
+        if section.kind in ("taper", "arc"):  # where it is lowest
+            z_mid = min(own, key=lambda p: (p[1], -p[0]))[0]
         passes = []
         for i in range(1, op.passes + 1):
             radius = op.ref_diameter / 2 - i * step
@@ -292,7 +294,12 @@ class _Builder:
                 continue  # an earlier pass already took the material down to this radius over the span
             passes.append((radius, _r3(z_end)))
         profile_pass = section.kind == "taper" and section.d_free < section.d_chuck and allowance >= 0
-        if not passes and not profile_pass:
+        arc_pass = None
+        if section.kind == "arc":
+            arc_pass, why = self._arc_profile_pass(section, allowance, op)
+            if arc_pass is None:
+                return why
+        if not passes and not profile_pass and not arc_pass:
             self.covered.append(f"operation {op.id} (rough {name}): the passes before it already took the "
                                 f"material down to its Ø")
             return b  # no commands: left out of the program
@@ -307,10 +314,35 @@ class _Builder:
                            Feed(z=_r3(section.z_free), f=op.f), Feed(x=_r3(2 * r1), z=_r3(section.z_chuck)),
                            Feed(x=_r3(2 * (r1 + self.m.retract))), Rapid(z=self.z_safe)]
             b.notes.append(f"taper: steps, then one pass along its line {allowance:g} mm above it")
+        if arc_pass:
+            b.commands += arc_pass
+            b.notes.append(f"arc: steps, then one pass along it {allowance:g} mm above it")
         self._end(b)
         if allowance:
             b.notes.append(f"leaves {allowance:g} mm per side for finishing")
         return b
+
+    def _arc_profile_pass(self, section: Section, allowance: float, op: OpData):
+        """The roughing tool along the arc, the allowance outside it (the same centre, R ± allowance); (commands,
+        None) or (None, why) when the tool may not follow it down towards the chuck."""
+        a = section.arc
+        radius = a.radius + allowance if a.convex else a.radius - allowance
+        if radius <= EPS:
+            return None, "the arc is smaller than the allowance: not generated"
+        offset = Arc(a.cz, a.cr, radius, a.convex)
+        segment = Segment(*_scaled(a, offset, section.z_free, section.d_free / 2),
+                          *_scaled(a, offset, section.z_chuck, section.d_chuck / 2), offset)
+        steepest = _steepest_descent(segment)
+        if steepest is not None and (op.max_ramp_angle is None or steepest > op.max_ramp_angle + 0.5):
+            return None, (f"the arc goes down at {steepest:.0f}° towards the chuck: the roughing tool "
+                          + ("has no max in-copying angle set" if op.max_ramp_angle is None
+                             else f"may go down at {op.max_ramp_angle:g}° only") + ": not generated")
+        z0, r0, z1, r1 = _r3(segment.z0), _r3(segment.r0), _r3(segment.z1), _r3(segment.r1)
+        return [Rapid(z=_r3(max(z0, section.z_free) + self.m.clearance_z)), Rapid(x=_r3(2 * r0)),
+                Feed(z=z0, f=op.f),
+                ArcMove(x=_r3(2 * r1), z=z1, i=_r3(a.cr - r0), k=_r3(a.cz - z0),
+                        clockwise=arc_direction(z0, r0, z1, r1, a.cz, a.cr)),
+                Feed(x=_r3(2 * (r1 + self.m.retract))), Rapid(z=self.z_safe)], None
 
     def _roughed_to(self, z_end: float, radius: float) -> bool:
         """Earlier passes left no material above radius between Z0 and z_end."""
@@ -323,8 +355,7 @@ class _Builder:
         """One contour over adjacent sections (grooves between them bridged at the Ø they are cut from)."""
         first_op = next(op for _, op in group if op is not None)
         sections = [s for s, _ in group]
-        names = ", ".join((f"TAPER D{s.d_free:g}-D{s.d_chuck:g}" if s.kind == "taper" else f"D{s.turned_d:g}")
-                          for s, op in group if op is not None)
+        names = ", ".join(_section_name(s) for s, op in group if op is not None)
         b = self.block(first_op, f"FINISH {names}", [op.id for _, op in group if op is not None])
         self._start(b, first_op)
         rnose = nose_radius_from_insert(first_op.insert_code)
@@ -341,24 +372,21 @@ class _Builder:
             if not on_contour:
                 self._entry(b, section, current_f)
                 on_contour = True
-            for z, r in self._contour(section):
+            for segment in section.segments():
                 x0, z0 = _position(b.commands)
-                x, z = _r3(2 * r), _r3(z)
-                if (x0, z0) == (x, z):
-                    continue
-                if z <= z0 + EPS and x < x0 - EPS:  # down towards the chuck (a step down: 90°): allowed by the insert?
-                    angle = math.degrees(math.atan2((x0 - x) / 2, z0 - z)) if z < z0 - EPS else 90.0
-                    if ramp is None or angle > ramp + 0.5:
-                        self.descents.append((section, z0, z, x0, x, angle))
-                        b.warnings.append(
-                            f"Z{z0:g} to Z{z:g} goes down at {angle:.0f}° towards the chuck: "
-                            + ("the tool's max in-copying angle is not set" if ramp is None
-                               else f"above the tool's max in-copying angle {ramp:g}°")
-                            + ": not cut by this tool")
-                        b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe)]
+                if (x0, z0) != (_r3(2 * segment.r0), _r3(segment.z0)):  # onto the segment's start (a step)
+                    if not self._contour_line(b, section, x0, z0, segment.r0, segment.z0, ramp, current_f):
                         on_contour = False
                         break
-                b.commands.append(Feed(x=x, z=z, f=current_f))
+                    x0, z0 = _position(b.commands)
+                if segment.arc is None:
+                    if not self._contour_line(b, section, x0, z0, segment.r1, segment.z1, ramp, current_f):
+                        on_contour = False
+                        break
+                    continue
+                if not self._contour_arc(b, section, segment, ramp, rnose, current_f):
+                    on_contour = False
+                    break
             if op is not None:
                 self.finished.add(section.index)
         if on_contour:
@@ -371,6 +399,9 @@ class _Builder:
             b.warnings.append(f"no nose radius compensation: 45° chamfers come out about {offset:g} mm (normal) "
                               f"fuller than drawn, legs about {round(offset * math.sqrt(2), 2):g} mm shorter "
                               f"(rε {rnose:g}): check")
+        if rnose and any(s.kind == "arc" or s.fillet_free or s.fillet_chuck for s in sections):
+            b.warnings.append(f"no nose radius compensation: arcs come out up to {round(rnose * (math.sqrt(2) - 1), 3):g}"
+                              f" mm (normal) off where their tangent is near 45° (rε {rnose:g}): check")
         for s in sections:
             if s.kind == "taper" and rnose:
                 angle = math.atan2(abs(s.d_chuck - s.d_free) / 2, s.length)
@@ -379,6 +410,48 @@ class _Builder:
                                   f"({math.degrees(angle):.1f}° to the axis) comes out about {offset:g} mm (normal) "
                                   f"fuller than drawn (rε {rnose:g}): check")
         return b
+
+    def _contour_line(self, b, section, x0, z0, r, z, ramp, f) -> bool:
+        """A straight piece of the contour; False (and off the contour) when it goes down towards the chuck
+        steeper than the insert allows."""
+        x, z = _r3(2 * r), _r3(z)
+        if (x0, z0) == (x, z):
+            return True
+        if z <= z0 + EPS and x < x0 - EPS:  # down towards the chuck (a step down: 90°): allowed by the insert?
+            angle = math.degrees(math.atan2((x0 - x) / 2, z0 - z)) if z < z0 - EPS else 90.0
+            if ramp is None or angle > ramp + 0.5:
+                self._not_cut(b, section, z0, z, x0, x, angle, ramp)
+                return False
+        b.commands.append(Feed(x=x, z=z, f=f))
+        return True
+
+    def _contour_arc(self, b, section, segment: Segment, ramp, rnose, f) -> bool:
+        """An arc of the contour as G02 / G03 (the centre from the position the tool is at); False when the insert
+        cannot cut it: a concave radius below the nose radius, or a way down towards the chuck too steep."""
+        a = segment.arc
+        x0, z0 = _position(b.commands)
+        x1, z1 = _r3(2 * segment.r1), _r3(segment.z1)
+        if not a.convex and rnose and a.radius < rnose - EPS:
+            b.warnings.append(f"concave R{a.radius:g} is smaller than the nose radius {rnose:g}: not cut")
+            self.descents.append((section, z0, z1, x0, x1, 0.0))
+            b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe)]
+            return False
+        steepest = _steepest_descent(segment)
+        if steepest is not None and (ramp is None or steepest > ramp + 0.5):
+            self._not_cut(b, section, z0, z1, x0, x1, steepest, ramp, f"the arc R{a.radius:g}")
+            return False
+        r0 = x0 / 2
+        b.commands.append(ArcMove(x=x1, z=z1, i=_r3(a.cr - r0), k=_r3(a.cz - z0),
+                                  clockwise=arc_direction(z0, r0, z1, x1 / 2, a.cz, a.cr), f=f))
+        return True
+
+    def _not_cut(self, b, section, z0, z, x0, x, angle, ramp, what=None) -> None:
+        self.descents.append((section, z0, z, x0, x, angle))
+        b.warnings.append(
+            (f"{what}: " if what else "") + f"Z{z0:g} to Z{z:g} goes down at {angle:.0f}° towards the chuck: "
+            + ("the tool's max in-copying angle is not set" if ramp is None
+               else f"above the tool's max in-copying angle {ramp:g}°") + ": not cut by this tool")
+        b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe)]
 
     def _entry(self, b: Block, first: Section, f: float) -> None:
         """Onto the contour at a section's free-end side: from Z+clearance at the free end (a chamfer along its
@@ -617,8 +690,11 @@ class _Builder:
         out = []
         for op in finish:
             sec = self.p.section_of(op.feature_id)
-            if sec is None or sec.kind not in ("od_turn", "hex", "taper"):
-                out.append((op.id, "not a cylinder or taper of the profile: not generated"))
+            if sec is None or sec.kind not in ("od_turn", "hex", "taper", "arc"):
+                out.append((op.id, "not a cylinder, taper or arc of the profile: not generated"))
+                continue
+            if sec.kind == "arc" and sec.arc is None:
+                out.append((op.id, f"the arc is not programmed: {sec.arc_problem}"))
                 continue
             by_section[sec.index] = op
         groups, current = [], []
@@ -644,6 +720,31 @@ class _Builder:
         if result is None:
             return op.id, "no roughing stock left: nothing to cut"
         return (op.id, result) if isinstance(result, str) else result
+
+
+def _section_name(section: Section) -> str:
+    if section.kind == "taper":
+        return f"TAPER D{section.d_free:g}-D{section.d_chuck:g}"
+    if section.kind == "arc":
+        return f"ARC R{section.radius:g} D{section.d_free:g}-D{section.d_chuck:g}"
+    return f"D{section.turned_d:g}"
+
+
+def _scaled(arc: Arc, offset: Arc, z: float, r: float) -> tuple[float, float]:
+    """A point of an arc moved along its radius onto a concentric one."""
+    length = math.hypot(z - arc.cz, r - arc.cr) or 1.0
+    return arc.cz + (z - arc.cz) * offset.radius / length, arc.cr + (r - arc.cr) * offset.radius / length
+
+
+def _steepest_descent(segment: Segment) -> float | None:
+    """The steepest angle (degrees to the axis) at which an arc goes down towards the chuck; None: it never does."""
+    points = segment.points()
+    steepest = None
+    for (z0, r0), (z1, r1) in zip(points, points[1:]):
+        if z1 < z0 - EPS and r1 < r0 - 1e-9:
+            angle = math.degrees(math.atan2(r0 - r1, z0 - z1))
+            steepest = angle if steepest is None else max(steepest, angle)
+    return steepest
 
 
 def _position(commands) -> tuple[float | None, float | None]:
