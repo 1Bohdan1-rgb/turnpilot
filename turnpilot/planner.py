@@ -252,11 +252,16 @@ def _lerp(lo: float, hi: float, t: float) -> float:
 
 
 def insert_nose_radius(insert_code: str | None) -> float | None:
-    """The nose radius (mm) an ISO turning insert code gives ('CNMG 120408' -> 0.8); None when it gives none."""
+    """The nose radius (mm) an ISO turning insert code gives; None when it gives none.
+
+    The code is read without its spaces ('CNMG 12 04 08-PM' = 'CNMG120408-PM' -> 0.8): four letters (shape,
+    clearance, tolerance, type), then size, thickness (digits or T + digit, 'CCMT09T304' -> 0.4) and rε.
+    Grooving, threading and drill codes do not start with that, so they give None.
+    """
     if insert_code:
-        match = re.search(r"(\d{2})(\d{2})(\d{2})(?!\d)", insert_code)
-        if match and int(match.group(3)) > 0:
-            return int(match.group(3)) / 10
+        match = re.match(r"[A-Z]{4}\d{2}(?:\d{2}|T\d)(\d{2})(?!\d)", re.sub(r"\s+", "", insert_code).upper())
+        if match and int(match.group(1)) > 0:
+            return int(match.group(1)) / 10
     return None
 
 
@@ -266,12 +271,8 @@ def tool_nose_radius(tool) -> float:
 
 
 def nose_radius_from_insert(insert_code: str | None) -> float:
-    """Read the nose radius (mm) from an ISO turning insert code, e.g. 'CNMG 120408' -> 0.8."""
-    if insert_code:
-        match = re.search(r"(\d{2})(\d{2})(\d{2})(?!\d)", insert_code)
-        if match and int(match.group(3)) > 0:
-            return int(match.group(3)) / 10
-    return DEFAULT_NOSE_RADIUS_MM
+    """Read the nose radius (mm) from an ISO turning insert code, e.g. 'CNMG 120408' -> 0.8; else the default."""
+    return insert_nose_radius(insert_code) or DEFAULT_NOSE_RADIUS_MM
 
 
 def finish_feed_from_ra(ra: float, nose_radius: float, f_min: float, f_max: float) -> float:

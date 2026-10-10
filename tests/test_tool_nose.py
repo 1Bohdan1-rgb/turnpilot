@@ -19,6 +19,13 @@ def form(tool, **changes):
 def test_nose_radius_from_the_insert_code():
     assert planner.insert_nose_radius("DNMG150604-PF") == 0.4
     assert planner.insert_nose_radius("CNMG120408-PM") == 0.8
+    assert planner.insert_nose_radius("CNMG 12 04 08-PM") == 0.8  # written with spaces
+    assert planner.insert_nose_radius("CNMG 120408") == 0.8
+    assert planner.insert_nose_radius("CCMT09T304-PF") == 0.4  # thickness T3
+    assert planner.insert_nose_radius("CCMT 09 T3 04-PM") == 0.4
+    assert planner.insert_nose_radius("CNMG 12 04 00") is None  # a sharp corner: no rε
+    assert planner.insert_nose_radius("N123G2 0300 0003-GM") is None  # spaces do not make a grooving code an insert
+    assert planner.insert_nose_radius("860.1-0600-016A0-GM") is None  # a drill
     assert planner.insert_nose_radius("N123G2-0300-0003-GM") is None  # a grooving insert: no rε in its code
 
 
