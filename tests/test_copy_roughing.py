@@ -19,9 +19,9 @@ def hollow_job():
                     blank=50, length=40, stickout=45)
 
 
-def install(machine, position, code, rmpx=44.0):
+def install(machine, position, code, rmpx=44.0, tip=3):
     t = tool(code)
-    t.max_ramp_angle = rmpx
+    t.max_ramp_angle, t.tip_direction = rmpx, tip
     machine.slots[position - 1].tool = t  # in this test's database only
 
 
@@ -74,3 +74,16 @@ def test_without_a_copying_tool_it_is_an_error(machine):
     job = hollow_job()
     prog, text, result = program(job, machine)
     assert any("goes down at up to 36° towards the chuck" in m and "VNMG16 in DVJNR" in m for _, m in result.errors)
+
+
+def test_copy_roughing_needs_the_tip_direction(machine):
+    # the passes are placed for the nose centre: without T they cannot be
+    install(machine, 10, "VNMG160408-PM", tip=None)
+    install(machine, 11, "VNMG160404-PF")
+    db.session.commit()
+    job = hollow_job()
+    prog, text, result = program(job, machine)
+    assert prog.skipped[ops(job, "turning_rough").id] == (
+        "copy roughing needs the tool's nose radius and tip direction T (the passes are placed for the nose centre): "
+        "not generated")
+    assert any("above the tool's ap max" in m for _, m in result.errors)  # the finishing pass meets it all

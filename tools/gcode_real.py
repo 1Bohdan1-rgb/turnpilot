@@ -7,10 +7,13 @@ P1.2 catalogue file confirmed, DEMO programming values (`flask gcode-demo`), gen
 instance/gcode_<file>_part<n>.nc with a summary; they are drafts for the operator, never ready to run (DEMO).
 --tip-direction 4=3 gives the tool at turret position 4 the tip direction T3 in the temporary database (a value typed
 here, not the operator's), so its finishing contour is written with nose radius compensation; the files then end in
-_comp.nc.
+_comp.nc. --install 3=N123E2-0200-0002-GM puts a library tool (by its insert code) at a turret position, and
+--max-ramp 4=27 gives the tool at a position its RMPX, both in the temporary database only (typed here, not the
+operator's); the files then end in _tools.nc (_comp_tools.nc with --tip-direction). The options are applied in
+this order: --install, --max-ramp, --tip-direction.
 
     python tools/gcode_real.py "real_dxf/Zavisa 36.dxf" [--blank 38x120] [--material "Steel 45 (C45)"]
-        [--tip-direction 4=3]
+        [--tip-direction 4=3] [--install 3=N123E2-0200-0002-GM] [--max-ramp 4=27]
 """
 from __future__ import annotations
 
@@ -28,7 +31,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from conftest import confirm_p12_catalogue  # noqa: E402
 
 from turnpilot import create_app, services  # noqa: E402
-from turnpilot.models import DrawingExtraction, Job, Material, TurretSlot, db  # noqa: E402
+from turnpilot.models import DrawingExtraction, Job, Material, Tool, TurretSlot, db  # noqa: E402
 from turnpilot.seed import seed_database  # noqa: E402
 
 
@@ -59,9 +62,15 @@ def main(argv=None):
     parser.add_argument("--material", default="Steel 45 (C45)")
     parser.add_argument("--tip-direction", action="append", default=[], metavar="POSITION=T",
                         help="the tip direction T of the tool at a turret position (typed here, not the operator's)")
+    parser.add_argument("--install", action="append", default=[], metavar="POSITION=INSERT_CODE",
+                        help="put a library tool at a turret position (in the temporary database only)")
+    parser.add_argument("--max-ramp", action="append", default=[], metavar="POSITION=DEGREES",
+                        help="the RMPX of the tool at a turret position (typed here, not the operator's)")
     args = parser.parse_args(argv)
     blank = tuple(float(v) for v in args.blank.lower().split("x")) if args.blank else None
     tips = {int(k): int(v) for k, v in (item.split("=") for item in args.tip_direction)}
+    installs = {int(k): v for k, v in (item.split("=", 1) for item in args.install)}
+    ramps = {int(k): float(v) for k, v in (item.split("=") for item in args.max_ramp)}
     out_dir = ROOT / "instance"
     with tempfile.TemporaryDirectory() as tmp:
         app = create_app({"SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp}/check.db", "ANTHROPIC_MODEL": "none"},
@@ -70,6 +79,16 @@ def main(argv=None):
             db.create_all()
             seed_database()
             confirm_p12_catalogue()
+            for position, code in installs.items():
+                slot = db.session.execute(db.select(TurretSlot).filter_by(position=position)).scalar_one()
+                tool = db.session.execute(db.select(Tool).filter_by(insert_code=code)).scalar_one()
+                print(f"T{position:02d}: {tool.name} {code} installed here (was "
+                      f"{slot.tool.name if slot.tool else 'empty'}; typed here, not the operator's)")
+                slot.tool = tool
+            for position, angle in ramps.items():
+                slot = db.session.execute(db.select(TurretSlot).filter_by(position=position)).scalar_one()
+                slot.tool.max_ramp_angle = angle
+                print(f"T{position:02d} {slot.tool.name}: RMPX {angle:g}° (typed here, not the operator's)")
             for position, tip in tips.items():
                 slot = db.session.execute(db.select(TurretSlot).filter_by(position=position)).scalar_one()
                 slot.tool.tip_direction = tip
@@ -102,7 +121,7 @@ def main(argv=None):
                     if record is None:
                         print(f"{path.name} part {n}: no program: {'; '.join(readiness.blockers)}")
                         continue
-                    target = out_dir / f"gcode_{stem}_part{n}{'_comp' if tips else ''}.nc"
+                    target = out_dir / f"gcode_{stem}_part{n}{'_comp' if tips else ''}{'_tools' if installs or ramps else ''}.nc"
                     target.write_text(record.text, encoding="ascii", newline="\n")
                     sim = json.loads(record.simulation)
                     print(f"{path.name} part {n}: {target.relative_to(ROOT)}: {len(record.text.splitlines())} lines, "

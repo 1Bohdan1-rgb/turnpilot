@@ -227,3 +227,18 @@ def test_a_gouge_along_the_whole_contour_is_quick(pin):
     found = simulate(job, machine, text.replace(" G42", "").replace(" G40", "")).errors
     assert time.perf_counter() - start < 20
     assert len(found) == len(set(found)) > 1000
+
+
+def test_a_groove_bridged_before_a_rising_section(app):
+    # деталь 1's case: under G42 the bridge reaches the taper along the taper's own line, 2·rε of it over the groove
+    # (a gentle way down allowed by RMPX); meeting the taper at its edge left 0.02 mm on it
+    machine = ready_machine()
+    finishing_tool(max_ramp_angle=27.0)
+    job = make_job([Feature(type="face"), Feature(type="od_turn", diameter=20, length=10),
+                    Feature(type="groove", diameter=18, start_diameter=20, length=3),
+                    Feature(type="taper", start_diameter=20, diameter=30, length=5),
+                    Feature(type="od_turn", diameter=30, length=5), Feature(type="parting")],
+                   blank=32, length=30, stickout=35)
+    _, text, result = program(job, machine)
+    assert "G01 X20. Z-10. F0.15\nG01 X18.869 Z-12.434 F0.15\nG01 X20. Z-13. F0.15\nG01 X30. Z-18." in text
+    assert result.ok and result.complete, (result.errors, result.incomplete)

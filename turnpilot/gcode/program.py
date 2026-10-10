@@ -332,34 +332,51 @@ class _Builder:
         return b
 
     def _copy_rough(self, op: OpData, section: Section) -> Block | str | None:
-        """A concave arc roughed by copying: passes along arcs concentric to it, from the stock level its neighbour's
-        roughing leaves (the start Ø) down to the finishing allowance, in equal steps. Each pass goes in above the
-        material, down at its free-side end, along its arc and up at its chuck-side end. The tool must be allowed to
-        go down as steeply as a pass starts (its RMPX)."""
+        """A concave arc roughed by copying, without compensation: the passes are worked out for the nose centre on
+        arcs concentric to the drawn one (its radius less the pass's distance and rε), from the stock level the
+        roughing already written leaves over the arc down to the finishing allowance, in equal steps of at most ap;
+        the program follows the imaginary tip, the centre moved by T. Each pass goes in above the material, down at
+        its free-side end, along its arc and up at its chuck-side end. The tool must be allowed to go down as
+        steeply as a pass starts (its RMPX); without rε and T the passes cannot be placed: not generated."""
+        from .nose import TIP_FROM_CENTRE
+
         a = section.arc
-        r_start, allowance = op.ref_diameter / 2, self.allowance
+        rn, tip = op.nose_radius, op.tip_direction
+        if not rn or tip not in TIP_FROM_CENTRE:
+            return ("copy roughing needs the tool's nose radius and tip direction T (the passes are placed for the "
+                    "nose centre): not generated")
+        allowance = self.allowance
+        # the level the roughing passes already written leave over the whole arc, else the planner's start Ø
+        over = [r for _, z_to, r in self.roughed if z_to <= section.z_chuck + allowance + EPS]
+        r_start = min(over) if over else op.ref_diameter / 2
         depth = r_start - (a.cr - a.radius) - allowance
         if depth <= EPS:
             return None
-        passes = max(1, op.passes)
+        passes = max(1, math.ceil(round(depth / op.ap, 9))) if op.ap else max(1, op.passes)
         step = depth / passes
-        b = self.block(op, f"COPY ROUGH ARC R{a.radius:g} {passes} X AP {step:.3g} FROM D{op.ref_diameter:g}")
+        b = self.block(op, f"COPY ROUGH ARC R{a.radius:g} {passes} X AP {step:.3g} FROM D{_r3(2 * r_start):g}")
         x_above = _r3(2 * self._above(0.0, section.z_chuck))
+        dz, dr = TIP_FROM_CENTRE[tip]
         commands, steepest = [], 0.0
         for k in range(1, passes + 1):
-            rho = a.radius - (allowance + (passes - k) * step)  # the first pass farthest from the arc
-            h = a.cr - r_start
+            rho = a.radius - (allowance + (passes - k) * step) - rn  # the centre's circle, first pass farthest
+            h = a.cr - (r_start + rn)  # the centre where the nose's bottom is at the stock level
             if rho <= h + EPS:
                 continue  # it does not reach below the stock level
             w = math.sqrt(rho * rho - h * h)
-            za, zb = min(a.cz + w, section.z_free), max(a.cz - w, section.z_chuck)
+            # the whole nose stays over the arc's section at its chuck side (the neighbour there rises: a face)
+            za, zb = min(a.cz + w, section.z_free), max(a.cz - w, section.z_chuck + rn)
+            if zb >= za - EPS:
+                continue
             ra = a.cr - math.sqrt(max(rho * rho - (za - a.cz) ** 2, 0.0))
             rb = a.cr - math.sqrt(max(rho * rho - (zb - a.cz) ** 2, 0.0))
             steepest = max(steepest, math.degrees(math.atan2(abs(za - a.cz), a.cr - ra)))
-            z0, r0, z1, r1 = _r3(za), _r3(ra), _r3(zb), _r3(rb)
-            commands += [Rapid(z=_r3(za)), Feed(x=_r3(2 * r0), f=op.f),
-                         ArcMove(x=_r3(2 * r1), z=z1, i=_r3(a.cr - r0), k=_r3(a.cz - z0),
-                                 clockwise=arc_direction(z0, r0, z1, r1, a.cz, a.cr)),
+            # the imaginary tip: the centre moved by T
+            z0, r0, z1, r1 = _r3(za + dz * rn), _r3(ra + dr * rn), _r3(zb + dz * rn), _r3(rb + dr * rn)
+            cz, cr = a.cz + dz * rn, a.cr + dr * rn
+            commands += [Rapid(z=z0), Feed(x=_r3(2 * r0), f=op.f),
+                         ArcMove(x=_r3(2 * r1), z=z1, i=_r3(cr - r0), k=_r3(cz - z0),
+                                 clockwise=arc_direction(z0, r0, z1, r1, cz, cr)),
                          Feed(x=x_above), Rapid(z=self.z_safe)]
         if steepest > op.max_ramp_angle + 0.5:
             return (f"copy roughing goes down at {steepest:.0f}° at its passes' start, above the tool's RMPX "
@@ -369,9 +386,15 @@ class _Builder:
         self._start(b, op)
         b.commands += [Rapid(x=x_above)] + commands
         self._end(b)
-        b.notes.append(f"concave arc: {passes} passes along arcs concentric to it, leaves {allowance:g} mm for "
-                       "finishing")
+        b.notes.append(f"concave arc: {passes} passes, the nose centre on arcs concentric to it (rε {rn:g}, T{tip}), "
+                       f"leaves {allowance:g} mm for finishing")
         return b
+
+    def _copies(self, op: OpData) -> bool:
+        """A concave arc roughed by copying: after the other roughing, which leaves the level it starts from."""
+        section = self.p.section_of(op.feature_id)
+        return bool(section and section.kind == "arc" and section.arc is not None and not section.arc.convex
+                    and op.max_ramp_angle is not None)
 
     def _arc_profile_pass(self, section: Section, allowance: float, op: OpData):
         """The roughing tool along the arc, the allowance outside it (the same centre, R ± allowance); (commands,
@@ -426,14 +449,30 @@ class _Builder:
             if not on_contour:
                 self._entry(b, section, current_f)
                 on_contour = True
-            if self.comp and op is None and self._short_step_after(section, rnose):
-                # a bridged groove whose far side steps up by less than rε: the nose cannot turn into that step
-                # under G42 (an interference), so the contour goes straight across the groove to the next section
+            if self.comp and op is None and section.kind == "groove" and section.index + 1 < len(self.p.sections):
                 x0, z0 = _position(b.commands)
                 nxt = self.p.sections[section.index + 1].segments()[0]
-                if not self._contour_line(b, section, x0, z0, nxt.r0, nxt.z0, ramp, current_f):
-                    on_contour = False
-                continue
+                tz, tr = _tangent(nxt)
+                r0 = x0 / 2
+                if tr > EPS and tz < -EPS:
+                    # the next section rises (a taper, an arc): onto its start along its own line, 2·rε of it in the
+                    # air over the groove, so the nose turns onto that line there (inner corners in the air, both
+                    # sides long enough) and meets the part's edge without a corner
+                    zq, rq = nxt.z0 - 2 * rnose * tz, nxt.r0 - 2 * rnose * tr
+                    down = math.degrees(math.atan2(r0 - rq, z0 - zq)) if rq < r0 else 0.0
+                    if nxt.z0 < zq < z0 - EPS and rq > section.d_free / 2 + EPS and (
+                            down == 0.0 or (ramp is not None and down <= ramp + 0.5)):
+                        if not (self._contour_line(b, section, x0, z0, rq, zq, ramp, current_f)
+                                and self._contour_line(b, section, *_position(b.commands), nxt.r0, nxt.z0, ramp,
+                                                       current_f)):
+                            on_contour = False
+                        continue
+                if self._short_step_after(section, rnose):
+                    # a far side stepping up by less than rε: the nose cannot turn into that step under G42 (an
+                    # interference), so the contour goes straight across the groove to the next section
+                    if not self._contour_line(b, section, x0, z0, nxt.r0, nxt.z0, ramp, current_f):
+                        on_contour = False
+                    continue
             for segment in section.segments():
                 x0, z0 = _position(b.commands)
                 if (x0, z0) != (_r3(2 * segment.r0), _r3(segment.z0)):  # onto the segment's start (a step)
@@ -606,7 +645,7 @@ class _Builder:
     def build(self) -> list[Block | tuple[int, str]]:
         out: list = []
         rough = sorted((op for op in self.ops if op.tool_type == "turning_rough"),
-                       key=lambda op: (-(op.ref_diameter or 0), op.sequence))
+                       key=lambda op: (self._copies(op), -(op.ref_diameter or 0), op.sequence))
         finish = [op for op in self.ops if op.tool_type == "turning_finish"]
         done_rough = done_finish = False
         for op in self.ops:
