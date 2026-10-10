@@ -853,6 +853,31 @@ def choose_arc_radius(job_id, feature_id):
     return redirect(url_for("main.job_detail", job_id=job_id))
 
 
+@bp.route("/jobs/<int:job_id>/features/<int:feature_id>/shape", methods=["POST"])
+def set_arc_shape(job_id, feature_id):
+    """An existing arc or fillet: the operator sets its shape (convex / concave) and a fillet's side."""
+    feature = db.get_or_404(Feature, feature_id)
+    if feature.job_id != job_id or feature.type not in RADIUS_TYPES or feature.is_deleted:
+        abort(404)
+    try:
+        convex = _arc_convex(request.form, "", feature.type)
+        if convex is None:
+            raise FormError("Arc shape: convex or concave")
+        side = request.form.get("face") or None
+        if feature.type == "fillet" and side not in ("left", "right"):
+            raise FormError("Fillet side: left or right on the drawing")
+    except FormError as e:
+        flash(str(e), "error")
+        return redirect(url_for("main.job_detail", job_id=job_id))
+    feature.arc_convex = convex
+    if feature.type == "fillet":
+        feature.face = side
+    db.session.commit()
+    flash(f"{feature.type} R{feature.radius:g}: {'convex' if convex else 'concave'}"
+          + (f", {side}" if feature.type == "fillet" else "") + ". Calculate the job again.")
+    return redirect(url_for("main.job_detail", job_id=job_id))
+
+
 @bp.route("/jobs/<int:job_id>/features/<int:feature_id>/delete", methods=["POST"])
 def delete_feature(job_id, feature_id):
     feature = db.get_or_404(Feature, feature_id)

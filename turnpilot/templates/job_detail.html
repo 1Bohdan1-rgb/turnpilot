@@ -25,7 +25,15 @@
       <td>{{ f.pitch if f.pitch is not none else "" }}</td>
       <td>{{ f.start_diameter if f.start_diameter is not none else "" }}</td>
       <td>{{ f.radius if f.radius is not none else "" }}
-        {% if f.type in ("arc", "fillet") %}<span class="small muted">{{ {True: "convex", False: "concave"}.get(f.arc_convex, "shape?") }}{% if f.type == "fillet" and f.face %}, {{ f.face }}{% endif %}</span>{% endif %}
+        {% if f.type in ("arc", "fillet") %}<span class="small muted">{{ {True: "convex", False: "concave"}.get(f.arc_convex, "shape?") }}{% if f.type == "fillet" and f.face %}, {{ f.face }}{% endif %}</span>
+          <form method="post" action="{{ url_for('main.set_arc_shape', job_id=job.id, feature_id=f.id) }}" class="inline-form">
+            <select name="arc_shape" aria-label="Shape"><option value="">shape…</option>
+              <option value="convex" {% if f.arc_convex == true %}selected{% endif %}>convex (away from the axis)</option>
+              <option value="concave" {% if f.arc_convex == false %}selected{% endif %}>concave (into the axis)</option></select>
+            {% if f.type == "fillet" %}<select name="face" aria-label="Side"><option value="">side…</option>
+              <option value="left" {% if f.face == "left" %}selected{% endif %}>left</option>
+              <option value="right" {% if f.face == "right" %}selected{% endif %}>right</option></select>{% endif %}
+            <button class="small">Set</button></form>{% endif %}
         {% if f.type == "arc" and f.drawn_radius is not none and f.radius is not none and (f.drawn_radius - f.radius)|abs > 0.01 %}
           <div class="warning small">{% set c = conflicts.get(f.id) %}{% if c %}Z{{ c.z_free|round(3) }} to Z{{ c.z_chuck|round(3) }} (D{{ c.d_free }} to D{{ c.d_chuck }}): {% endif %}dimension R{{ f.radius }} ≠ geometry R{{ f.drawn_radius }}: not programmed until you decide
             <form method="post" action="{{ url_for('main.choose_arc_radius', job_id=job.id, feature_id=f.id) }}" class="inline-form">
