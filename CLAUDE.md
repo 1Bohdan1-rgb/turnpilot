@@ -68,6 +68,14 @@ Stages, in this order:
    profile first, one control, simulation required.
    **Built 2026-10-09** (see "Stage 6: G-code"): the operator checked the Zavisa 36 pin program as a turner; ready
    to run waits for the machine's real values (passport, the operator's programming values).
+7. Probing the blank and sending the program to the machine. **Planned 2026-10-10, not started**: it starts only
+   once the machine's passport shows a probe and the custom macro option (Fanuc Custom Macro B).
+   - At the program's start a probing block (Custom Macro B) measures the blank's real Ø and stick-out and sets
+     Z0 on the face.
+   - The measured blank is compared with the blank of the TurnPilot plan: too short, stuck out otherwise, or a Ø
+     larger than planned (a cut deeper than ap max, speeds for another Ø) → alarm #3000 with the reason; no cut.
+   - A tool setter probe: the tools' length offsets come from the measurement, not typed by hand.
+   - The program is sent to the machine chosen on the shop map (Ethernet).
 
 ## Number check, stage 1 (2026-09-30)
 - `pdf_text.py` reads the numbers of a CAD PDF with vector text:

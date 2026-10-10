@@ -408,6 +408,15 @@ presses Start after the machine check.
   `--tip-direction 4=3`, `--install 3=N123E2-0200-0002-GM` and `--max-ramp 4=27` set a tip direction, put a
   library tool at a position and give an RMPX in its temporary database only).
 
+## Planned: probing the blank, sending the program (stage 7)
+
+Not started; it needs the machine's passport to show a probe and the custom macro option (Fanuc Custom Macro B).
+- A probing block at the program's start measures the blank's real Ø and stick-out and sets Z0 on the face.
+- The measured blank is compared with the plan's: too short, stuck out otherwise, or a larger Ø than planned (a cut
+  deeper than ap max, speeds for another Ø) → alarm #3000 with the reason, and no cut starts.
+- A tool setter probe gives the tools' length offsets from the measurement, not typed by hand.
+- The program is sent over Ethernet to the machine chosen on the shop map.
+
 ## Stack
 
 Python, Flask, SQLAlchemy (Flask-SQLAlchemy), Flask-Migrate (Alembic), SQLite, Jinja2 with plain CSS,
