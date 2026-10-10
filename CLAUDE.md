@@ -24,7 +24,8 @@ with Claude vision. Code, comments and README in English; the user writes in Ukr
   Also `--repeat`, `--compare LABEL SOURCE`, `--rescore` (re-score saved `*.runs.json`, no calls).
 
 ## Rules (from the user)
-- Відповідай українською (answer the user in Ukrainian); code, comments and README stay in English.
+- Відповідай українською (answer the user in Ukrainian); code, file names, commit messages, code comments and
+  README stay in English.
 - No paid API calls without the user's explicit "так" and the stated number of calls.
 - Always unset `ANTHROPIC_BASE_URL` for API calls. Never print the API key; `.env` is gitignored.
 - `real_*` drawings and expected answers stay local (gitignored, copyright). Eval reports go to `instance/`.
@@ -738,11 +739,33 @@ d82ea01ebe01, d032e6444de3 (DB backups `instance/turnpilot.db.bak-2026-10-09-*`)
   temporary DB): Zavisa 36 bushing and pin: 0 errors, complete; деталь 1: 0 errors, not complete (R10 sphere
   manual, groove 2 mm narrower than the insert, M22 left out: its run-in over the sphere); НД 012: 0 errors, not
   complete (the arcs R12.5 / R20.46 manual). Programs in `instance/gcode_*.nc`.
-- Not done: arcs / fillets (G02/G03), a groove's finishing pass, boring and internal threads, G41/G42, other
-  dialects (Haas / Sinumerik need their manuals), re-chucking. The in-copying angle of T4's holder and the real
+- Not done: a groove's finishing pass, boring and internal threads, other dialects (Haas / Sinumerik need their manuals), re-chucking. The in-copying angle of T4's holder and the real
   machine values are to be entered by the operator.
 - In the user's DB the 3 graph rows (T6, T8 feeds) are not confirmed: grooving and parting are left out of a
   program until they are, so the Zavisa pin's back chamfer would also be left (PART NOT COMPLETE).
+
+## Arcs G02/G03 and nose radius compensation G41/G42 (built 2026-10-10)
+Plan of 8 commits agreed with the user: P1 I / K; P2 the convexity from a DXF is set by the code, otherwise by the
+operator; P3 G41 / G42 in the finishing contour only; P4 the tip direction T only from the operator, without it no
+compensation (CHECKs stay); P5 an arc whose drawn radius ≠ dimension is not generated until the operator chooses.
+Commits a95492f, fbde05c, faa0310, 6731c10, 835d9a1 (arcs), e49ea07 + 7503246 (rε / T; rε read with spaces),
+043c517 (G42), e647687 (nose simulation), 48f530f (fixes found on the real files). Migration 500ead6679f1 (rε, T).
+- Generator: G42 only when the finishing tool has rε and T; the header and the checklist name the offset page's
+  R / T; start-up on the move onto the contour (along the first segment's line; a sphere at X0 Z0 along the face);
+  G40 on the move off it, or on the move back in Z at a larger section's face; a groove bridged before a step up
+  shorter than rε is crossed straight.
+- Simulation: a turning / facing insert with rε and T is its nose circle (T0–T4, T9; T5–T8 an error). Compensation
+  errors (see README). A nose fillet in an inner corner (turn > 2°, at most rε thick) is a warning, not PART NOT
+  COMPLETE. Start-up / cancel modelled as type A: the control's parameter is to be checked by the operator.
+- Real files (local, `tools/gcode_real.py --tip-direction 4=3`, T3 typed there, DEMO values; 0 errors in all):
+  - Zavisa 36 bushing and pin: complete; the pin differs from the operator-checked program only in the
+    compensation lines (header, G42 X10. + along the taper, G40, the CHECKs on chamfers / taper gone);
+  - деталь 1: not complete: the 2 mm groove (narrower than the 3 mm insert, no tool);
+  - НД 012: not complete: the concave R12.5 (the in-copying angle is not set) and the R20.46 arc (drawn R51.61,
+    waits for the operator's radius).
+  Without T the real programs differ from e49ea07 only by the zero-length move after G02 / G03.
+- A run of `gcode_real.py` on НД 012 hung for ~39 min before 48f530f: a message formatted for every nose position of
+  a mass gouge; now one message per cell, 12 s per sheet.
 
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
@@ -753,7 +776,7 @@ d82ea01ebe01, d032e6444de3 (DB backups `instance/turnpilot.db.bak-2026-10-09-*`)
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 955 tests pass. Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1009 tests pass (2026-10-10). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

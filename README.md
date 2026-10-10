@@ -349,26 +349,41 @@ presses Start after the machine check.
 
 - **Zero and profile:** Z0 on the free end face the operator chose (suggested: opposite the largest Ø), X0 on the
   axis, Z negative towards the chuck; the profile is built from the confirmed rows (grooves bridged at the
-  smaller turned neighbour, threads at their reduced major Ø, chamfers, tapers).
+  smaller turned neighbour, threads at their reduced major Ø, chamfers, tapers, arcs and fillets with their
+  centres). An arc is programmed only when its shape (convex / concave) is known and its radius is the one drawn;
+  an arc drawn with another radius waits for the operator's choice on the job page.
 - **What is written** (Fanuc 0i-T, G code system A; explicit moves, no canned cycles so that the simulation reads
   exactly what the machine does): facing past the axis; roughing from the chuck side, each section from its
-  neighbour as the neighbour's roughing leaves it, a taper in steps and then along its line; one finishing
-  contour (tapers and free-side chamfers included); grooves by the touched-off corner, an optional dwell (G04);
+  neighbour as the neighbour's roughing leaves it, a taper or an arc in steps and then along its line; one
+  finishing contour (tapers, chamfers, arcs and fillets as G02 / G03 with I / K); grooves by the touched-off corner, an optional dwell (G04);
   threads with one G92 per pass (C77 / C82) in G97; drilling on the axis in G97 with pecks; a back chamfer with
   the parting insert's corner; parting past the axis. G50 S (the max spindle speed) before every G96; M03 / M04
   as the operator set it for a right-hand tool; G28 U0. / W0. before each tool; every number with a decimal
   point; comments in upper-case ASCII.
-- **Not written:** boring, internal threads, taps, arcs and fillets (manual), a groove's finishing pass, cuts down
-  towards the chuck steeper than the insert's max in-copying angle (set per tool; unknown = not allowed),
-  re-chucking, hex flats, nose radius compensation (chamfers and tapers come out slightly fuller: a check).
+- **Nose radius compensation (G42, finishing contour only):** when the finishing tool's nose radius rε (the
+  operator's, else the insert code's, read with or without spaces) and its tip direction T (the operator's, 0–9 as
+  on the control's offset page) are both known. The contour is the drawing; the header and the operator's
+  checklist name the offset page's R and T. G42 starts on the move onto the contour (at the free end along the
+  first segment's line; a spherical end at X0 Z0 along the face, never across the axis); G40 on the move off it,
+  or on the move back in Z when the contour ends at a larger section's face. Without T: no G41 / G42, and CHECKs
+  say how much chamfers, tapers and arcs come out fuller.
+- **Not written:** boring, internal threads, taps, a groove's finishing pass, a concave radius smaller than rε, cuts
+  down towards the chuck steeper than the insert's max in-copying angle (set per tool; unknown = not allowed),
+  re-chucking, hex flats.
 - **Every number has a source:** cutting data only from confirmed catalogue rows or the operator (an operation
   with the tool's own values is left out); the max spindle speed from the passport or the operator; clearances,
   retract, jaws' safety distance, run-in, peck depth, overshoots, touched-off corner and dwell are the operator's
   programming values (Machine page), with no default; the stick-out and the stock beyond Z0 are the job's G-code
   set-up. `flask gcode-demo [--job ID]` fills the empty ones with DEMO values (source "demo") to look at a
   program: a banner names them and "Ready to run" stays off until the operator saves them.
-- **Simulation** (it reads the printed text, strictly): the stock as a radius per z, the tool as its tip (a
-  grooving / parting insert: its width). Errors: a rapid through material (also if the axes move one after the
+- **Simulation** (it reads the printed text, strictly): the stock as a radius per z; a turning or facing insert
+  with rε and T known as its nose circle (the tip moved by T without compensation; the offset path with G41 / G42:
+  outer corners round on rε, inner corners at the intersection, start-up and cancel of type A); other tools as
+  their tip (a grooving / parting insert: its width). Compensation errors: G41 / G42 / G40 on an arc or without a
+  move, the side changed without G40, a tool change / G28 / G92 / the end under compensation, two blocks without a
+  move under it, a tool without rε or T, an arc or a corner the nose does not fit (interference), the nose centre
+  below the axis; T5–T8 are not simulated. The material a nose leaves in an inner corner of the drawing is a
+  warning naming the corner. Other errors: a rapid through material (also if the axes move one after the
   other), a cut below the finished profile, a turning cut deeper than the insert's ap max, a cut down towards the
   chuck steeper than the insert allows, the jaws' safety distance, X below the axis, G96 while drilling, G96
   without G50, speeds above the limits, the wrong spindle direction, G92 outside G97, n·P above the threading
@@ -379,7 +394,9 @@ presses Start after the machine check.
   only without errors, with the whole part machined, without DEMO values, and while the program still matches the
   job and the machine; then the .nc file can be downloaded.
 - **Tests:** golden programs of two synthetic parts (`tests/fixtures/gcode/`), and bad programs the simulation
-  must catch. `tools/gcode_real.py` runs real DXF files locally (their programs stay in `instance/`).
+  must catch. `tools/gcode_real.py` runs real DXF files locally (their programs stay in `instance/`;
+  `--tip-direction 4=3` gives a turret tool a tip direction in its temporary database, to see the compensated
+  programs).
 
 ## Stack
 
