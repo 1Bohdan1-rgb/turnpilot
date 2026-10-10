@@ -89,7 +89,18 @@ LIBRARY_TOOLS = [
          nose_radius=0.2, max_depth=8.0, f_rec=0.07, vc_points="0.05:315, 0.5:140",
          source=f"{CATALOGUE_P12}: B10-B11 (insert, PDF 314-315), B139 (f, graph, PDF 443), B130 (Vc), "
                 "B29 (holder R/LF123E08, max depth 8, PDF 333)"),
-]
+] + [dict(name=name, type=kind, insert_code=code, grade=grade, iso_group="P", vc_min=vc[-1], vc_max=vc[0],
+          f_min=f[0], f_max=f[2], ap_min=ap[0], ap_max=ap[2], ap_rec=ap[1], f_rec=f[1],
+          vc_points=f"0.1:{vc[0]}, 0.4:{vc[1]}, 0.8:{vc[2]}",
+          source=f"{CATALOGUE_P12}: A172 (grade ★, checked on the page image), A288 (ap, f), {vc_page} (Vc); "
+                 "holder DVJNR 2020K16 / 2525M16, RMPX 44° (A212, PDF 216): the operator's choice")
+     # VNMG copying inserts (35°): PF finishes, PM roughs a profile going down towards the chuck. The holder and so
+     # RMPX are left empty until the operator confirms the holder (the suggestion is on the tool page).
+     for name, kind, code, grade, ap, f, vc, vc_page in (
+         ("Copy finishing VNMG (P)", "turning_finish", "VNMG160404-PF", "GC4315", (0.25, 0.4, 1.5),
+          (0.07, 0.15, 0.3), (510, 365, 265), "A278"),
+         ("Copy roughing VNMG (P)", "turning_rough", "VNMG160408-PM", "GC4325", (0.5, 2.0, 4.0),
+          (0.15, 0.3, 0.5), (455, 305, 215), "A279"))]
 
 
 def seed_database():

@@ -76,3 +76,24 @@ def test_a_way_out_is_named_when_the_catalogue_has_one(app):
     assert "goes down at up to 40°" in message
     assert "(e.g. VNMG16 in DVJNR (44°, Sandvik TT 2020 A212 (PDF 216)); VNMG16 in PVJNR (41°, Sandvik TT 2020 A212 " \
            "(PDF 216)))" in message
+
+
+def test_the_vnmg_inserts_are_in_the_library_not_in_the_turret(app, client):
+    from turnpilot.models import TurretSlot
+    pf = db.session.execute(db.select(Tool).filter_by(insert_code="VNMG160404-PF")).scalar_one()
+    pm = db.session.execute(db.select(Tool).filter_by(insert_code="VNMG160408-PM")).scalar_one()
+    assert (pf.type, pf.grade, pf.ap_rec, pf.f_rec, pf.vc_points) == ("turning_finish", "GC4315", 0.4, 0.15,
+                                                                      "0.1:510, 0.4:365, 0.8:265")
+    assert (pm.type, pm.grade, pm.ap_rec, pm.f_rec, pm.vc_points) == ("turning_rough", "GC4325", 2.0, 0.3,
+                                                                      "0.1:455, 0.4:305, 0.8:215")
+    for tool in (pf, pm):
+        assert tool.max_ramp_angle is None and tool.holder_code is None  # until the operator confirms the holder
+        assert db.session.execute(db.select(TurretSlot).filter_by(tool_id=tool.id)).first() is None
+    assert "The holder is DVJNR: take 44.0°" in client.get(f"/tools/{pf.id}/edit").get_data(as_text=True)
+    from conftest import confirm_p12_catalogue
+    from turnpilot.models import Material
+    confirm_p12_catalogue()
+    steel = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
+    spec = services.tool_spec(pf, steel, services.confirmed_rows())
+    assert (spec.ap_rec, spec.f_rec, spec.vc_points) == (0.4, 0.15, ((0.1, 510.0), (0.4, 365.0), (0.8, 265.0)))
+    assert spec.catalogue_warning is None and "A288" in spec.catalogue_note

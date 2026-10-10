@@ -43,7 +43,8 @@ def test_seed_tools_carry_a_source_only_when_checked_against_the_catalogue(app):
     tools = {t.name: t for t in db.session.execute(db.select(Tool)).scalars()}
     checked = ("Facing SCMT", "Rough turning CNMG (P)", "Finish turning DNMG (P)", "Grooving 3 mm",
                "Threading 60 deg", "Parting 3 mm", "Rough boring CCMT (P)", "Boring bar CCMT",
-               "Drill 860-GM Ø6", "Drill 860-GM Ø8", "Drill 860-GM Ø10", "Grooving 2 mm")
+               "Drill 860-GM Ø6", "Drill 860-GM Ø8", "Drill 860-GM Ø10", "Grooving 2 mm",
+               "Copy finishing VNMG (P)", "Copy roughing VNMG (P)")
     assert all(tools[name].source.startswith("Sandvik") for name in checked)
     assert all(t.source is None for name, t in tools.items() if name not in checked)
 
