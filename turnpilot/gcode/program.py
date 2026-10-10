@@ -274,6 +274,8 @@ class _Builder:
             return "no start diameter or depth of cut: not generated"
         if section.kind == "arc" and section.arc is None:
             return f"the arc is not programmed: {section.arc_problem}"
+        if section.kind == "arc" and not section.arc.convex and op.max_ramp_angle is not None:
+            return self._copy_rough(op, section)
         name = _section_name(section)
         b = self.block(op, f"ROUGH {name} {op.passes} X AP {op.ap:g} FROM D{op.ref_diameter:g}")
         own = [p for segment in section.segments() for p in segment.points()]  # its own, not a neighbour's step
@@ -327,6 +329,48 @@ class _Builder:
         self._end(b)
         if allowance:
             b.notes.append(f"leaves {allowance:g} mm per side for finishing")
+        return b
+
+    def _copy_rough(self, op: OpData, section: Section) -> Block | str | None:
+        """A concave arc roughed by copying: passes along arcs concentric to it, from the stock level its neighbour's
+        roughing leaves (the start Ø) down to the finishing allowance, in equal steps. Each pass goes in above the
+        material, down at its free-side end, along its arc and up at its chuck-side end. The tool must be allowed to
+        go down as steeply as a pass starts (its RMPX)."""
+        a = section.arc
+        r_start, allowance = op.ref_diameter / 2, self.allowance
+        depth = r_start - (a.cr - a.radius) - allowance
+        if depth <= EPS:
+            return None
+        passes = max(1, op.passes)
+        step = depth / passes
+        b = self.block(op, f"COPY ROUGH ARC R{a.radius:g} {passes} X AP {step:.3g} FROM D{op.ref_diameter:g}")
+        x_above = _r3(2 * self._above(0.0, section.z_chuck))
+        commands, steepest = [], 0.0
+        for k in range(1, passes + 1):
+            rho = a.radius - (allowance + (passes - k) * step)  # the first pass farthest from the arc
+            h = a.cr - r_start
+            if rho <= h + EPS:
+                continue  # it does not reach below the stock level
+            w = math.sqrt(rho * rho - h * h)
+            za, zb = min(a.cz + w, section.z_free), max(a.cz - w, section.z_chuck)
+            ra = a.cr - math.sqrt(max(rho * rho - (za - a.cz) ** 2, 0.0))
+            rb = a.cr - math.sqrt(max(rho * rho - (zb - a.cz) ** 2, 0.0))
+            steepest = max(steepest, math.degrees(math.atan2(abs(za - a.cz), a.cr - ra)))
+            z0, r0, z1, r1 = _r3(za), _r3(ra), _r3(zb), _r3(rb)
+            commands += [Rapid(z=_r3(za)), Feed(x=_r3(2 * r0), f=op.f),
+                         ArcMove(x=_r3(2 * r1), z=z1, i=_r3(a.cr - r0), k=_r3(a.cz - z0),
+                                 clockwise=arc_direction(z0, r0, z1, r1, a.cz, a.cr)),
+                         Feed(x=x_above), Rapid(z=self.z_safe)]
+        if steepest > op.max_ramp_angle + 0.5:
+            return (f"copy roughing goes down at {steepest:.0f}° at its passes' start, above the tool's RMPX "
+                    f"{op.max_ramp_angle:g}°: not generated")
+        if not commands:
+            return None
+        self._start(b, op)
+        b.commands += [Rapid(x=x_above)] + commands
+        self._end(b)
+        b.notes.append(f"concave arc: {passes} passes along arcs concentric to it, leaves {allowance:g} mm for "
+                       "finishing")
         return b
 
     def _arc_profile_pass(self, section: Section, allowance: float, op: OpData):

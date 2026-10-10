@@ -443,6 +443,10 @@ def concave_arc_angle(feature) -> float | None:
     return max(math.degrees(math.atan2(abs(z - zc), abs(r - rc))) for z, r in ((0.0, d0 / 2), (feature.length, d1 / 2)))
 
 
+COPY_ROUGH_NOTE = "concave arc: copy roughing along arcs concentric to it, down to the finishing allowance"
+COPY_ROUGH_WITH_FINISHING = ("roughed with the finishing copying insert T{position} (no roughing tool may go down at "
+                             "{angle:.0f}°): {passes} passes of ap {ap:g}: check the time, or install a copying "
+                             "roughing insert")
 COPYING_NOTE = ("finished by T{position} (RMPX {rmpx:g}°): the concave arc goes down at up to {angle:.0f}° towards "
                 "the chuck, {default}")
 
@@ -1756,11 +1760,19 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
             rough_boring_fallback = entry is not None
     else:
         entry, warning = select_tool(step.tool_type, job.iso_group, turret)
-    copying = None
-    if entry is not None and step.tool_type == "turning_finish" and job.axial_order:
-        angle = concave_arc_angle(feature)
-        if angle is not None:
-            entry, copying = select_copying_tool(step.tool_type, angle, job.iso_group, turret, entry)
+    copying = rough_with_finishing = None
+    angle = concave_arc_angle(feature) if job.axial_order else None
+    if entry is not None and angle is not None and step.tool_type == "turning_finish":
+        entry, copying = select_copying_tool(step.tool_type, angle, job.iso_group, turret, entry)
+    elif entry is not None and angle is not None and step.tool_type == "turning_rough":
+        default = entry
+        entry, copying = select_copying_tool("turning_rough", angle, job.iso_group, turret, default)
+        if copying is None and (default.tool.max_ramp_angle is None or angle > default.tool.max_ramp_angle + 0.5):
+            # no roughing tool may go down into it: a finishing copying insert roughs it, with its own ap
+            finisher, copying = select_copying_tool("turning_finish", angle, job.iso_group,
+                                                    [e for e in turret if e.tool.type == "turning_finish"], default)
+            if copying is not None:
+                entry, rough_with_finishing = finisher, angle
     if entry is None:
         op.warnings.append(warning)
         return op
@@ -1797,7 +1809,11 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
             op.warnings.append("arc: its shape or its circle is not known: roughing not planned")
         else:
             _plan_rough_turning(op, tool, replace(feature, diameter=lowest), job, turret, start, power)
-            op.notes.append(ARC_STEPS_NOTE)
+            copy = angle is not None and tool.max_ramp_angle is not None and angle <= tool.max_ramp_angle + 0.5
+            op.notes.append(COPY_ROUGH_NOTE if copy else ARC_STEPS_NOTE)
+            if rough_with_finishing is not None and op.passes:
+                op.warnings.append(COPY_ROUGH_WITH_FINISHING.format(position=entry.position, angle=angle,
+                                                                    passes=op.passes, ap=op.ap))
     elif step.tool_type == "turning_rough" and feature.diameter is not None:
         _plan_rough_turning(op, tool, feature, job, turret, start, power)
     elif step.tool_type == "grooving" and step.mode == "finish" and groove_needs_finish(feature):
