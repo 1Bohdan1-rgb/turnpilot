@@ -1213,6 +1213,30 @@ def groove_plunges(width: float, insert_width: float) -> tuple[int, float]:
     return plunges, round((width - insert_width) / (plunges - 1), 3)
 
 
+# RMPX, the max in-copying angle (down towards the chuck) of an insert in a holder style, from the catalogue. A
+# suggestion only: the operator confirms the holder, and only then the angle is the tool's.
+# (insert shape and size at the start of its code, holder styles, angle, source)
+RMPX_TABLE = (
+    ("DNMG15", ("DDJNR", "PDJNR"), 27.0, "Sandvik TT 2020 A204 (PDF 208), 93° holder"),
+    ("VNMG16", ("DVJNR",), 44.0, "Sandvik TT 2020 A212 (PDF 216)"),
+    ("VNMG16", ("PVJNR",), 41.0, "Sandvik TT 2020 A212 (PDF 216)"),
+)
+
+
+def rmpx_suggestions(insert_code: str | None, holder_code: str | None = None) -> list[tuple[str, float, str]]:
+    """(holder styles, RMPX, source) the catalogue gives for the insert; with a holder code, its style only."""
+    code = re.sub(r"\s+", "", insert_code or "").upper()
+    holder = re.sub(r"\s+", "", holder_code or "").upper()
+    out = []
+    for prefix, styles, angle, source in RMPX_TABLE:
+        if not code.startswith(prefix):
+            continue
+        styles = tuple(s for s in styles if not holder or holder.startswith(s))
+        if styles:
+            out.append(("/".join(styles), angle, source))
+    return out
+
+
 def seat_size(code: str | None, holder: bool = False) -> str | None:
     """The seat size letter of a CoroCut 1-2 insert ('N123E2-0200-0002-GM' -> 'E') or holder ('RF123E08-2525B',
     'LF123E08-2020B' -> 'E'); None for other codes."""

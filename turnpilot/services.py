@@ -309,7 +309,8 @@ def gcode_simulation(job, machine, text, profile=None):
         if slot.tool is not None:
             tools[slot.position] = gsim.ToolInfo(
                 slot.tool.type, slot.tool.ap_max, slot.tool.insert_width, slot.tool.max_ramp_angle,
-                slot.tool.nose_radius or planner.insert_nose_radius(slot.tool.insert_code), slot.tool.tip_direction)
+                slot.tool.nose_radius or planner.insert_nose_radius(slot.tool.insert_code), slot.tool.tip_direction,
+                slot.tool.name)
     data = gsim.SimInput(
         profile=profile, stock_radius=planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
         face_stock=job.face_stock_mm or 0.0, stickout=job.stickout_mm or 0.0,

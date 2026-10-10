@@ -455,7 +455,7 @@ def _holder_code(form):
 def _ramp_angle(form):
     angle = _number(form, "max_ramp_angle")
     if angle is not None and angle >= 90:
-        raise FormError("Max in-copying angle: degrees to the axis, below 90")
+        raise FormError("RMPX (max in-copying angle): degrees to the axis, below 90")
     return angle
 
 
@@ -491,6 +491,7 @@ def _tool_fields(form):
         max_depth=_number(form, "max_depth"),
         holder_code=_holder_code(form),
         max_ramp_angle=_ramp_angle(form),
+        max_ramp_source=form.get("max_ramp_source", "").strip()[:200] or None,
         nose_radius=_number(form, "nose_radius"),
         tip_direction=_tip_direction(form),
         source=form.get("source", "").strip()[:300] or None,
@@ -535,7 +536,24 @@ def edit_tool(tool_id):
         except FormError as e:
             db.session.rollback()
             flash(str(e), "error")
-    return render_template("tool_edit.html", tool=tool, iso_groups=ISO_GROUPS)
+    return render_template("tool_edit.html", tool=tool, iso_groups=ISO_GROUPS,
+                           rmpx=planner.rmpx_suggestions(tool.insert_code, tool.holder_code))
+
+
+@bp.route("/tools/<int:tool_id>/rmpx", methods=["POST"])
+def take_rmpx(tool_id):
+    """The operator takes the catalogue's RMPX for the holder style they confirm (planner.RMPX_TABLE)."""
+    tool = _active_tool_or_404(tool_id)
+    style = request.form.get("holder_style", "")
+    chosen = next((s for s in planner.rmpx_suggestions(tool.insert_code, tool.holder_code) if s[0] == style), None)
+    if chosen is None:
+        flash("No catalogue RMPX for this insert and holder.", "error")
+        return redirect(url_for("main.edit_tool", tool_id=tool.id))
+    tool.max_ramp_angle = chosen[1]
+    tool.max_ramp_source = f"{chosen[2]}, holder {style} (confirmed by the operator)"
+    db.session.commit()
+    flash(f"RMPX {chosen[1]:g}° set for '{tool.name}' with the holder {style}.")
+    return redirect(url_for("main.edit_tool", tool_id=tool.id))
 
 
 @bp.route("/tools/<int:tool_id>/delete", methods=["POST"])

@@ -40,6 +40,7 @@ class ToolInfo:
     max_ramp: float | None = None  # turning: the max in-copying angle (degrees) going down towards the chuck
     nose_radius: float | None = None  # turning: rε
     tip_direction: int | None = None  # turning: the imaginary tip's number T (0-9)
+    name: str = ""  # the tool's name, for the messages
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,7 @@ class _Sim:
         self.comp_paths: dict[int, list] = {}  # line -> the nose centre's path under compensation
         self.comp_lines: set[int] = set()  # lines whose moves are compensated (start-up and cancel included)
         self.nose_used: set[float] = set()  # rε of the nose circles that cut
+        self.used: set[int] = set()  # turret positions called
 
     # grid
     def z(self, i: int) -> float:
@@ -599,6 +601,7 @@ class _Sim:
                 if not (self.homed_x and self.homed_z) or self.pos != HOME:
                     self.error(n, "tool change away from the reference point (G28 U0. then G28 W0. first)")
                 self.tool = words["T"] // 100
+                self.used.add(self.tool)
                 if self.tool not in self.d.tools:
                     self.error(n, f"T{words['T']:04d}: no such tool in the turret")
                 info = self.info
@@ -696,6 +699,37 @@ class _Sim:
                 out.append(v)
         return out
 
+    def _steep_leftovers(self) -> None:
+        """Material left where the finished profile goes down towards the chuck steeper than the RMPX of every
+        finishing tool the program calls: an error with the place and the way out, not only "part not complete"."""
+        from ..planner import RMPX_TABLE
+
+        finishers = [(pos, self.d.tools[pos]) for pos in sorted(self.used)
+                     if pos in self.d.tools and self.d.tools[pos].tool_type == "turning_finish"]
+        points = self.d.profile.final_points
+        for z0, z1, _ in self.r.leftover:
+            steepest, where = 0.0, None
+            for (za, ra), (zb, rb) in zip(points, points[1:]):
+                lo, hi = max(min(za, zb), z1), min(max(za, zb), z0)
+                if hi - lo < 1e-6 or zb > za - 1e-9 or rb > ra - 1e-9:
+                    continue  # not a piece going down towards the chuck inside this leftover
+                angle = math.degrees(math.atan2(ra - rb, za - zb))
+                if angle > steepest + 1e-9:
+                    steepest, where = angle, (za, ra, zb, rb)
+            if where is None or steepest < 1.0:
+                continue
+            allowed = [info.max_ramp for _, info in finishers if info.max_ramp is not None]
+            if allowed and steepest <= max(allowed) + 0.5:
+                continue
+            tools = ", ".join(f"T{pos:02d}" + (f" RMPX {info.max_ramp:g}°" if info.max_ramp is not None
+                                               else " RMPX not set") for pos, info in finishers) or "no finishing tool"
+            ways = sorted({f"{prefix} in {'/'.join(styles)} ({angle:g}°, {source})"
+                           for prefix, styles, angle, source in RMPX_TABLE if angle >= steepest - 0.5})
+            self.error(0, f"Z{fanuc.number(z0)} to Z{fanuc.number(z1)}: the profile goes down at up to {steepest:.0f}° "
+                          f"towards the chuck (steepest at Z{fanuc.number(where[0])} D{fanuc.number(2 * where[1])}); "
+                          f"{tools}: not cut. Use a tool with RMPX ≥ {steepest:.0f}°"
+                          + (f" (e.g. {'; '.join(ways)})" if ways else "") + ", or a second set-up")
+
     def finish(self) -> None:
         length = self.d.profile.length
         self.r.final_stock = list(self.stock)
@@ -722,6 +756,7 @@ class _Sim:
                 run = None
         if run is not None:
             self.r.leftover.append(tuple(run))
+        self._steep_leftovers()
         for (z, r), excess in sorted(fillets.items(), reverse=True):
             self.warning(0, f"the inner corner at Z{fanuc.number(z)} D{fanuc.number(2 * r)} keeps the nose radius "
                             f"R{nose:g} (up to {excess:.2f} mm per side): the drawn corner is sharp, check")
