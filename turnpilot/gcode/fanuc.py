@@ -2,8 +2,9 @@
 
 Only the words this generator writes are accepted. Every X / Z / U / W / F value carries a decimal point: on a
 Fanuc control "X20" without one is 20 µm. Comments are upper-case ASCII in parentheses.
-Haas lathes read the same subset (G00 / G01 / G28 / G50 / G92 / G96 / G97 / G99, T0101, M03 / M04 / M08 / M09 /
-M01 / M30), but that has to be checked against the control's manual before a program is run there.
+Haas lathes read the same subset (G00 / G01 / G02 / G03 / G28 / G40 / G41 / G42 / G50 / G92 / G96 / G97 / G99,
+T0101, M03 / M04 / M08 / M09 / M01 / M30), but that has to be checked against the control's manual before a program
+is run there.
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from .program import (ArcMove, Block, Comment, Coolant, Dwell, Feed, Home, Optio
 
 NAME = "Fanuc 0i-T (G code system A)"
 COMMENT_WIDTH = 60
-G_CODES = {0, 1, 2, 3, 4, 18, 21, 28, 40, 50, 92, 96, 97, 99}
+G_CODES = {0, 1, 2, 3, 4, 18, 21, 28, 40, 41, 42, 50, 92, 96, 97, 99}
 M_CODES = {1, 3, 4, 5, 8, 9, 30}
 DECIMAL_WORDS = "XZUWFIKR"  # I / K: an arc's centre from its start (I in radius); R: an arc's radius
 INTEGER_WORDS = "NOSTP"  # P: G04 dwell in milliseconds
@@ -46,10 +47,10 @@ def comment_lines(text: str) -> list[str]:
 
 def _command(c) -> list[str]:
     if isinstance(c, Rapid):
-        return ["G00" + (f" X{number(c.x)}" if c.x is not None else "") + (f" Z{number(c.z)}" if c.z is not None
+        return ["G00" + (f" {c.comp}" if c.comp else "") + (f" X{number(c.x)}" if c.x is not None else "") + (f" Z{number(c.z)}" if c.z is not None
                                                                           else "")]
     if isinstance(c, Feed):
-        return ["G01" + (f" X{number(c.x)}" if c.x is not None else "") + (f" Z{number(c.z)}" if c.z is not None
+        return ["G01" + (f" {c.comp}" if c.comp else "") + (f" X{number(c.x)}" if c.x is not None else "") + (f" Z{number(c.z)}" if c.z is not None
                                                                           else "")
                 + (f" {_feed(c.f)}" if c.f is not None else "")]
     if isinstance(c, ArcMove):

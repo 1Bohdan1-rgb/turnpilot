@@ -335,6 +335,16 @@ GCODE_CHECKLIST = (
 )
 
 
+def gcode_checklist(record):
+    """The operator's checklist of a program: with nose radius compensation, also the offset page's R and T."""
+    compensation = json.loads(record.simulation).get("compensation") or []
+    if not compensation:
+        return GCODE_CHECKLIST
+    offsets = ", ".join(f"T{pos:02d} R{r:g} T{t}" for pos, _, r, t in compensation)
+    return GCODE_CHECKLIST + (("nose_compensation", f"nose radius compensation G42: on the offset page {offsets} "
+                                                    "(R the nose radius, T the tip direction as the tool is mounted)"),)
+
+
 def gcode_settings(job, machine):
     """The values a program uses, each with its source (the passport, the operator, DEMO)."""
     rows = []
@@ -376,6 +386,7 @@ def generate_gcode(job, machine):
                      for s in result.segments],
         "final_stock": [round(r, 3) for r in result.final_stock[::10]], "z_top": result.z_top, "dz": 0.1,
         "program_warnings": program.warnings, "skipped": {str(k): v for k, v in program.skipped.items()},
+        "compensation": [list(c) for c in program.compensation],
     }
     record = GcodeProgram(job=job, calculation_version=job.last_calculation_version, dialect=fanuc.NAME, text=text,
                           sha256=hashlib.sha256(text.encode("ascii")).hexdigest(),
@@ -419,7 +430,7 @@ def mark_gcode_ready(record, machine, form):
     if demo:
         problems.append("DEMO values are used: " + ", ".join(row["label"] for row in demo))
     problems += gcode_stale(record, machine)
-    ticked = {key: bool(form.get(f"check-{key}")) for key, _ in GCODE_CHECKLIST}
+    ticked = {key: bool(form.get(f"check-{key}")) for key, _ in gcode_checklist(record)}
     if not all(ticked.values()):
         problems.append("not every item of the checklist is ticked")
     name = (form.get("confirmed_by") or "").strip()

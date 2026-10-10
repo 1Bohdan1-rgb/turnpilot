@@ -1,7 +1,8 @@
 """A program as a neutral list of commands, built from the approved operations and the profile from the part zero.
 
-Coordinates: X is a diameter, Z is negative towards the chuck. The tool point is the insert's imaginary tip
-(no nose radius compensation in this version). Every number comes from the operation (confirmed catalogue
+Coordinates: X is a diameter, Z is negative towards the chuck. The tool point is the insert's imaginary tip. The
+finishing contour is written with nose radius compensation (G42, the contour as drawn) when the finishing tool's
+rε and tip direction T are both known; the operator enters them on the control's offset page. Every number comes from the operation (confirmed catalogue
 rows or the operator), the machine (passport or operator) or the operator's programming values; nothing is
 guessed. A dialect prints the commands as the text of one control (gcode/fanuc.py).
 
@@ -22,6 +23,7 @@ from .profile import EPS, Arc, Profile, Section, Segment
 class Rapid:
     x: float | None = None
     z: float | None = None
+    comp: str | None = None  # "G42" (start-up: the move onto the contour) / "G40" (cancel); None: unchanged
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,7 @@ class Feed:
     x: float | None = None
     z: float | None = None
     f: float | None = None  # mm/rev; None: the modal feed
+    comp: str | None = None  # as Rapid.comp
 
 
 @dataclass(frozen=True)
@@ -118,6 +121,7 @@ class Program:
     skipped: dict[int, str] = field(default_factory=dict)  # operation id -> why it is not in the program
     notes: list[str] = field(default_factory=list)  # information for the whole program
     spindle_off_at_end: bool = True
+    compensation: list[tuple[int, str, float, int]] = field(default_factory=list)  # (position, tool, rε, T) with G42
 
 
 # --- inputs ---------------------------------------------------------------------------------------------
@@ -200,6 +204,8 @@ class _Builder:
         self.covered: list[str] = []  # operations whose material earlier passes already took
         self.descents: list[tuple] = []  # contour segments the finishing tool may not cut (too steep down)
         self.back_chamfer_done = False
+        self.comp = False  # the finishing contour being written is nose radius compensated (G42)
+        self.compensated: dict[int, tuple[str, float, int]] = {}  # position -> (tool, rε, T) used with G42
         self.allowance = max((op.ap or 0.0 for op in ops if op.tool_type == "turning_finish"), default=0.0)
 
     # spindle and coolant
@@ -361,6 +367,9 @@ class _Builder:
         self._start(b, first_op)
         rnose = first_op.nose_radius
         ramp = first_op.max_ramp_angle
+        self.comp = bool(rnose) and first_op.tip_direction is not None
+        if self.comp:
+            self.compensated[first_op.position] = (first_op.tool_name, rnose, first_op.tip_direction)
         on_contour = False
         current_f = first_op.f
         current_vc = round(first_op.vc)
@@ -391,8 +400,13 @@ class _Builder:
             if op is not None:
                 self.finished.add(section.index)
         if on_contour:
-            b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe)]
+            self._leave(b)
         self._end(b)
+        if self.comp:  # the control keeps the nose on the drawn chamfers, tapers and arcs
+            b.notes.append(f"nose radius compensation G42: the contour as drawn (offset R{rnose:g} "
+                           f"T{first_op.tip_direction})")
+            self.comp = False
+            return b
         sections = [s for s, _ in group]
         chamfers = [s for s in sections if s.chamfer_free or s.chamfer_chuck]
         if chamfers and rnose:
@@ -435,7 +449,7 @@ class _Builder:
         if not a.convex and rnose and a.radius < rnose - EPS:
             b.warnings.append(f"concave R{a.radius:g} is smaller than the nose radius {rnose:g}: not cut")
             self.descents.append((section, z0, z1, x0, x1, 0.0))
-            b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe)]
+            self._leave(b)
             return False
         steepest = _steepest_descent(segment)
         if steepest is not None and (ramp is None or steepest > ramp + 0.5):
@@ -452,25 +466,37 @@ class _Builder:
             (f"{what}: " if what else "") + f"Z{z0:g} to Z{z:g} goes down at {angle:.0f}° towards the chuck: "
             + ("the tool's max in-copying angle is not set" if ramp is None
                else f"above the tool's max in-copying angle {ramp:g}°") + ": not cut by this tool")
-        b.commands += [Feed(x=self.x_safe), Rapid(z=self.z_safe)]
+        self._leave(b)
+
+    def _leave(self, b) -> None:
+        """Off the contour: up to the safe X (compensation cancelled on this move), then back in Z."""
+        b.commands += [Feed(x=self.x_safe, comp="G40" if self.comp else None), Rapid(z=self.z_safe)]
 
     def _entry(self, b: Block, first: Section, f: float) -> None:
         """Onto the contour at a section's free-end side: from Z+clearance at the free end (a chamfer along its
-        line), else above the material on the free-end side, then down beside the face."""
+        line), else above the material on the free-end side, then down beside the face.
+
+        With compensation, G42 starts on the move onto the contour's first line (the start-up block: at its end the
+        nose stands square to the next move). A contour starting on the axis (a spherical end) is entered along the
+        end face down to X0 Z0: the start-up ends with the nose on the axis, square to the arc, never across it."""
         cz = self.m.clearance_z
+        g42 = "G42" if self.comp else None
         if first.index == 0:
             r_top = self.p.turned_points[0][1]
-            if first.chamfer_free:
-                b.commands += [Rapid(z=_r3(cz)), Rapid(x=_r3(2 * max(r_top - cz, 0.0))),
+            if self.comp and r_top < EPS:  # on the axis: along the face; the start-up is longer than rε
+                lead = _r3(2 * (self.m.clearance_x + self.compensated[b.tool_position][1]))
+                b.commands += [Rapid(z=_r3(cz)), Rapid(x=lead), Feed(z=0.0, f=f), Feed(x=0.0, comp=g42)]
+            elif first.chamfer_free:
+                b.commands += [Rapid(z=_r3(cz)), Rapid(x=_r3(2 * max(r_top - cz, 0.0)), comp=g42),
                                Feed(x=_r3(2 * r_top), z=0.0, f=f)]
             else:
-                b.commands += [Rapid(z=_r3(cz)), Rapid(x=_r3(2 * r_top)), Feed(z=0.0, f=f)]
+                b.commands += [Rapid(z=_r3(cz)), Rapid(x=_r3(2 * r_top), comp=g42), Feed(z=0.0, f=f)]
             return
         z_face = first.z_free
         above = max(r for z, r in self.p.turned_points if z >= z_face - EPS) + self.allowance + self.m.retract
         r_prev = self._own_radius(self.p.sections[first.index - 1], False)  # the neighbour at this face
         b.commands += [Rapid(x=_r3(2 * above)), Rapid(z=_r3(z_face + self.allowance + cz)),
-                       Feed(x=_r3(2 * r_prev), f=f), Feed(z=_r3(z_face))]
+                       Feed(x=_r3(2 * r_prev), f=f, comp=g42), Feed(z=_r3(z_face))]
 
     def _contour(self, section: Section) -> list[tuple[float, float]]:
         """The turned profile's points of a section, from its free-end side to its chuck side."""
@@ -752,7 +778,7 @@ def _position(commands) -> tuple[float | None, float | None]:
     """Where the moves of a block leave the tool (x, z); None for an axis not moved yet."""
     x = z = None
     for c in commands:
-        if isinstance(c, (Rapid, Feed)):
+        if isinstance(c, (Rapid, Feed, ArcMove)):
             x = c.x if c.x is not None else x
             z = c.z if c.z is not None else z
     return x, z
@@ -800,6 +826,12 @@ def build(job: JobData, machine: MachineData, profile: Profile, ops: list[OpData
             op_id, reason = item
             program.skipped[op_id] = reason
     program.notes += builder.covered
+    program.compensation = [(pos, name, r, t) for pos, (name, r, t) in sorted(builder.compensated.items())]
+    if program.compensation:
+        i = program.header.index("TOOL TIP: IMAGINARY POINT, NO NOSE RADIUS COMPENSATION")
+        program.header[i:i + 1] = (
+            ["TOOL TIP: IMAGINARY POINT", "FINISHING CONTOUR: NOSE RADIUS COMPENSATION G42"]
+            + [f"OFFSET PAGE T{pos:02d} {ascii_text(name)}: R{r:g} T{t}" for pos, name, r, t in program.compensation])
     for section, z0, z1, x0, x1, angle in builder.descents:
         if builder.back_chamfer_done and section is profile.sections[-1] and abs(z1 + profile.length) < EPS:
             continue
