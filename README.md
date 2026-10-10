@@ -367,6 +367,16 @@ presses Start after the machine check.
   first segment's line; a spherical end at X0 Z0 along the face, never across the axis); G40 on the move off it,
   or on the move back in Z when the contour ends at a larger section's face. Without T: no G41 / G42, and CHECKs
   say how much chamfers, tapers and arcs come out fuller.
+- **RMPX and copying:** a turning tool's RMPX (max in-copying angle, down towards the chuck) is the operator's,
+  with its source; the tool page suggests the catalogue's value for a holder style (DNMG 15 in DDJNR / PDJNR 27°,
+  TT A204; VNMG 16 in DVJNR 44° / PVJNR 41°, TT A212), taken only by the operator. A concave arc steeper than the
+  first finishing tool's RMPX is finished by a finishing tool whose RMPX covers it (its own contour block), and
+  roughed by copying (a roughing tool that may go down into it, else the finishing copying insert with a warning on
+  the passes): passes placed for the nose centre on arcs concentric to the drawn one (needs rε and T), from the
+  level the roughing already left, down to the finishing allowance. Material left where the profile goes down
+  steeper than every finishing tool's RMPX is a simulation error naming the place and the way out.
+- **Grooving holders:** a tool's holder code is the operator's; a CoroCut 1-2 insert and holder of another seat
+  size (G vs E) are refused; a grooving tool's max depth is its holder's.
 - **Not written:** boring, internal threads, taps, a groove's finishing pass, a concave radius smaller than rε, cuts
   down towards the chuck steeper than the insert's max in-copying angle (set per tool; unknown = not allowed),
   re-chucking, hex flats.
@@ -395,8 +405,8 @@ presses Start after the machine check.
   job and the machine; then the .nc file can be downloaded.
 - **Tests:** golden programs of two synthetic parts (`tests/fixtures/gcode/`), and bad programs the simulation
   must catch. `tools/gcode_real.py` runs real DXF files locally (their programs stay in `instance/`;
-  `--tip-direction 4=3` gives a turret tool a tip direction in its temporary database, to see the compensated
-  programs).
+  `--tip-direction 4=3`, `--install 3=N123E2-0200-0002-GM` and `--max-ramp 4=27` set a tip direction, put a
+  library tool at a position and give an RMPX in its temporary database only).
 
 ## Stack
 

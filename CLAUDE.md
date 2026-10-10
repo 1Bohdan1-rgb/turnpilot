@@ -767,6 +767,27 @@ Commits a95492f, fbde05c, faa0310, 6731c10, 835d9a1 (arcs), e49ea07 + 7503246 (r
 - A run of `gcode_real.py` on НД 012 hung for ~39 min before 48f530f: a message formatted for every nose position of
   a mass gouge; now one message per cell, 12 s per sheet.
 
+## Copying tools, RMPX and the 2 mm groove (built 2026-10-10)
+Plan agreed with the user (groove first; copy roughing last; PM roughs, PF finishes). Commits 8957b9c, da5c9a0,
+4191fbd, e3a5de2, 89322c8, ee3838b. Migrations a7b45471d5b1 (holder code + 2 mm insert), c4e1f0a9b2d7 (RMPX source),
+d81f3b6c0e45 (VNMG PF / PM); DB backups `instance/turnpilot.db.bak-2026-10-10-before-{groove-2mm,rmpx-source,vnmg}`.
+- Library only (the turret is full: positions are the operator's): N123E2-0200-0002-GM GC4325 2 mm (TT B10-B11,
+  B139 graph, B130, holder R/LF123E08 B29, max depth 8); VNMG 16 04 04-PF GC4315 and 16 04 08-PM GC4325 (★ A172
+  checked by the operator on the image; A288; A278 / A279; holder DVJNR 2020K16 / 2525M16). Holder codes and RMPX
+  are left empty for the operator.
+- `Tool.holder_code` (CoroCut 1-2 seat check E / G), `Tool.max_ramp_source`; RMPX suggestions (planner.RMPX_TABLE:
+  A204 DNMG 27°, A212 VNMG DVJNR 44° / PVJNR 41°) taken by the operator's click only.
+- Planner: a concave arc (its angle is the same whichever end is free) goes to tools whose RMPX covers it (finishing;
+  roughing by a roughing tool, else the finishing copying insert with a pass warning). Tapers and convex arcs going
+  down are not reassigned (they depend on the free end, which the planner does not know).
+- Generator: a contour block per finishing tool; copy roughing on concentric arcs placed for the nose centre (needs
+  rε and T), after the other roughing, from the level it leaves. Simulation: a profile steeper than every finishing
+  tool's RMPX is an error with the way out.
+- Real files (local; typed in the temporary database: the 2 mm groove on T3, VNMG PM / PF on T10 / T11 instead of
+  the drills, RMPX T4 27° / VNMG 44°, T3 on T4 / T10 / T11; DEMO values): Zavisa 36 bushing and pin complete;
+  деталь 1 complete (the groove cut by the 2 mm insert, 0 errors); НД 012: 0 errors, R12.5 copy roughed in 2 passes
+  of 1.25 from Ø39.3 and finished by the PF; left only the R20.46 arc (drawn R51.61, the operator's choice).
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -776,7 +797,7 @@ Commits a95492f, fbde05c, faa0310, 6731c10, 835d9a1 (arcs), e49ea07 + 7503246 (r
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1009 tests pass (2026-10-10). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1031 tests pass (2026-10-10). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
