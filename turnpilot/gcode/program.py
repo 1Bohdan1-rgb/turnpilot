@@ -772,6 +772,12 @@ class _Builder:
             by_section[sec.index] = op
         groups, current = [], []
         for sec in self.p.sections:
+            if sec.index in by_section and current and by_section[sec.index].position != next(
+                    op for _, op in current if op is not None).position:
+                while current and current[-1][1] is None:  # a bridged groove belongs to no tool's contour
+                    current.pop()
+                groups.append(current)  # another tool finishes this section: a contour of its own
+                current = []
             if sec.index in by_section:
                 current.append((sec, by_section[sec.index]))
             elif sec.kind == "groove" and current and any(

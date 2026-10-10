@@ -141,6 +141,7 @@ def _tool_spec(tool):
         f_rec=tool.f_rec,
         vc_points=planner.parse_vc_points(tool.vc_points),
         nose_radius=tool.nose_radius,
+        max_ramp_angle=tool.max_ramp_angle,
     )
 
 

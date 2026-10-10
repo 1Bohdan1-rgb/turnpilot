@@ -96,6 +96,7 @@ class ToolSpec:
     catalogue_note: str | None = None
     catalogue_warning: str | None = None
     nose_radius: float | None = None  # the operator's rε; None: from the insert code
+    max_ramp_angle: float | None = None  # RMPX: the steepest the tool may cut going down towards the chuck
 
 
 @dataclass(frozen=True)
@@ -425,6 +426,42 @@ def arc_lowest_diameter(feature) -> float | None:
     nr = feature.length / (2 * half)  # the chord's normal, its radial part
     centre_r = mid + rise * nr
     return round(2 * (centre_r - feature.radius), 3)
+
+
+def concave_arc_angle(feature) -> float | None:
+    """The steepest a concave arc goes down (degrees to the axis): its tangent at the steeper end. It does not depend
+    on which end is free: it goes down at one end and up at the other. None: not a concave arc with a known circle."""
+    d0, d1 = feature.start_diameter or 0.0, feature.diameter or 0.0
+    if feature.type != "arc" or feature.arc_convex is not False or not feature.radius or not feature.length:
+        return None
+    dr = (d1 - d0) / 2
+    half = math.hypot(feature.length, dr) / 2
+    if half > feature.radius:
+        return None
+    rise = math.sqrt(feature.radius ** 2 - half ** 2)
+    zc, rc = feature.length / 2 - rise * dr / (2 * half), (d0 + d1) / 4 + rise * feature.length / (2 * half)
+    return max(math.degrees(math.atan2(abs(z - zc), abs(r - rc))) for z, r in ((0.0, d0 / 2), (feature.length, d1 / 2)))
+
+
+COPYING_NOTE = ("finished by T{position} (RMPX {rmpx:g}°): the concave arc goes down at up to {angle:.0f}° towards "
+                "the chuck, {default}")
+
+
+def select_copying_tool(tool_type: str, angle: float, iso_group: str, turret: list[TurretEntry],
+                        default: TurretEntry) -> tuple[TurretEntry, str | None]:
+    """For a section going down at `angle`: the default tool when its RMPX covers it, else the first tool of the type
+    whose RMPX does, with a note why; none does: the default (the simulation then says what is not cut)."""
+    if default.tool.max_ramp_angle is not None and angle <= default.tool.max_ramp_angle + 0.5:
+        return default, None
+    able = [e for e in turret if e.tool.type == tool_type and iso_group in e.tool.iso_group
+            and e.tool.max_ramp_angle is not None and angle <= e.tool.max_ramp_angle + 0.5]
+    if not able:
+        return default, None
+    entry = min(able, key=lambda e: e.position)
+    rmpx = default.tool.max_ramp_angle
+    return entry, COPYING_NOTE.format(position=entry.position, rmpx=entry.tool.max_ramp_angle, angle=angle,
+                                      default=f"T{default.position} RMPX " + (f"{rmpx:g}°" if rmpx is not None
+                                                                                else "not set"))
 
 
 def thread_depth(pitch: float) -> float:
@@ -1719,9 +1756,16 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
             rough_boring_fallback = entry is not None
     else:
         entry, warning = select_tool(step.tool_type, job.iso_group, turret)
+    copying = None
+    if entry is not None and step.tool_type == "turning_finish" and job.axial_order:
+        angle = concave_arc_angle(feature)
+        if angle is not None:
+            entry, copying = select_copying_tool(step.tool_type, angle, job.iso_group, turret, entry)
     if entry is None:
         op.warnings.append(warning)
         return op
+    if copying:
+        op.notes.append(copying)
     if rough_boring_fallback:
         op.notes.append(NO_ROUGH_BORING_TOOL)
 
