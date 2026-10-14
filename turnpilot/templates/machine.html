@@ -98,7 +98,7 @@
 <form method="post" class="card">
   <input type="hidden" name="action" value="turret">
   <table>
-    <thead><tr><th>Pos.</th><th>Tool</th><th>Type</th><th>ISO</th><th>Insert</th></tr></thead>
+    <thead><tr><th>Pos.</th><th>Tool</th><th>Type</th><th>ISO</th><th>Insert</th><th>Holder · RMPX · T</th><th></th></tr></thead>
     <tbody>
     {% for slot in machine.slots %}
       <tr>
@@ -114,6 +114,10 @@
         <td>{{ slot.tool.type if slot.tool else "" }}</td>
         <td>{{ slot.tool.iso_group if slot.tool else "" }}</td>
         <td>{{ slot.tool.insert_code if slot.tool else "" }}</td>
+        <td class="small">{% if slot.tool %}{{ slot.tool.holder_code or "holder —" }} ·
+          {{ ("RMPX " ~ slot.tool.max_ramp_angle ~ "°") if slot.tool.max_ramp_angle is not none else "RMPX —" }} ·
+          {{ ("T" ~ slot.tool.tip_direction) if slot.tool.tip_direction is not none else "T —" }}{% endif %}</td>
+        <td class="row-actions">{% if slot.tool %}<a href="{{ url_for('main.edit_tool', tool_id=slot.tool.id) }}">Edit</a>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>

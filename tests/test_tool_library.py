@@ -265,3 +265,10 @@ def test_seed_drills_on_t10_t12(app):
     slots = {s.position: s.tool for s in services.get_machine().slots}
     assert [(slots[p].name, slots[p].diameter, slots[p].max_depth) for p in (10, 11, 12)] == [
         ("Drill 860-GM Ø6", 6, 18), ("Drill 860-GM Ø8", 8, 24), ("Drill 860-GM Ø10", 10, 30)]
+
+
+def test_the_turret_rows_link_to_the_tool_page(app, client):
+    tool = db.session.execute(db.select(Tool).filter_by(insert_code="DNMG150604-PF")).scalar_one()
+    page = client.get("/machine").get_data(as_text=True)
+    assert f'href="/tools/{tool.id}/edit">Edit</a></td>\n      </tr>' in page.replace("\r", "")
+    assert "holder — ·" in page and "RMPX —" in page and "T —" in page
