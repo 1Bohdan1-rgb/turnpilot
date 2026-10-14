@@ -796,6 +796,25 @@ d81f3b6c0e45 (VNMG PF / PM); DB backups `instance/turnpilot.db.bak-2026-10-10-be
   деталь 1 complete (the groove cut by the 2 mm insert, 0 errors); НД 012: 0 errors, R12.5 copy roughed in 2 passes
   of 1.25 from Ø39.3 and finished by the PF; left only the R20.46 arc (drawn R51.61, the operator's choice).
 
+## The operator's decision on an arc's radius (built 2026-10-10 / 2026-10-14)
+Plans agreed with the user. Commits acc4052 (decision), cd1238d (shape of an existing row), f1ee206 (change and
+history). Migrations e5a2c7d91f03 (Feature.radius_dimension / radius_geometry / radius_source / radius_decided_at /
+radius_note), f2b9d3a61c08 (RadiusDecision); DB backups `instance/turnpilot.db.bak-2026-10-10-before-radius-decision`,
+`…-2026-10-14-before-radius-history`.
+- Job page: conflict with its place (Z from / to, the end Ø), take the dimension / the geometry / an own value (checked
+  at once: a circle of it through the section's ends with the arc's shape; else nothing saved, the smallest R = half
+  the chord shown), an optional note, the operator's name required. No default.
+- Until decided: a simulation error naming the place (never ready to run), not only PART NOT COMPLETE.
+- RadiusDecision keeps every decision (R, source, both radii, note, name, date); never changed or deleted; the
+  Feature fields are the last one's. Decisions taken before the history: name empty.
+- "Change the decision": the same choices; a calculated job is recalculated (new version, the old one kept): the
+  arc's own operations always, and others whose values changed, go back to "proposed"; the rest keep "approved". A
+  program made before is out of date, its reasons name who changed which R and when.
+- Jobs confirmed from a DXF before the shapes were kept (НД 012 job 4, 2026-10-06) have arcs without shape, side or
+  drawn radius: the shape and side can be set on the row; the drawn radius only comes with a new upload and Confirm.
+- НД 012 (job 7): the conflict is Z-35 to Z-45, Ø35 -> Ø38.5, convex; both R20.46 and R51.608 go through its ends.
+  The operator's first decision: R20.46 (the dimension), note "за розміром на кресленні".
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -805,7 +824,7 @@ d81f3b6c0e45 (VNMG PF / PM); DB backups `instance/turnpilot.db.bak-2026-10-10-be
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1031 tests pass (2026-10-10). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1038 tests pass (2026-10-14). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

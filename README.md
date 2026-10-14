@@ -350,8 +350,13 @@ presses Start after the machine check.
 - **Zero and profile:** Z0 on the free end face the operator chose (suggested: opposite the largest Ø), X0 on the
   axis, Z negative towards the chuck; the profile is built from the confirmed rows (grooves bridged at the
   smaller turned neighbour, threads at their reduced major Ø, chamfers, tapers, arcs and fillets with their
-  centres). An arc is programmed only when its shape (convex / concave) is known and its radius is the one drawn;
-  an arc drawn with another radius waits for the operator's choice on the job page.
+  centres). An arc is programmed only when its shape (convex / concave) is known and its radius is the one drawn.
+  An arc drawn with another radius than dimensioned waits for the operator's decision on the job page: the place
+  (Z, Ø), take the dimension, the geometry or an own value (a circle of it must go through the section's ends,
+  else the smallest R is shown), a note and the operator's name (required). Until then the simulation reports an
+  error. Every decision is kept in a history (who, when, which R, the note); a changed decision recalculates the
+  job: the arc's operations and any whose values changed are to be approved again, a program made before is out
+  of date. The shape of an existing arc or fillet (and a fillet's side) can be set on its row.
 - **What is written** (Fanuc 0i-T, G code system A; explicit moves, no canned cycles so that the simulation reads
   exactly what the machine does): facing past the axis; roughing from the chuck side, each section from its
   neighbour as the neighbour's roughing leaves it, a taper or an arc in steps and then along its line; one
