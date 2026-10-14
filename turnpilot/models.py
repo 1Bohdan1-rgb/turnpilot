@@ -374,6 +374,7 @@ class Feature(db.Model):
 
     job = db.relationship("Job", back_populates="features")
     operations = db.relationship("Operation", back_populates="feature")
+    radius_decisions = db.relationship("RadiusDecision", back_populates="feature", order_by="RadiusDecision.id")
 
 
 class Operation(db.Model):
@@ -463,6 +464,24 @@ class DrawingExtraction(db.Model):
 
 
 GCODE_STATUSES = ("simulated", "ready")
+
+
+class RadiusDecision(db.Model):
+    """One decision of the operator on an arc whose drawn radius differs from its dimension. Kept for the record:
+    a changed decision is a new row; the arc's current radius is the last one's."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    feature_id = db.Column(db.Integer, db.ForeignKey("feature.id", name="fk_radius_decision_feature_id"),
+                           nullable=False)
+    radius = db.Column(db.Float, nullable=False)
+    source = db.Column(db.String(20), nullable=False)  # "dimension" / "drawn" / "operator" (their own value)
+    dimension = db.Column(db.Float)  # the dimensioned radius
+    geometry = db.Column(db.Float)  # the drawn radius
+    note = db.Column(db.String(200))
+    decided_by = db.Column(db.String(100))  # the operator's name; empty for decisions made before it was asked
+    decided_at = db.Column(db.DateTime, nullable=False, default=_now)
+
+    feature = db.relationship("Feature", back_populates="radius_decisions")
 
 
 class GcodeProgram(db.Model):

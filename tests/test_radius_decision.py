@@ -37,7 +37,7 @@ def test_take_the_dimension_with_a_note(app, client):
     machine = ready_machine()
     job = conflict_job()
     f = arc(job)
-    client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "dimension", "note": "уточнено в конструктора"})
+    client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "dimension", "note": "уточнено в конструктора", "decided_by": "Operator I."})
     assert (f.radius, f.drawn_radius, f.radius_source) == (20.46, 20.46, "dimension")
     assert (f.radius_dimension, f.radius_geometry, f.radius_note) == (20.46, 51.61, "уточнено в конструктора")
     assert f.radius_decided_at is not None
@@ -54,12 +54,12 @@ def test_own_value_checked_against_the_ends(app, client):
     job = conflict_job()
     f = arc(job)
     # the ends Z-10 D30 and Z-18 D20: the chord is 9.434, so R4 cannot go through them
-    response = client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "own", "own_radius": "4"},
+    response = client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "own", "own_radius": "4", "decided_by": "Operator I."},
                            follow_redirects=True)
     text = response.get_data(as_text=True)
     assert "R4 not saved: no circle R4 through its ends" in text and "is R4.717 (half the chord)" in text
     assert (f.radius, f.radius_source) == (20.46, None)
-    client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "own", "own_radius": "30"})
+    client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "own", "own_radius": "30", "decided_by": "Operator I."})
     assert (f.radius, f.drawn_radius, f.radius_source, f.radius_note) == (30.0, 30.0, "operator", None)
 
 
@@ -67,5 +67,46 @@ def test_take_the_geometry(app, client):
     ready_machine()
     job = conflict_job()
     f = arc(job)
-    client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "drawn"})
+    client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "drawn", "decided_by": "Operator I."})
     assert (f.radius, f.radius_source, f.radius_dimension) == (51.61, "drawn", 20.46)
+
+
+def test_the_name_is_required(app, client):
+    ready_machine()
+    job = conflict_job()
+    f = arc(job)
+    response = client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "dimension"},
+                           follow_redirects=True)
+    assert "The operator&#39;s name is required" in response.get_data(as_text=True) and f.radius_source is None
+
+
+def test_change_the_decision(app, client):
+    machine = ready_machine()
+    job = conflict_job()
+    f = arc(job)
+    client.post(f"/jobs/{job.id}/features/{f.id}/radius", data={"radius": "dimension", "decided_by": "Operator I."})
+    services.calculate_operations(job, machine)
+    for op in job.current_operations:
+        op.status = "approved"
+    db.session.commit()
+    _, program = services.gcode_program(job, machine)
+    record = services.generate_gcode(job, machine)[1]
+    page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
+    assert "Change the decision" in page and "Take the geometry R51.61" in page
+    response = client.post(f"/jobs/{job.id}/features/{f.id}/radius",
+                           data={"radius": "drawn", "note": "уточнено в конструктора", "decided_by": "Operator P."},
+                           follow_redirects=True)
+    assert "Arc radius changed to R51.61 (the geometry); the job was calculated again" in         response.get_data(as_text=True)
+    assert (f.radius, f.radius_source, f.radius_dimension, f.radius_geometry) == (51.61, "drawn", 20.46, 51.61)
+    history = [(d.radius, d.source, d.decided_by, d.note) for d in f.radius_decisions]
+    assert history == [(20.46, "dimension", "Operator I.", None), (51.61, "drawn", "Operator P.",
+                                                                    "уточнено в конструктора")]
+    ops = job.current_operations
+    arc_ops = [op for op in ops if op.feature_id == f.id]
+    assert arc_ops and all(op.status == "proposed" for op in arc_ops)  # the arc's numbers changed
+    assert any(op.status == "approved" for op in ops if op.feature.type == "face")  # unchanged: kept
+    reasons = services.gcode_stale(record, machine)
+    assert "the job was calculated again after this program" in reasons
+    assert any(r.startswith("the decision on the arc's radius was changed to R51.61 by Operator P.") for r in reasons)
+    page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
+    assert "Operator I." in page and "Operator P." in page  # both decisions in the history

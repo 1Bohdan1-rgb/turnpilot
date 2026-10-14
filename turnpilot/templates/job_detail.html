@@ -36,18 +36,37 @@
             <button class="small">Set</button></form>{% endif %}
         {% if f.type == "arc" and f.drawn_radius is not none and f.radius is not none and (f.drawn_radius - f.radius)|abs > 0.01 %}
           <div class="warning small">{% set c = conflicts.get(f.id) %}{% if c %}Z{{ c.z_free|round(3) }} to Z{{ c.z_chuck|round(3) }} (D{{ c.d_free }} to D{{ c.d_chuck }}): {% endif %}dimension R{{ f.radius }} ≠ geometry R{{ f.drawn_radius }}: not programmed until you decide
+            {% set dim_r, geo_r = f.radius, f.drawn_radius %}
             <form method="post" action="{{ url_for('main.choose_arc_radius', job_id=job.id, feature_id=f.id) }}" class="inline-form">
-              <button name="radius" value="dimension" class="small">Take the dimension R{{ f.radius }}</button>
-              <button name="radius" value="drawn" class="small">Take the geometry R{{ f.drawn_radius }}</button>
+              <button name="radius" value="dimension" class="small">Take the dimension R{{ dim_r }}</button>
+              <button name="radius" value="drawn" class="small">Take the geometry R{{ geo_r }}</button>
               <input name="own_radius" type="number" step="any" min="0" placeholder="own R" aria-label="Own radius">
               <button name="radius" value="own" class="small">Take my value</button>
               <input name="note" maxlength="200" placeholder="note (optional), e.g. confirmed by the designer" aria-label="Note">
+              <input name="decided_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
             </form></div>
         {% endif %}
         {% if f.type == "arc" and f.radius_source %}<div class="small muted">R{{ f.radius }}: the operator's decision
           ({{ {"dimension": "the dimension", "drawn": "the geometry", "operator": "own value"}[f.radius_source] }};
           dimension R{{ f.radius_dimension }}, geometry R{{ f.radius_geometry }}),
-          {{ f.radius_decided_at.strftime("%Y-%m-%d %H:%M") }}{% if f.radius_note %}: {{ f.radius_note }}{% endif %}</div>{% endif %}</td>
+          {{ f.radius_decided_at.strftime("%Y-%m-%d %H:%M") }}{% if f.radius_note %}: {{ f.radius_note }}{% endif %}</div>
+          <details class="small"><summary>Change the decision</summary>
+            {% set dim_r, geo_r = f.radius_dimension, f.radius_geometry %}
+            <form method="post" action="{{ url_for('main.choose_arc_radius', job_id=job.id, feature_id=f.id) }}" class="inline-form">
+              <button name="radius" value="dimension" class="small">Take the dimension R{{ dim_r }}</button>
+              <button name="radius" value="drawn" class="small">Take the geometry R{{ geo_r }}</button>
+              <input name="own_radius" type="number" step="any" min="0" placeholder="own R" aria-label="Own radius">
+              <button name="radius" value="own" class="small">Take my value</button>
+              <input name="note" maxlength="200" placeholder="note (optional), e.g. confirmed by the designer" aria-label="Note">
+              <input name="decided_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
+            </form>
+            <p class="muted">A change recalculates the job: operations that stay the same keep their approval, the
+              others are to be approved again; a program made before is out of date.</p>
+            {% if f.radius_decisions %}<ol class="muted">{% for d in f.radius_decisions %}
+              <li>R{{ d.radius }} ({{ {"dimension": "the dimension", "drawn": "the geometry", "operator": "own value"}[d.source] }}),
+                {{ d.decided_by or "name not recorded" }}, {{ d.decided_at.strftime("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
+            {% endfor %}</ol>{% endif %}
+          </details>{% endif %}</td>
       <td>{{ f.across_flats if f.across_flats is not none else "" }}</td>
       <td>{{ "%.2f"|format(f.confidence) if f.confidence is not none else "" }}</td>
       <td>

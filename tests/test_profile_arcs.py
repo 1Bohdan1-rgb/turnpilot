@@ -75,8 +75,8 @@ def test_the_operator_chooses_the_radius(app, client):
     page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
     assert "dimension R20.46 ≠ geometry R51.61" in page
     arc = next(f for f in job.features if f.type == "arc")
-    client.post(f"/jobs/{job.id}/features/{arc.id}/radius", data={"radius": "drawn"})
+    client.post(f"/jobs/{job.id}/features/{arc.id}/radius", data={"radius": "drawn", "decided_by": "Operator I."})
     assert (arc.radius, arc.drawn_radius) == (51.61, 51.61)
     assert "≠ geometry" not in client.get(f"/jobs/{job.id}").get_data(as_text=True)
-    assert client.post(f"/jobs/{job.id}/features/{arc.id}/radius", data={"radius": "x"}).status_code == 400
+    assert client.post(f"/jobs/{job.id}/features/{arc.id}/radius", data={"radius": "x", "decided_by": "Operator I."}).status_code == 400
     db.session.refresh(arc)

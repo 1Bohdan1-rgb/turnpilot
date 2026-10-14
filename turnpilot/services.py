@@ -286,6 +286,53 @@ def check_own_radius(job, feature, radius):
     return None
 
 
+RADIUS_SOURCES = {"dimension": "the dimension", "drawn": "the geometry", "operator": "own value"}
+# what makes an operation the same after a recalculation (its approval is then kept)
+OPERATION_VALUES = ("tool_id", "turret_position", "tool_type", "rough_finish", "vc", "n", "f", "ap", "passes",
+                    "insert_width", "depth", "ref_diameter", "cutting_data_origin")
+
+
+def decide_arc_radius(feature, source, radius, note, name, machine):
+    """The operator's decision on an arc whose drawn radius ≠ its dimension (first, or a change): a new history row,
+    the arc's current radius. A change of a calculated job recalculates it: operations whose values stay the same
+    keep their approval, the arc's own and any whose values changed are proposed again (the old version stays in
+    the history). Returns a message."""
+    from .models import RadiusDecision
+
+    first = not feature.radius_decisions
+    dimension = feature.radius if first else feature.radius_dimension
+    geometry = feature.drawn_radius if first else feature.radius_geometry
+    now = datetime.now(timezone.utc)
+    feature.radius_decisions.append(RadiusDecision(radius=radius, source=source, dimension=dimension,
+                                                   geometry=geometry, note=note, decided_by=name, decided_at=now))
+    feature.radius_dimension, feature.radius_geometry = dimension, geometry
+    feature.radius, feature.drawn_radius = radius, radius  # resolved: they agree now
+    feature.radius_source, feature.radius_decided_at, feature.radius_note = source, now, note
+    db.session.commit()
+    job = feature.job
+    if first or not job.current_operations:
+        return f"Arc radius R{radius:g} chosen ({RADIUS_SOURCES[source]}). Calculate the job again."
+    approved = {}
+    for op in job.current_operations:
+        if op.status == "approved":
+            key = (op.feature_id, op.tool_type, op.rough_finish)
+            approved.setdefault(key, []).append(tuple(getattr(op, k) for k in OPERATION_VALUES))
+    calculate_operations(job, machine)
+    kept = again = 0
+    for op in job.current_operations:
+        values = tuple(getattr(op, k) for k in OPERATION_VALUES)
+        same = approved.get((op.feature_id, op.tool_type, op.rough_finish), [])
+        if values in same and op.feature_id != feature.id:  # the arc's own operations: always approved again
+            same.remove(values)
+            op.status = "approved"
+            kept += 1
+        else:
+            again += 1
+    db.session.commit()
+    return (f"Arc radius changed to R{radius:g} ({RADIUS_SOURCES[source]}); the job was calculated again: {kept} "
+            f"operation(s) kept their approval, {again} to approve again.")
+
+
 def gcode_inputs(job, machine, readiness=None):
     """The generator's inputs from the database: the job, the machine, the profile, the usable operations."""
     from .gcode import program as gprogram
@@ -445,6 +492,13 @@ def gcode_stale(record, machine):
     reasons = []
     if record.calculation_version != job.last_calculation_version:
         reasons.append("the job was calculated again after this program")
+    for feature in job.active_features:
+        changed = [d for d in feature.radius_decisions[1:] if d.decided_at and record.created_at
+                   and d.decided_at.replace(tzinfo=None) > record.created_at.replace(tzinfo=None)]
+        if changed:
+            d = changed[-1]
+            reasons.append(f"the decision on the arc's radius was changed to R{d.radius:g} by {d.decided_by} on "
+                           f"{d.decided_at:%Y-%m-%d %H:%M}")
     if job.tools_changed_since_calculation:
         reasons.append("tools changed since the calculation")
     then = {row["name"]: (row["value"], row["source"]) for row in json.loads(record.settings)}

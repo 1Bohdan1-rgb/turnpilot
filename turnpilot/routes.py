@@ -826,7 +826,14 @@ def choose_arc_radius(job_id, feature_id):
     if feature.job_id != job_id or feature.type != "arc" or feature.drawn_radius is None:
         abort(404)
     choice = request.form.get("radius")
-    dimension, geometry = feature.radius, feature.drawn_radius
+    if feature.radius_decisions:  # a change: the radii as they were before the first decision
+        dimension, geometry = feature.radius_dimension, feature.radius_geometry
+    else:
+        dimension, geometry = feature.radius, feature.drawn_radius
+    name = (request.form.get("decided_by") or "").strip()[:100]
+    if not name:
+        flash("The operator's name is required for the decision.", "error")
+        return redirect(url_for("main.job_detail", job_id=job_id))
     if choice == "dimension":
         radius = dimension
     elif choice == "drawn":
@@ -843,13 +850,9 @@ def choose_arc_radius(job_id, feature_id):
     if problem:
         flash(f"R{radius:g} not saved: {problem}.", "error")
         return redirect(url_for("main.job_detail", job_id=job_id))
-    feature.radius_dimension, feature.radius_geometry = dimension, geometry
-    feature.radius, feature.drawn_radius = radius, radius  # resolved: they agree now
-    feature.radius_source = {"dimension": "dimension", "drawn": "drawn", "own": "operator"}[choice]
-    feature.radius_decided_at = datetime.now(timezone.utc)
-    feature.radius_note = (request.form.get("note") or "").strip()[:200] or None
-    db.session.commit()
-    flash(f"Arc radius R{radius:g} chosen (the operator's decision). Calculate the job again.")
+    source = {"dimension": "dimension", "drawn": "drawn", "own": "operator"}[choice]
+    note = (request.form.get("note") or "").strip()[:200] or None
+    flash(services.decide_arc_radius(feature, source, radius, note, name, _machine_or_404()))
     return redirect(url_for("main.job_detail", job_id=job_id))
 
 
