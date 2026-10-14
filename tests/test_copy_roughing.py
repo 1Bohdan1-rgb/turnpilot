@@ -87,3 +87,29 @@ def test_copy_roughing_needs_the_tip_direction(machine):
         "copy roughing needs the tool's nose radius and tip direction T (the passes are placed for the nose centre): "
         "not generated")
     assert any("above the tool's ap max" in m for _, m in result.errors)  # the finishing pass meets it all
+
+
+def test_vnmg_in_the_turret_without_rmpx_is_named(machine):
+    # НД 012 job 7: VNMG PM / PF in the turret, but their RMPX not taken: the planner and the simulation say so
+    for position, code in ((3, "VNMG160408-PM"), (12, "VNMG160404-PF")):
+        machine.slots[position - 1].tool = tool(code)
+    db.session.commit()
+    job = hollow_job()
+    rough, finish = ops(job, "turning_rough"), ops(job, "turning_finish")
+    assert (rough.turret_position, finish.turret_position) == (2, 4)
+    assert "T3 (VNMG160408-PM: DVJNR 44° / PVJNR 41°), T12 (VNMG160404-PF: DVJNR 44° / PVJNR 41°) could cut it " \
+           "(it goes down at 37°), but the RMPX is not set" in rough.warning
+    assert "T12 (VNMG160404-PF: DVJNR 44° / PVJNR 41°) could cut it" in finish.warning
+    prog, text, result = program(job, machine)
+    message = next(m for _, m in result.errors if "towards the chuck" in m)
+    assert "In the turret T03 (VNMG160408-PM: DVJNR 44° / PVJNR 41°), T12 (VNMG160404-PF: DVJNR 44° / PVJNR 41°) " \
+           "could: their RMPX is not set" in message
+
+
+def test_copy_roughing_without_t_is_warned_at_calculate(machine):
+    install(machine, 10, "VNMG160408-PM", tip=None)
+    install(machine, 11, "VNMG160404-PF")
+    db.session.commit()
+    rough = ops(hollow_job(), "turning_rough")
+    assert rough.turret_position == 10
+    assert "copy roughing needs the tip direction T of T10" in rough.warning

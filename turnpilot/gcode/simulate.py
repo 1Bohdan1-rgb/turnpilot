@@ -41,6 +41,7 @@ class ToolInfo:
     nose_radius: float | None = None  # turning: rε
     tip_direction: int | None = None  # turning: the imaginary tip's number T (0-9)
     name: str = ""  # the tool's name, for the messages
+    insert_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -702,7 +703,7 @@ class _Sim:
     def _steep_leftovers(self) -> None:
         """Material left where the finished profile goes down towards the chuck steeper than the RMPX of every
         finishing tool the program calls: an error with the place and the way out, not only "part not complete"."""
-        from ..planner import RMPX_TABLE
+        from ..planner import RMPX_TABLE, rmpx_suggestions
 
         finishers = [(pos, self.d.tools[pos]) for pos in sorted(self.used)
                      if pos in self.d.tools and self.d.tools[pos].tool_type == "turning_finish"]
@@ -725,10 +726,20 @@ class _Sim:
                                                else " RMPX not set") for pos, info in finishers) or "no finishing tool"
             ways = sorted({f"{prefix} in {'/'.join(styles)} ({angle:g}°, {source})"
                            for prefix, styles, angle, source in RMPX_TABLE if angle >= steepest - 0.5})
+            unset = []  # turret tools that could, by the catalogue, but whose RMPX is not taken yet
+            for pos, info in sorted(self.d.tools.items()):
+                if info.tool_type in ("turning_rough", "turning_finish") and info.max_ramp is None:
+                    styles = [f"{style} {rmpx:g}°" for style, rmpx, _ in rmpx_suggestions(info.insert_code)
+                              if rmpx >= steepest - 0.5]
+                    if styles:
+                        unset.append(f"T{pos:02d} ({info.insert_code}: {' / '.join(styles)})")
             self.error(0, f"Z{fanuc.number(z0)} to Z{fanuc.number(z1)}: the profile goes down at up to {steepest:.0f}° "
                           f"towards the chuck (steepest at Z{fanuc.number(where[0])} D{fanuc.number(2 * where[1])}); "
-                          f"{tools}: not cut. Use a tool with RMPX ≥ {steepest:.0f}°"
-                          + (f" (e.g. {'; '.join(ways)})" if ways else "") + ", or a second set-up")
+                          f"{tools}: not cut. "
+                          + (f"In the turret {', '.join(unset)} could: their RMPX is not set: take it for the holder "
+                             "on the tool page and Calculate again" if unset else
+                             f"Use a tool with RMPX ≥ {steepest:.0f}°" + (f" (e.g. {'; '.join(ways)})" if ways else "")
+                             + ", or a second set-up"))
 
     def finish(self) -> None:
         length = self.d.profile.length

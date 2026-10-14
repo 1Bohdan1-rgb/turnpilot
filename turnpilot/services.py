@@ -142,6 +142,7 @@ def _tool_spec(tool):
         vc_points=planner.parse_vc_points(tool.vc_points),
         nose_radius=tool.nose_radius,
         max_ramp_angle=tool.max_ramp_angle,
+        tip_direction=tool.tip_direction,
     )
 
 
@@ -393,7 +394,7 @@ def gcode_simulation(job, machine, text, profile=None):
             tools[slot.position] = gsim.ToolInfo(
                 slot.tool.type, slot.tool.ap_max, slot.tool.insert_width, slot.tool.max_ramp_angle,
                 slot.tool.nose_radius or planner.insert_nose_radius(slot.tool.insert_code), slot.tool.tip_direction,
-                slot.tool.name)
+                slot.tool.name, slot.tool.insert_code)
     data = gsim.SimInput(
         profile=profile, stock_radius=planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
         face_stock=job.face_stock_mm or 0.0, stickout=job.stickout_mm or 0.0,

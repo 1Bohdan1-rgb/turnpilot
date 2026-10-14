@@ -97,6 +97,7 @@ class ToolSpec:
     catalogue_warning: str | None = None
     nose_radius: float | None = None  # the operator's rε; None: from the insert code
     max_ramp_angle: float | None = None  # RMPX: the steepest the tool may cut going down towards the chuck
+    tip_direction: int | None = None  # the operator's T (0-9); None: not known
 
 
 @dataclass(frozen=True)
@@ -449,6 +450,26 @@ COPY_ROUGH_WITH_FINISHING = ("roughed with the finishing copying insert T{positi
                              "roughing insert")
 COPYING_NOTE = ("finished by T{position} (RMPX {rmpx:g}°): the concave arc goes down at up to {angle:.0f}° towards "
                 "the chuck, {default}")
+
+
+def unset_rmpx(tool_types, angle: float, iso_group: str, turret: list[TurretEntry]) -> str | None:
+    """A warning naming the turret's tools that could go down at `angle` by the catalogue's RMPX for their insert,
+    but whose RMPX the operator has not taken yet; None when there are none."""
+    could = []
+    for e in sorted(turret, key=lambda e: e.position):
+        if e.tool.type not in tool_types or iso_group not in e.tool.iso_group or e.tool.max_ramp_angle is not None:
+            continue
+        ways = [f"{style} {rmpx:g}°" for style, rmpx, _ in rmpx_suggestions(e.tool.insert_code) if rmpx >= angle - 0.5]
+        if ways:
+            could.append(f"T{e.position} ({e.tool.insert_code}: {' / '.join(ways)})")
+    if not could:
+        return None
+    return (f"{', '.join(could)} could cut it (it goes down at {angle:.0f}°), but the RMPX is not set: take it for "
+            "the holder on the tool page, then Calculate again")
+
+
+COPY_NEEDS_T = ("copy roughing needs the tip direction T of T{position} (the passes are placed for the nose "
+                "centre): set it on the tool page, else this operation is left out of the G-code")
 
 
 def select_copying_tool(tool_type: str, angle: float, iso_group: str, turret: list[TurretEntry],
@@ -1778,6 +1799,12 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         return op
     if copying:
         op.notes.append(copying)
+    elif angle is not None and step.tool_type in ("turning_finish", "turning_rough") and (
+            entry.tool.max_ramp_angle is None or angle > entry.tool.max_ramp_angle + 0.5):
+        types = ("turning_finish",) if step.tool_type == "turning_finish" else ("turning_rough", "turning_finish")
+        unset = unset_rmpx(types, angle, job.iso_group, turret)
+        if unset:
+            op.warnings.append(unset)
     if rough_boring_fallback:
         op.notes.append(NO_ROUGH_BORING_TOOL)
 
@@ -1811,6 +1838,8 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
             _plan_rough_turning(op, tool, replace(feature, diameter=lowest), job, turret, start, power)
             copy = angle is not None and tool.max_ramp_angle is not None and angle <= tool.max_ramp_angle + 0.5
             op.notes.append(COPY_ROUGH_NOTE if copy else ARC_STEPS_NOTE)
+            if copy and tool.tip_direction is None:
+                op.warnings.append(COPY_NEEDS_T.format(position=entry.position))
             if rough_with_finishing is not None and op.passes:
                 op.warnings.append(COPY_ROUGH_WITH_FINISHING.format(position=entry.position, angle=angle,
                                                                     passes=op.passes, ap=op.ap))
