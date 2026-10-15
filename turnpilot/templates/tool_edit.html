@@ -32,6 +32,10 @@
     <input name="max_ramp_angle" type="number" step="any" min="0" max="89" value="{{ tool.max_ramp_angle if tool.max_ramp_angle is not none else '' }}"></label>
   <label>Source of RMPX (catalogue page, holder)
     <input name="max_ramp_source" maxlength="200" value="{{ tool.max_ramp_source or '' }}"></label>
+  <label>DMIN — smallest bore, mm (boring: the holder's, from the catalogue)
+    <input name="min_bore_diameter" type="number" step="any" min="0" value="{{ tool.min_bore_diameter if tool.min_bore_diameter is not none else '' }}"></label>
+  <label>Source of DMIN (catalogue page, holder)
+    <input name="min_bore_source" maxlength="200" value="{{ tool.min_bore_source or '' }}"></label>
   <label>ap rec (catalogue)
     <input name="ap_rec" type="number" step="any" min="0" value="{{ tool.ap_rec if tool.ap_rec is not none else '' }}"></label>
   <label>f rec (catalogue)
@@ -47,6 +51,19 @@
     <a href="{{ url_for('main.machine') }}">Cancel</a>
   </div>
 </form>
+{% if dmin %}
+<div class="card">
+  <h2>DMIN from the catalogue (a suggestion: confirm the holder)</h2>
+  {% for holder, value, source in dmin %}
+  <form method="post" action="{{ url_for('main.take_dmin', tool_id=tool.id) }}" class="inline">
+    <input type="hidden" name="holder" value="{{ holder }}">
+    {{ tool.insert_code }} in {{ holder }}: DMIN {{ value|round(1) }} mm ({{ source }})
+    <button type="submit">The holder is {{ holder }}: take {{ value|round(1) }} mm</button>
+  </form>
+  {% endfor %}
+  {% if tool.min_bore_diameter is not none %}<p class="small muted">Now: DMIN {{ tool.min_bore_diameter }} mm{% if tool.min_bore_source %} ({{ tool.min_bore_source }}){% endif %}.</p>{% endif %}
+</div>
+{% endif %}
 {% if rmpx %}
 <div class="card">
   <h2>RMPX from the catalogue (a suggestion: confirm the holder)</h2>

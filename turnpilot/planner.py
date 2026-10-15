@@ -98,6 +98,7 @@ class ToolSpec:
     nose_radius: float | None = None  # the operator's rε; None: from the insert code
     max_ramp_angle: float | None = None  # RMPX: the steepest the tool may cut going down towards the chuck
     tip_direction: int | None = None  # the operator's T (0-9); None: not known
+    min_bore_diameter: float | None = None  # boring: the smallest bore the holder goes into (DMIN); None: not known
 
 
 @dataclass(frozen=True)
@@ -1146,7 +1147,6 @@ def _drills(iso_group, turret):
 def plan_holes(features, iso_group: str, turret: list[TurretEntry]) -> dict[int, HolePlan]:
     """How each bore and internal thread (by id()) is drilled."""
     drills = _drills(iso_group, turret)
-    boring, _ = select_tool("boring", iso_group, turret)
     plans = {}
     for f in features:
         if f.type == "bore" and f.diameter:
@@ -1154,6 +1154,21 @@ def plan_holes(features, iso_group: str, turret: list[TurretEntry]) -> dict[int,
             if exact and drill_gives(f.tolerance, f.diameter, f.ra):
                 plans[id(f)] = HolePlan(f.diameter, f.length, exact[0], drill_only=True,
                                         note=DRILL_ONLY_NOTE.format(d=f.diameter))
+                continue
+            borers = [e for e in turret if e.tool.type in ("boring", "boring_rough") and iso_group in e.tool.iso_group]
+            reach = [e for e in turret if e.tool.type == "boring" and iso_group in e.tool.iso_group
+                     and reaches(e.tool, f.diameter)]
+            boring = min(reach, key=lambda e: e.position) if reach else None
+            if borers and not any(reaches(e.tool, f.diameter) for e in borers):
+                # every boring tool's holder is too thick for this bore: drill it to size
+                text = _boring_tools_text(e for e in borers if not reaches(e.tool, f.diameter))
+                if exact:
+                    plans[id(f)] = HolePlan(f.diameter, f.length, exact[0], drill_only=True,
+                                            note=DRILL_ONLY_NOTE.format(d=f.diameter),
+                                            warning=BORING_NEEDS_TOLERANCE.format(d=f.diameter, tools=text))
+                else:
+                    plans[id(f)] = HolePlan(f.diameter, f.length, None, drill_only=True,
+                                            warning=NO_BORING_REACH.format(d=f.diameter, tools=text))
                 continue
             if boring is None:
                 plans[id(f)] = HolePlan(None, f.length, warning=NO_BORING_ALLOWANCE)
@@ -1283,6 +1298,38 @@ RMPX_TABLE = (
     ("VNMG16", ("DVJNR",), 44.0, "Sandvik TT 2020 A212 (PDF 216)"),
     ("VNMG16", ("PVJNR",), 41.0, "Sandvik TT 2020 A212 (PDF 216)"),
 )
+
+
+# DMIN, the smallest bore a boring holder goes into, by insert and holder, from the catalogue. A suggestion only: the
+# operator confirms which holder is on the tool. (insert at the start of its code, holder, its code's start, DMIN, source)
+DMIN_TABLE = (
+    ("CCMT09", "A16R-SCLCR/L 09-R", "A16R-SCLC", 20.0, "Sandvik TT 2020 (PDF 106)"),
+    ("CCMT09", "A20S-SCLCR/L 09-R", "A20S-SCLC", 25.0, "Sandvik TT 2020 (PDF 106)"),
+)
+NO_BORING_REACH = ("no boring tool goes into Ø{d:g} ({tools}): the hole is to be drilled to size; no Ø{d:g} drill in "
+                   "the turret")
+BORING_NEEDS_TOLERANCE = ("the tolerance or Ra of Ø{d:g} needs boring, but no boring tool goes into it ({tools}): "
+                          "drilled to size, check")
+DMIN_NOT_SET = ("the smallest bore of T{position} (DMIN) is not set: check that it goes into Ø{d:g} (tool page, "
+                "the catalogue's DMIN for its holder)")
+
+
+def dmin_suggestions(insert_code: str | None, holder_code: str | None = None) -> list[tuple[str, float, str]]:
+    """(holder, DMIN, source) the catalogue gives for a boring insert; with a holder code, that holder only."""
+    code = re.sub(r"\s+", "", insert_code or "").upper()
+    holder = re.sub(r"\s+", "", holder_code or "").upper()
+    return [(name, dmin, source) for prefix, name, start, dmin, source in DMIN_TABLE
+            if code.startswith(prefix) and (not holder or holder.startswith(start))]
+
+
+def reaches(tool, diameter: float | None) -> bool:
+    """A boring tool goes into a bore of this Ø (its DMIN not known counts as yes, with a warning elsewhere)."""
+    dmin = getattr(tool, "min_bore_diameter", None)
+    return dmin is None or diameter is None or diameter >= dmin - 1e-9
+
+
+def _boring_tools_text(tools) -> str:
+    return ", ".join(f"T{e.position} DMIN {e.tool.min_bore_diameter:g}" for e in tools)
 
 
 def rmpx_suggestions(insert_code: str | None, holder_code: str | None = None) -> list[tuple[str, float, str]]:
@@ -1666,6 +1713,8 @@ def _plan_drilling(op, step, hole: HolePlan | None, max_rpm) -> PlannedOperation
     if hole.entry is None:
         op.warnings.append(hole.warning or NO_DRILL)
         return op
+    if hole.warning:  # e.g. drilled to size although the tolerance asks for boring
+        op.warnings.append(hole.warning)
     tool = hole.entry.tool
     op.tool_id, op.tool_name, op.turret_position = tool.id, tool.name, hole.entry.position
     op.vc, op.f, _ = cutting_data(tool, "finish")
@@ -1777,6 +1826,9 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         return op
 
     rough_boring_fallback = False
+    if step.tool_type == "boring" and feature.diameter:  # holders too thick for this bore are left out
+        turret = [e for e in turret if e.tool.type not in ("boring", "boring_rough")
+                  or reaches(e.tool, feature.diameter)]
     if step.tool_type == "grooving":
         depth = (feature.start_diameter - feature.diameter) / 2 \
             if feature.start_diameter and feature.diameter else None
@@ -1807,6 +1859,8 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     if entry is None:
         op.warnings.append(warning)
         return op
+    if entry.tool.type in ("boring", "boring_rough") and entry.tool.min_bore_diameter is None and feature.diameter:
+        op.warnings.append(DMIN_NOT_SET.format(position=entry.position, d=feature.diameter))
     if copying:
         op.notes.append(copying)
     elif angle is not None and step.tool_type in ("turning_finish", "turning_rough") and (

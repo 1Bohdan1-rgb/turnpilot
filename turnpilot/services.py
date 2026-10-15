@@ -144,6 +144,7 @@ def _tool_spec(tool):
         nose_radius=tool.nose_radius,
         max_ramp_angle=tool.max_ramp_angle,
         tip_direction=tool.tip_direction,
+        min_bore_diameter=tool.min_bore_diameter,
     )
 
 

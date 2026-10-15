@@ -492,6 +492,8 @@ def _tool_fields(form):
         holder_code=_holder_code(form),
         max_ramp_angle=_ramp_angle(form),
         max_ramp_source=form.get("max_ramp_source", "").strip()[:200] or None,
+        min_bore_diameter=_number(form, "min_bore_diameter"),
+        min_bore_source=form.get("min_bore_source", "").strip()[:200] or None,
         nose_radius=_number(form, "nose_radius"),
         tip_direction=_tip_direction(form),
         source=form.get("source", "").strip()[:300] or None,
@@ -537,7 +539,9 @@ def edit_tool(tool_id):
             db.session.rollback()
             flash(str(e), "error")
     return render_template("tool_edit.html", tool=tool, iso_groups=ISO_GROUPS,
-                           rmpx=planner.rmpx_suggestions(tool.insert_code, tool.holder_code))
+                           rmpx=planner.rmpx_suggestions(tool.insert_code, tool.holder_code),
+                           dmin=planner.dmin_suggestions(tool.insert_code, tool.holder_code)
+                           if tool.type in ("boring", "boring_rough") else [])
 
 
 @bp.route("/tools/<int:tool_id>/rmpx", methods=["POST"])
@@ -553,6 +557,22 @@ def take_rmpx(tool_id):
     tool.max_ramp_source = f"{chosen[2]}, holder {style} (confirmed by the operator)"
     db.session.commit()
     flash(f"RMPX {chosen[1]:g}° set for '{tool.name}' with the holder {style}.")
+    return redirect(url_for("main.edit_tool", tool_id=tool.id))
+
+
+@bp.route("/tools/<int:tool_id>/dmin", methods=["POST"])
+def take_dmin(tool_id):
+    """The operator takes the catalogue's DMIN for the boring holder they confirm (planner.DMIN_TABLE)."""
+    tool = _active_tool_or_404(tool_id)
+    holder = request.form.get("holder", "")
+    chosen = next((s for s in planner.dmin_suggestions(tool.insert_code, tool.holder_code) if s[0] == holder), None)
+    if chosen is None:
+        flash("No catalogue DMIN for this insert and holder.", "error")
+        return redirect(url_for("main.edit_tool", tool_id=tool.id))
+    tool.min_bore_diameter = chosen[1]
+    tool.min_bore_source = f"{chosen[2]}, holder {holder} (confirmed by the operator)"
+    db.session.commit()
+    flash(f"DMIN {chosen[1]:g} mm set for '{tool.name}' with the holder {holder}.")
     return redirect(url_for("main.edit_tool", tool_id=tool.id))
 
 

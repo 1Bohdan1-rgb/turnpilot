@@ -116,7 +116,8 @@
         <td>{{ slot.tool.insert_code if slot.tool else "" }}</td>
         <td class="small">{% if slot.tool %}{{ slot.tool.holder_code or "holder —" }} ·
           {{ ("RMPX " ~ slot.tool.max_ramp_angle ~ "°") if slot.tool.max_ramp_angle is not none else "RMPX —" }} ·
-          {{ ("T" ~ slot.tool.tip_direction) if slot.tool.tip_direction is not none else "T —" }}{% endif %}</td>
+          {{ ("T" ~ slot.tool.tip_direction) if slot.tool.tip_direction is not none else "T —" }}{% if slot.tool.type in ("boring", "boring_rough") %} ·
+          {{ ("DMIN " ~ slot.tool.min_bore_diameter) if slot.tool.min_bore_diameter is not none else "DMIN —" }}{% endif %}{% endif %}</td>
         <td class="row-actions">{% if slot.tool %}<a href="{{ url_for('main.edit_tool', tool_id=slot.tool.id) }}">Edit</a>{% endif %}</td>
       </tr>
     {% endfor %}
