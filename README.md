@@ -294,6 +294,13 @@ section it belongs to from the geometry of the file, with no API call.
   short 45° diagonals are chamfers, transition arcs are fillets), computes each dimension's value from
   its anchor points and binds it: lengths by the x of their ends, Ø / R / chamfers to sections. A
   dimension whose geometry differs from its text, or a Ø that is not on the drawn contour, is flagged.
+- `turnpilot/dxf_adapter.py`: tells the CAD that wrote the file. KOMPAS-3D goes to the reader as it is; a
+  **SolidWorks** sheet (DXF 2000, everything on layer 0, the sheet drawn at the drawing's scale) is rewritten the
+  KOMPAS way first: the scale from the dimensions (checked against the title block) brought back to 1:1, the
+  frame and the title block left out, the contour told by its line weight along a centre line, the dimension
+  texts joined from SolidWorks' pieces (Cyrillic \U+ codes, %%c, deviations). The review page says so, with the
+  dimensions and splines it did not read, the notes on the sheet and the material of the title block. Other CADs
+  are refused by name. The KOMPAS reader itself is unchanged (frozen for the blind check).
 - `turnpilot/dxf_input.py`: turns each part into the usual `DrawingData` rows. Ø, tolerance, thread
   pitch and class, chamfer leg and R come from the bound dimension's text, otherwise from the geometry
   with a **check** note. Lengths are the distances between section boundaries, never corrected; the ones

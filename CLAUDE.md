@@ -815,6 +815,30 @@ radius_note), f2b9d3a61c08 (RadiusDecision); DB backups `instance/turnpilot.db.b
 - НД 012 (job 7): the conflict is Z-35 to Z-45, Ø35 -> Ø38.5, convex; both R20.46 and R51.608 go through its ends.
   The operator's first decision: R20.46 (the dimension), note "за розміром на кресленні".
 
+## SolidWorks DXF through an adapter (built 2026-10-15)
+Plan agreed with the user (1–4; SolidWorks only; S355J2+N as P1.2). Commits 5e70664 (S355), 007bae0 (CAD detection),
+1e4d48d (adapter), b58d08c (review page, material, arcs). Migration a3c6e81f4d27 (DB backup
+`instance/turnpilot.db.bak-2026-10-15-before-s355`). The files frozen by `dxf-blind-freeze` are untouched.
+- Data: three trial SolidWorks files from Denys in `real_dxf/denys/` (local, git-ignored): eb1_011 (Рукоятка, AISI
+  304, 10:1), 03057789-1-01 (Втулка, S355J2+N, 2:1, A3), 03057789-2-01 (Шпилька, S355J2+N, 2:1). The user wrote no
+  expected answers: they are trial files, NOT in the stage 3 metric, and the adapter was developed on them, so they
+  are in-sample for it. A blind check of the SolidWorks path needs other files with expected answers first.
+- What SolidWorks writes (probe): AC1015, ANSI_1251 with Cyrillic as \U+XXXX, layers 0 / FORMAT / Defpoints, all
+  colour 7; contour Continuous 0.25, thin 0.18, CENTERX2 axes, frame 0.70, title block 0.50 / 0.35; real DIMENSION
+  entities with points, in sheet units; text pieces in the `_D…` blocks.
+- `turnpilot/dxf_adapter.py`: detect (KOMPAS: appid / K5LT_*; SolidWorks: SW_* blocks / FORMAT layer); scale from the
+  dimensions (60% must agree within 1%; title block checked); the frame and what hangs on it dropped; contour = the
+  heaviest Continuous weight along a horizontal CENTER* line; linear and radius dimensions rewritten (texts joined);
+  diameter / angular ones, splines, circles, hatches not read (listed as warnings); a rewritten copy
+  `<stored>.kompas.dxf` is what the frozen reader reads.
+- S355J2+N (EN 10025-2): P1.2 (TT cross reference list PDF 682: S355J2G3 = P1.2.Z.AN), kc1 1600 (TT A278 / PDF 282),
+  mc 0.25 not verified, hardness not given; recognised from the title block.
+- Run on the three files (in-sample): eb1_011 read (Ø8 × 10, chamfers 0.6 both ends; the bore not read: inner);
+  03057789-2-01 read (M20-6g × 24, chamfers 0.5 both ends; Ø10 inner; "16" and "4" on the other views not bound);
+  03057789-1-01 NOT read: its main view is a half section with a lug (the end view shows Ø50 with a flat), so no
+  contour is symmetric about the axis (the reader's basic rule). Not patched: a half-section rule would be a reader
+  change or a guess in the adapter.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -824,7 +848,7 @@ radius_note), f2b9d3a61c08 (RadiusDecision); DB backups `instance/turnpilot.db.b
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1038 tests pass (2026-10-14). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1056 tests pass (2026-10-15). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
