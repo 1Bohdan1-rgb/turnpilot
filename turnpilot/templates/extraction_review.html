@@ -23,7 +23,7 @@
 </nav>
 {% endif %}
 <div class="flash dxf-note">
-  <strong>Read from a KOMPAS DXF:</strong> the outer profile and its dimensions only. Material, quantity, roughness
+  <strong>Read from a {{ (dxf_report or {}).get("cad") or "KOMPAS-3D" }} DXF{% if dxf_report and dxf_report.get("scale") and dxf_report.get("scale") != 1 %} (drawn at {{ "%g"|format(dxf_report.get("scale")) }}:1, brought to 1:1){% endif %}:</strong> the outer profile and its dimensions only. Material, quantity, roughness
   and the blank are not in the DXF: fill them in. Bores and other inner features are not read: add them by hand.
   Each row shows its section (§) and the dimensions it was taken from; a value not given directly by a dimension
   is marked <span class="badge badge-check">check</span>, with the reason under the row.

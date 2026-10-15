@@ -194,3 +194,24 @@ def test_upload_a_solidworks_sheet(client, no_api):
     assert services.match_material(data["material"], materials).name == "S355J2+N (EN 10025-2)"
     page = client.get(f"/extractions/{extraction.id}/review").get_data(as_text=True)
     assert "drawn at 2:1, brought to 1:1" in page
+
+
+def test_the_review_header_names_the_cad(client, no_api):
+    from sw_drawings import sheet
+
+    stream = io.StringIO()
+    sheet(2.0).write(stream)
+    _upload(client, stream.getvalue().encode("cp1251"), "sw.DXF")
+    (extraction,) = _extractions()
+    page = client.get(f"/extractions/{extraction.id}/review").get_data(as_text=True)
+    assert "Read from a SolidWorks DXF (drawn at 2:1, brought to 1:1):" in page
+
+
+def test_an_empty_or_zero_roughness_is_not_given(client, no_api):
+    from gcode_jobs import make_job
+    job = make_job(approve=False)
+    for ra in ("", "0"):
+        response = client.post(f"/jobs/{job.id}/features", data={"type": "bore", "diameter": "10", "length": "5",
+                                                                   "ra": ra, "ra_param": "Ra"}, follow_redirects=True)
+        assert "must be greater than zero" not in response.get_data(as_text=True)
+    assert [f.ra for f in job.features if f.type == "bore"] == [None, None]

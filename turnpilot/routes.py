@@ -657,6 +657,14 @@ def _arc_convex(form, prefix, feature_type):
     return ARC_SHAPES[value]
 
 
+def _roughness(form, prefix=""):
+    """Ra / Rz in µm, optional: empty or 0 is "not given" (like an empty tolerance); a negative value is refused."""
+    value = _number(form, prefix + "ra", positive=False)
+    if value is not None and value < 0:
+        raise FormError("Roughness must not be negative")
+    return value or None
+
+
 def _roughness_param(form, prefix=""):
     value = form.get(prefix + "ra_param") or "Ra"
     if value not in ("Ra", "Rz"):
@@ -698,7 +706,7 @@ def _feature_from_form(form, blank_diameter, prefix=""):
         diameter=diameter,
         length=_number(form, prefix + "length"),
         tolerance=normalize_tolerance(form.get(prefix + "tolerance")),
-        ra=_number(form, prefix + "ra"),
+        ra=_roughness(form, prefix),
         ra_param=_roughness_param(form, prefix),
         **_position(form, prefix, feature_type),
         pitch=pitch if feature_type == "thread" else None,
