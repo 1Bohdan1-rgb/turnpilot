@@ -1591,7 +1591,17 @@ def _plan_parting(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec, jo
     if tool.insert_width is None:
         op.warnings.append("Insert width is not set for this parting tool.")
     outer = op.ref_diameter
-    bores = [f.diameter for f in job.features if f.type == "bore" and f.diameter and f.diameter < outer]
+    # A bore reaches the parting plane only when it runs the whole length (drilled from the free end, the end
+    # parted off is in the chuck): a blind bore leaves the part on a solid core, so the cut goes to the axis.
+    sections = [axial_length(f) for f in job.features if f.type in AXIAL_SECTION_TYPES]
+    length = sum(v for v in sections if v) if sections and all(v is not None for v in sections) else None
+    bores = [f.diameter for f in job.features if f.type == "bore" and f.diameter and f.diameter < outer
+             and (length is None or f.length is None or f.length >= length - GEOMETRY_TOLERANCE_MM)]
+    blind = [f for f in job.features if f.type == "bore" and f.diameter and f.length and length
+             and f.length < length - GEOMETRY_TOLERANCE_MM]
+    if blind and not bores:
+        op.notes.append(f"the bore Ø{blind[0].diameter:g} × {blind[0].length:g} does not reach the cut (part "
+                        f"length {length:g}): parting to the axis")
     if bores:
         # Cut to the smallest bore so the part separates whatever bore step is at the cut.
         inner = min(bores)
