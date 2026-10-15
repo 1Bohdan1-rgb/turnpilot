@@ -65,10 +65,10 @@ def test_upload_not_kompas(client, no_api):
     doc.write(stream)
     response = _upload(client, stream.getvalue().encode("utf-8"), "plain.dxf")
     (extraction,) = _extractions()
-    assert extraction.status == "failed" and "Only KOMPAS-3D DXF" in extraction.error
+    assert extraction.status == "failed" and "Only KOMPAS-3D and SolidWorks DXF" in extraction.error
     assert response.status_code == 302 and response.location.endswith("/jobs/upload")
     page = client.get("/jobs/upload").get_data(as_text=True)
-    assert "Only KOMPAS-3D DXF" in page
+    assert "Only KOMPAS-3D and SolidWorks DXF" in page
 
 
 def test_upload_png_named_dxf(client, no_api):

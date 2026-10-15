@@ -1203,8 +1203,8 @@ def read_dxf(name, extension, data, sha256, instance_path):
     common = dict(original_filename=name, stored_filename=stored, file_type="dxf", size_bytes=len(data),
                   sha256=sha256, prompt_version=dxf_code_version(), read_mode="dxf")
     try:
-        dxf_adapter.check_supported(path)  # names the CAD of a file the reader cannot take
-        results = dxf_input.part_results(dxf_reader.read_dxf(path))
+        reader_path, adapted = dxf_adapter.prepare(path)  # a SolidWorks sheet rewritten the KOMPAS way
+        results = dxf_input.part_results(dxf_reader.read_dxf(reader_path))
     except dxf_reader.DxfReadError as exc:
         results, error = None, str(exc)
     except Exception as exc:  # a malformed file must leave a record, not a 500
