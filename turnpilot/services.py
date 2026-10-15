@@ -18,13 +18,14 @@ from .models import (
 MATERIAL_ALIASES = {
     "Steel 45 (C45)": ("steel 45", "c45", "c45e", "1045", "ст45", "сталь 45"),
     "AISI 304": ("aisi 304", "304", "1.4301", "x5crni18-10", "08х18н10"),
+    "S355J2+N (EN 10025-2)": ("s355j2+n", "s355j2", "s355j2g3", "1.0570"),
     "Aluminium 6061": ("aluminium 6061", "aluminum 6061", "6061", "en aw-6061", "almg1sicu"),
 }
 
 FILE_TYPE_BY_EXTENSION = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "pdf": "pdf", "dxf": "dxf"}
 
 # The code that reads a DXF (reader + its mapping to rows): recorded as the "prompt version" of a DXF reading.
-DXF_SOURCES = (dxf_reader.__file__, dxf_input.__file__)
+DXF_SOURCES = (dxf_reader.__file__, dxf_input.__file__, dxf_adapter.__file__)
 
 # A second upload of a file that is still being read within this time is rejected (double submit).
 IN_FLIGHT_SECONDS = 120
@@ -1205,6 +1206,10 @@ def read_dxf(name, extension, data, sha256, instance_path):
     try:
         reader_path, adapted = dxf_adapter.prepare(path)  # a SolidWorks sheet rewritten the KOMPAS way
         results = dxf_input.part_results(dxf_reader.read_dxf(reader_path))
+        for result in results:  # what the adapter did, for the review page
+            result.data.warnings[:0] = adapted.warnings
+            result.data.material = result.data.material or adapted.material
+            result.report["cad"], result.report["scale"] = adapted.cad, adapted.scale
     except dxf_reader.DxfReadError as exc:
         results, error = None, str(exc)
     except Exception as exc:  # a malformed file must leave a record, not a 500
@@ -1242,7 +1247,8 @@ def dxf_arc_shapes(extraction, instance_path):
     if not extraction.is_dxf or not report:
         return {}
     try:
-        reading = dxf_reader.read_dxf(os.path.join(drawings_dir(instance_path), extraction.stored_filename))
+        reading = dxf_reader.read_dxf(dxf_adapter.reader_path(
+            os.path.join(drawings_dir(instance_path), extraction.stored_filename)))
         part = reading.parts[report["part"] - 1]
     except Exception:  # the stored file is gone or unreadable: the operator chooses
         return {}

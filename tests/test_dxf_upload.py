@@ -173,3 +173,24 @@ def test_dxf_job_is_roughed_from_the_neighbouring_sections(client, no_api, tmp_p
     client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=10, length=2))  # order lost
     client.post(f"/jobs/{job.id}/calculate")
     assert {op.ref_diameter for op in rough().values()} == {45}
+
+
+def test_upload_a_solidworks_sheet(client, no_api):
+    from sw_drawings import sheet
+
+    from turnpilot import services
+    from turnpilot.models import Material
+
+    stream = io.StringIO()
+    sheet(2.0).write(stream)
+    _upload(client, stream.getvalue().encode("cp1251"), "03057789-sw.DXF")
+    (extraction,) = _extractions()
+    assert extraction.status == "extracted", extraction.error
+    data = json.loads(extraction.parsed)
+    assert data["warnings"][0] == "read from a SolidWorks DXF (AC1015) drawn at 2:1, brought to 1:1"
+    assert data["material"] == "EN 10025-2 S355J2+N" and data["overall_length"] == 50
+    assert json.loads(extraction.binding)["cad"] == "SolidWorks"
+    materials = db.session.execute(db.select(Material)).scalars().all()
+    assert services.match_material(data["material"], materials).name == "S355J2+N (EN 10025-2)"
+    page = client.get(f"/extractions/{extraction.id}/review").get_data(as_text=True)
+    assert "drawn at 2:1, brought to 1:1" in page
