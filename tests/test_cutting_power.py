@@ -13,7 +13,9 @@ def _materials():
 def test_seed_kc_values_are_marked_placeholders(app):
     materials = _materials()
     assert (materials["Steel 45 (C45)"].kc1, materials["Steel 45 (C45)"].mc) == (1600, 0.25)
-    assert all(m.kc1 and m.mc and m.kc_source.startswith("PLACEHOLDER") for m in materials.values())
+    assert all(m.kc1 and m.mc and m.kc_source.startswith("PLACEHOLDER") for name, m in materials.items()
+               if name != "S355J2+N (EN 10025-2)")
+    assert materials["S355J2+N (EN 10025-2)"].kc_source.endswith("mc 0.25: not verified")
     assert services.get_machine().drive_efficiency is None  # not guessed
 
 

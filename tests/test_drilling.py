@@ -174,7 +174,7 @@ def test_internal_chamfer_of_a_drill_only_hole_gets_its_own_pass():
 
 def test_bore_through_the_app(client):
     from turnpilot.models import Job, Material, Operation
-    material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     # the seed turret is full: the centre drill goes on T3 (M/N roughing, not used for steel), the Ø20 on T10
     for d, kind, position in ((3.15, "centre_drilling", 3), (20, "drilling", 10)):
         client.post("/tools", data={**DRILL_FORM, "name": f"Tool {d}", "type": kind, "diameter": str(d)})

@@ -104,7 +104,7 @@ def test_confirmed_values_reach_the_planner(client, read_document):
     from turnpilot.planner import NO_COOLANT_WARNING
     document = read_document(answer(coolant=("no", 3, "Coolant pump pressure, bar ............................. 2")))
     client.post(f"/machine/passport/{document.id}/confirm", data={"confirm-coolant": "1", "value-coolant": "no"})
-    material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     client.post("/jobs", data=dict(name="Shaft", material_id=material.id, quantity=1, blank_diameter=60,
                                    blank_length=120))
     job = db.session.execute(db.select(Job)).scalar_one()

@@ -98,7 +98,7 @@ def test_unused_tool_is_deleted(client):
 
 
 def _job_with_an_operation_of(client, tool):
-    material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     client.post("/jobs", data=dict(name="Bushing", material_id=material.id, quantity=1, blank_diameter=38,
                                    blank_length=85))
     job = db.session.execute(db.select(Job)).scalar_one()

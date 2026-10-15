@@ -120,7 +120,7 @@ def test_tap_drill_is_not_checked():
 
 def test_limit_from_the_machine_page_through_the_app(client):
     from turnpilot.models import Job, Material, Operation
-    material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     client.post("/jobs", data=dict(name="M24", material_id=material.id, quantity=1, blank_diameter=30, blank_length=40))
     job = db.session.execute(db.select(Job)).scalar_one()
     client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=24, length=22))

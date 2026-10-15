@@ -98,7 +98,7 @@ def test_manual_feature_with_rz(app, client):
 
 
 def test_grinding_check_uses_converted_rz(app):
-    material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     job = Job(name="Fine", material=material, quantity=1, blank_diameter=60, blank_length=100)
     job.features.append(Feature(type="od_turn", diameter=40, length=50, ra=1.6, ra_param="Rz"))  # Ra 0.4
     db.session.add(job)

@@ -68,7 +68,7 @@ def test_manual_feature_form_normalizes(app, client):
 
 
 def test_planner_gets_points_even_for_old_rows(app):
-    material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     job = Job(name="Old", material=material, quantity=1, blank_diameter=60, blank_length=100)
     job.features.append(Feature(type="od_turn", diameter=40, length=50, tolerance="±0,004"))  # saved before the fix
     db.session.add(job)

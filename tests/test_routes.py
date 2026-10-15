@@ -2,7 +2,7 @@ from turnpilot.models import Edit, Job, Material, Operation, db
 
 
 def _create_job(client, iso_group="P"):
-    material = db.session.execute(db.select(Material).filter_by(iso_group=iso_group)).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(iso_group=iso_group).order_by(Material.id)).scalars().first()
     client.post("/jobs", data=dict(name="Shaft", material_id=material.id, quantity=5,
                                    blank_diameter=60, blank_length=120))
     return db.session.execute(db.select(Job)).scalar_one()

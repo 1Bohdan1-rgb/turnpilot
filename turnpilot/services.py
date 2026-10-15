@@ -989,7 +989,9 @@ def add_cutting_data_by_hand(form):
 
 
 def tool_catalogue_status(tools, groups, rows):
-    """{tool id: [(group, has ap / f row, has Vc row)]} for the tool library: which tools have confirmed rows."""
+    """{tool id: [(group, has ap / f row, has Vc row)]} for the tool library: which tools have confirmed rows. A group
+    shared by several materials (C45 and S355J2+N are both P1.2) is listed once."""
+    groups = list(dict.fromkeys(groups))
     return {
         t.id: [(g, cutting_data.geometry_row(rows, t.insert_code, g) is not None,
                 cutting_data.grade_row(rows, t.grade, t.type, g) is not None) for g in groups]

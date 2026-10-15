@@ -93,7 +93,7 @@ def test_insert_without_a_width_as_before():
 
 def test_wide_groove_through_the_app(client):
     from turnpilot.models import Job, Material, Operation, db
-    material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     client.post("/jobs", data=dict(name="Recess", material_id=material.id, quantity=1, blank_diameter=45,
                                    blank_length=60))
     job = db.session.execute(db.select(Job)).scalar_one()

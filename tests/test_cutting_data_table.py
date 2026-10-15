@@ -13,7 +13,8 @@ def row(**kw):
 
 def test_seed_steel_has_its_catalogue_group(app):
     groups = {m.name: m.catalogue_group for m in db.session.execute(db.select(Material)).scalars()}
-    assert groups == {"Steel 45 (C45)": "P1.2", "AISI 304": None, "Aluminium 6061": None}
+    assert groups == {"Steel 45 (C45)": "P1.2", "S355J2+N (EN 10025-2)": "P1.2", "AISI 304": None,
+                      "Aluminium 6061": None}
 
 
 def test_catalogue_group_is_saved_on_the_machine_page(app, client):

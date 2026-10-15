@@ -64,7 +64,7 @@ def test_limits_not_known_change_nothing():
 # --- through the app: the Machine page values reach the planner, the blank is checked -------------
 
 def _job(client, blank_diameter=60, blank_length=120):
-    material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     client.post("/jobs", data=dict(name="Shaft", material_id=material.id, quantity=1,
                                    blank_diameter=blank_diameter, blank_length=blank_length))
     return db.session.execute(db.select(Job)).scalar_one()

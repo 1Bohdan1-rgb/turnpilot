@@ -33,7 +33,7 @@ def test_arc_blank_and_geometry():
 
 
 def test_arc_through_the_app(client):
-    material = db.session.execute(db.select(Material).filter_by(iso_group="P")).scalar_one()
+    material = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
     client.post("/jobs", data=dict(name="Pin", material_id=material.id, quantity=1, blank_diameter=40, blank_length=80))
     job = db.session.execute(db.select(Job)).scalar_one()
     client.post(f"/jobs/{job.id}/features", data=dict(type="od_turn", diameter=36, length=50))
