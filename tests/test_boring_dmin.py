@@ -72,3 +72,24 @@ def test_the_operator_takes_the_dmin(app, client):
     assert tool.min_bore_diameter == 25.0
     assert tool.min_bore_source == "Sandvik TT 2020 (PDF 106), holder A20S-SCLCR/L 09-R (confirmed by the operator)"
     assert "DMIN 25.0" in client.get("/machine").get_data(as_text=True)
+
+
+def test_a_drill_of_the_size_in_the_library_is_named(app):
+    # jobs/8: the Ø10 drill was taken out of the turret (T12 holds a VNMG now), the bars' DMIN is 20 / 25
+    from gcode_jobs import make_job
+
+    from turnpilot import services
+    from turnpilot.models import Feature, Material, TurretSlot
+    machine = services.get_machine()
+    slot = db.session.execute(db.select(TurretSlot).filter_by(position=12)).scalar_one()
+    slot.tool = None
+    for t in db.session.execute(db.select(Tool).filter(Tool.type.in_(("boring", "boring_rough")))).scalars():
+        t.min_bore_diameter = 25.0 if t.type == "boring" else 20.0
+    db.session.commit()
+    job = make_job([Feature(type="od_turn", diameter=20, length=24),
+                    Feature(type="bore", diameter=10, length=5, ra=6.3), Feature(type="parting")],
+                   blank=22, length=29, stickout=35, approve=False)
+    hole = [op for op in job.current_operations if op.feature.type == "bore" and op.tool_type != "centre_drilling"]
+    assert [op.tool_type for op in hole] == ["drilling"]
+    assert "a Ø10 drill (Drill 860-GM Ø10, 860.1-1000-029A0-GM) is in the tool library, not in the turret" in \
+        hole[0].warning

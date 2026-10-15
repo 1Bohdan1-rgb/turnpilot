@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from . import catalogue_file, catalogue_reader, cutting_data, drawing_reader, dxf_adapter, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
 from .models import (
-    CatalogueDocument, CuttingDataRow, DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, TurretSlot, db,
+    CatalogueDocument, CuttingDataRow, DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, Tool, TurretSlot, db,
 )
 
 # Extra names a material may appear under on a drawing (compared after normalization).
@@ -189,6 +189,26 @@ def job_spec(job):
     )
 
 
+def _library_drill_for(job, machine, planned):
+    """A warning when a bore is not drilled to its size although a drill of that size is in the tool library (not in
+    the turret): the planner takes the turret's tools only."""
+    if planned.tool_type != "drilling":
+        return None
+    feature = next((f for f in job.active_features if f.id == planned.feature_id), None)
+    if feature is None or feature.type != "bore" or not feature.diameter:
+        return None
+    if planned.tool_id is not None and planned.ref_diameter and abs(planned.ref_diameter - feature.diameter) <= 0.01:
+        return None
+    in_turret = {slot.tool_id for slot in machine.slots if slot.tool_id}
+    drills = db.session.execute(db.select(Tool).filter_by(type="drilling", is_retired=False)).scalars().all()
+    found = next((t for t in drills if t.id not in in_turret and t.diameter
+                  and abs(t.diameter - feature.diameter) <= 0.01 and job.material.iso_group in t.iso_group), None)
+    if found is None:
+        return None
+    return (f"a Ø{feature.diameter:g} drill ({found.name}, {found.insert_code}) is in the tool library, not in the "
+            "turret: with it in the turret the hole is drilled to size in one operation")
+
+
 def calculate_operations(job, machine):
     """Archive the current operations of a job and add a fresh proposal as a new version.
 
@@ -202,6 +222,9 @@ def calculate_operations(job, machine):
     for planned in planner.plan_job(job_spec(job), turret_entries(machine, job.material), machine.max_rpm,
                                     machine.max_thread_feed,
                                     power, limits):
+        library_drill = _library_drill_for(job, machine, planned)
+        if library_drill:
+            planned.warnings.append(library_drill)
         job.operations.append(
             Operation(
                 feature_id=planned.feature_id,
