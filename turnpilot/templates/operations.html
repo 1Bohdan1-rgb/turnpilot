@@ -81,6 +81,10 @@
   </tbody>
 </table>
 </div>
-<p class="muted small">Cutting data comes from placeholder tool ranges. Verify every value before machining.</p>
+{% set unconfirmed = job.current_operations|selectattr("tool_id")|rejectattr("status", "equalto", "skipped")
+   |rejectattr("cutting_data_origin", "in", ["catalogue", "operator"])|list %}
+{% if unconfirmed %}<p class="warning small">{{ unconfirmed|length }} operation(s) ({% for op in unconfirmed %}{{ op.sequence }}{% if not loop.last %}, {% endif %}{% endfor %})
+  take cutting data from the tool's own ranges, without a confirmed catalogue row or the operator's values. Verify them
+  before machining.</p>{% endif %}
 {% endif %}
 {% endblock %}
