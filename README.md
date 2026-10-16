@@ -432,6 +432,14 @@ machine's turret and the other jobs keep theirs. Undoing a change keeps it in th
   operator's checklist list the changes for the setter; a program made before a change is out of date. Calculations
   made before keep their operations.
 
+## Skipping an operation
+
+The operator may leave any operation out (e.g. no centring before the self-centring 860-GM drill, 140° point): "Skip"
+on the process sheet with the operator's name and a note, both required; "Unskip" brings it back. A skipped operation
+blocks nothing, is not in the G-code, and the program lists it under "NOT IN THIS PROGRAM" with the reason; a cutting
+operation skipped leaves its material, which the simulation reports. The skip and its undoing are in the operation's
+edit log, and a new calculation carries the skip to the same operation (feature, type, mode), marked "carried from vN".
+
 ## Planned: probing the blank, sending the program (stage 7)
 
 Not started; it needs the machine's passport to show a probe and the custom macro option (Fanuc Custom Macro B).
