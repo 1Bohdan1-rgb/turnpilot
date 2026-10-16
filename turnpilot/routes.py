@@ -872,12 +872,19 @@ def gcode_setup(job_id):
     return redirect(url_for("main.job_detail", job_id=job.id))
 
 
+def _is_inner(feature):
+    """A bore, an internal thread or chamfer: not part of the outer profile, so its place in the list does not matter."""
+    return feature.type == "bore" or (feature.type in ("thread", "chamfer") and feature.location == "internal")
+
+
 @bp.route("/jobs/<int:job_id>/features", methods=["POST"])
 def add_feature(job_id):
     job = db.get_or_404(Job, job_id)
     try:
-        job.features.append(_feature_from_form(request.form, _stock_diameter(job)))
-        job.axial_order_known = False  # the new feature is at the end of the list, not in its place on the axis
+        feature = _feature_from_form(request.form, _stock_diameter(job))
+        job.features.append(feature)
+        if not _is_inner(feature):
+            job.axial_order_known = False  # the new feature is at the end of the list, not in its place on the axis
         db.session.commit()
     except FormError as e:
         flash(str(e), "error")
