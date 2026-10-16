@@ -546,6 +546,42 @@ def check_own_radius(job, feature, radius):
     return None
 
 
+def arc_top(job, feature, radius):
+    """A convex arc of this radius through its section's ends: why it is to be checked when its top is above the
+    larger end's Ø (the neighbouring section's Ø there), else None."""
+    from .gcode import profile as gprofile
+
+    section = next((s for s in job_profile(job).sections if s.feature_id == feature.id), None)
+    if section is None or not feature.arc_convex or not radius:
+        return None
+    p0, p1 = (section.z_free, section.d_free / 2), (section.z_chuck, section.d_chuck / 2)
+    arc, _ = gprofile.arc_through(p0, p1, radius, True)
+    if arc is None or not min(p0[0], p1[0]) < arc.cz < max(p0[0], p1[0]):
+        return None
+    z_end, r_end = max(p0, p1, key=lambda p: p[1])
+    top = arc.cr + radius
+    if 2 * top <= 2 * r_end + 0.005:
+        return None
+    return (f"R{radius:g}: the arc's top D{2 * top:.2f} at Z{arc.cz:.2f} is above D{2 * r_end:g} at Z{z_end:g} "
+            "(the neighbouring section's Ø there): check")
+
+
+def arc_top_warnings(job):
+    """{arc feature id: {"dimension" / "drawn": why}} for the arcs whose radius is the operator's choice."""
+    warnings = {}
+    for f in job.active_features:
+        if f.type != "arc" or f.drawn_radius is None:
+            continue
+        radii = {"dimension": f.radius_dimension if f.radius_decisions else f.radius,
+                 "drawn": f.radius_geometry if f.radius_decisions else f.drawn_radius}
+        found = {k: w for k, r in radii.items() if (w := arc_top(job, f, r))}
+        if f.radius_decisions and (w := arc_top(job, f, f.radius)):
+            found["current"] = w
+        if found:
+            warnings[f.id] = found
+    return warnings
+
+
 RADIUS_SOURCES = {"dimension": "the dimension", "drawn": "the geometry", "operator": "own value"}
 # what makes an operation the same after a recalculation (its approval is then kept)
 OPERATION_VALUES = ("tool_id", "turret_position", "tool_type", "rough_finish", "vc", "n", "f", "ap", "passes",

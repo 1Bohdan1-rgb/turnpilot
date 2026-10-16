@@ -1,6 +1,7 @@
 """An arc drawn with another radius than its dimension: the operator takes the dimension, the geometry or their own
 value (checked: a circle of it must go through the section's ends), with a note; until then the simulation errs."""
 from gcode_jobs import make_job, ready_machine
+from markupsafe import escape
 
 from turnpilot import services
 from turnpilot.gcode import fanuc
@@ -110,3 +111,19 @@ def test_change_the_decision(app, client):
     assert any(r.startswith("the decision on the arc's radius was changed to R51.61 by Operator P.") for r in reasons)
     page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
     assert "Operator I." in page and "Operator P." in page  # both decisions in the history
+
+
+def test_a_convex_arc_above_its_neighbour_is_shown_before_the_choice(app, client):
+    """НД 012: Ø35 -> Ø38.5 over Z-35..-45, convex: R20.46 tops out at D38.62, above the Ø38.5 it meets; R51.608 not."""
+    ready_machine()
+    job = make_job([Feature(type="face"), Feature(type="od_turn", diameter=35, length=35),
+                    Feature(type="arc", start_diameter=35, diameter=38.5, length=10, radius=20.46, arc_convex=True,
+                            drawn_radius=51.608),
+                    Feature(type="od_turn", diameter=38.5, length=10), Feature(type="parting")],
+                   blank=40, length=60, stickout=65)
+    top = "R20.46: the arc's top D38.62 at Z-43.42 is above D38.5 at Z-45 (the neighbouring section's Ø there): check"
+    assert services.arc_top_warnings(job) == {arc(job).id: {"dimension": top}}
+    assert str(escape(top)) in client.get(f"/jobs/{job.id}").get_data(as_text=True)
+    response = client.post(f"/jobs/{job.id}/features/{arc(job).id}/radius",
+                           data={"radius": "dimension", "decided_by": "Bohdan"}, follow_redirects=True)
+    assert response.get_data(as_text=True).count(str(escape(top))) == 3  # the flash, the decision, the choice to change it

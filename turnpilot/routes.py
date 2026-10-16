@@ -755,6 +755,7 @@ def job_detail(job_id):
                            turret=services.job_turret(job, services.get_machine()),
                            suggestions=services.turret_suggestions(job, services.get_machine()),
                            depth_hints=services.bore_depth_hints(job),
+                           arc_tops=services.arc_top_warnings(job) if job.axial_order_known else {},
                            depth_modes=services.BORE_DEPTH_MODES,
                            library=db.session.execute(db.select(Tool).filter_by(is_retired=False)
                                                       .order_by(Tool.name)).scalars().all())
@@ -956,6 +957,9 @@ def choose_arc_radius(job_id, feature_id):
     source = {"dimension": "dimension", "drawn": "drawn", "own": "operator"}[choice]
     note = (request.form.get("note") or "").strip()[:200] or None
     flash(services.decide_arc_radius(feature, source, radius, note, name, _machine_or_404()))
+    top = services.arc_top(feature.job, feature, radius)
+    if top:
+        flash(top, "error")
     return redirect(url_for("main.job_detail", job_id=job_id))
 
 

@@ -37,6 +37,7 @@
         {% if f.type == "arc" and f.drawn_radius is not none and f.radius is not none and (f.drawn_radius - f.radius)|abs > 0.01 %}
           <div class="warning small">{% set c = conflicts.get(f.id) %}{% if c %}Z{{ c.z_free|round(3) }} to Z{{ c.z_chuck|round(3) }} (D{{ c.d_free }} to D{{ c.d_chuck }}): {% endif %}dimension R{{ f.radius }} ≠ geometry R{{ f.drawn_radius }}: not programmed until you decide
             {% set dim_r, geo_r = f.radius, f.drawn_radius %}
+            {% for key, w in arc_tops.get(f.id, {}).items() if key != "current" %}<div class="warning">{{ w }}</div>{% endfor %}
             <form method="post" action="{{ url_for('main.choose_arc_radius', job_id=job.id, feature_id=f.id) }}" class="inline-form">
               <button name="radius" value="dimension" class="small">Take the dimension R{{ dim_r }}</button>
               <button name="radius" value="drawn" class="small">Take the geometry R{{ geo_r }}</button>
@@ -50,8 +51,10 @@
           ({{ {"dimension": "the dimension", "drawn": "the geometry", "operator": "own value"}[f.radius_source] }};
           dimension R{{ f.radius_dimension }}, geometry R{{ f.radius_geometry }}),
           {{ f.radius_decided_at.strftime("%Y-%m-%d %H:%M") }}{% if f.radius_note %}: {{ f.radius_note }}{% endif %}</div>
+          {% if arc_tops.get(f.id, {}).current %}<div class="warning small">{{ arc_tops[f.id].current }}</div>{% endif %}
           <details class="small"><summary>Change the decision</summary>
             {% set dim_r, geo_r = f.radius_dimension, f.radius_geometry %}
+            {% for key, w in arc_tops.get(f.id, {}).items() if key != "current" %}<div class="warning">{{ w }}</div>{% endfor %}
             <form method="post" action="{{ url_for('main.choose_arc_radius', job_id=job.id, feature_id=f.id) }}" class="inline-form">
               <button name="radius" value="dimension" class="small">Take the dimension R{{ dim_r }}</button>
               <button name="radius" value="drawn" class="small">Take the geometry R{{ geo_r }}</button>
