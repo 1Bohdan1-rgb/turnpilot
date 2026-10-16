@@ -413,6 +413,7 @@ class Feature(db.Model):
     job = db.relationship("Job", back_populates="features")
     operations = db.relationship("Operation", back_populates="feature")
     radius_decisions = db.relationship("RadiusDecision", back_populates="feature", order_by="RadiusDecision.id")
+    depth_decisions = db.relationship("BoreDepthDecision", back_populates="feature", order_by="BoreDepthDecision.id")
 
 
 class Operation(db.Model):
@@ -508,6 +509,21 @@ class DrawingExtraction(db.Model):
 
 
 GCODE_STATUSES = ("simulated", "ready")
+
+
+class BoreDepthDecision(db.Model):
+    """One decision of the operator on what a bore's depth means for the drill. Kept for the record: a changed
+    decision is a new row; the feature's depth_mode is the last one's."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    feature_id = db.Column(db.Integer, db.ForeignKey("feature.id", name="fk_bore_depth_decision_feature_id"),
+                           nullable=False)
+    mode = db.Column(db.String(20), nullable=False)  # "full_diameter" / "tip"
+    note = db.Column(db.String(200))
+    decided_by = db.Column(db.String(100), nullable=False)
+    decided_at = db.Column(db.DateTime, nullable=False, default=_now)
+
+    feature = db.relationship("Feature", back_populates="depth_decisions")
 
 
 class RadiusDecision(db.Model):

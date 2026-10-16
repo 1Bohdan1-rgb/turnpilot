@@ -138,6 +138,21 @@ def test_a_bore_without_the_depth_decision_blocks_the_program(app, client):
     assert services.gcode_program(job, machine)[0].ok
 
 
+def test_a_changed_depth_decision_keeps_the_first_in_the_history(app, client):
+    machine = ready_machine()
+    job = drilled_job(None)
+    feature = next(f for f in job.active_features if f.type == "bore")
+    url = f"/jobs/{job.id}/features/{feature.id}/depth"
+    client.post(url, data={"depth_mode": "full_diameter", "decided_by": "Bohdan"})
+    assert services.gcode_program(job, machine)[0].ok
+    client.post(url, data={"depth_mode": "tip", "decided_by": "Ivan", "note": "the drawing's depth is to the point"})
+    assert [(d.mode, d.decided_by, d.note) for d in feature.depth_decisions] == [
+        ("full_diameter", "Bohdan", None), ("tip", "Ivan", "the drawing's depth is to the point")]
+    assert (feature.depth_mode, feature.depth_decided_by) == ("tip", "Ivan")
+    page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
+    assert "full Ø (the point goes beyond), Bohdan" in page and "drill&#39;s point, Ivan" in page
+
+
 def test_the_full_diameter_needs_the_point_angle(app):
     machine = ready_machine()
     job = drilled_job("full_diameter")

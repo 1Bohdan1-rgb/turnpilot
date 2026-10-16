@@ -888,11 +888,30 @@ backup before it is `…-before-axial-order-job8` (differs only by jobs/8's axia
 - A bore's depth: "to the full Ø" (the point goes D/2/tan(SIG/2) deeper: jobs/8 Ø10 × 5 → Z-6.82) or "to the drill's
   point" (Z-5, the full Ø 3.18 deep); the operator's choice with a name on the job page, no default. Without it no
   program; to the full Ø without a point angle: no program. The program's comment names the decision; a later
-  decision makes a program out of date. A change overwrites the fields (no history table). The planner's "drill too
-  short" stays on the drawing's depth; the G-code warns when the point goes past the drill's max depth.
+  decision makes a program out of date. Every decision is a `BoreDepthDecision` row (mode, name, date, optional
+  note; migration a7c3e9d1f2b4, the earlier jobs/8 decision copied as its first row); the Feature fields are the
+  last one's. The planner's "drill too short" stays on the drawing's depth; the G-code warns when the point goes past
+  the drill's max depth.
 - Thread run-in: max(the machine's value, 3·P), the comment says which (M20×2.5 with 4.5 → 7.5). A run-in over a
   larger section: the thread is left out, the reason names both values.
-- jobs/8: the depth decision is the operator's (not taken).
+- jobs/8: the depth decision is the operator's: Bohdan, to the full Ø (2026-10-16).
+
+## Small fixes package (2026-10-16)
+Plan 1–7 agreed with the user. Commits cb18301 … and the history commit. DB backups
+`instance/turnpilot.db.bak-2026-10-16-before-kc-sources`, `…-before-depth-history` (taken before the migration files).
+- Program page: one row per reason (messages equal apart from their numbers), the lines' range and count, differing
+  numbers as min…max (`gcode/report.py`). НД 012 program 1: 241 error lines → 4 rows.
+- A convex arc whose top is above the larger end's Ø: shown at each radius choice and after the decision (НД 012:
+  R20.46 tops at D38.62 > D38.5 at Z-45); not a blocker.
+- `Material.kc1_source` / `mc_source` (migration f1a2b3c4d5e6, `kc_source` dropped): C45 and S355 kc1 TT A278 (PDF
+  282), mc "not verified"; AISI 304 / 6061 placeholders. The power note names both.
+- Thread notes: "V-profile: N passes from TT C77 (PDF 535), the full-profile count as C82 (PDF 540) allows" and "depth
+  from the ISO thread profile"; C77 is PDF 535 (the user wrote 540: that is C82, where the V-profile sentence is).
+- Process sheet: the unconfirmed-data note lists only operations with a tool whose cutting data is not from a
+  confirmed catalogue row or the operator.
+- Review screen of a DXF: a fillet is a boundary, not added to the section lengths (НД 012 extractions 28 / 30:
+  116.5 → no warning). Model readings unchanged. The old НД 012 extraction 27 still sums to 92 (another cause, not
+  looked at). Frozen files untouched.
 
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
@@ -903,7 +922,7 @@ backup before it is `…-before-axial-order-job8` (differs only by jobs/8's axia
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1082 tests pass (2026-10-16). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1091 tests pass (2026-10-16). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

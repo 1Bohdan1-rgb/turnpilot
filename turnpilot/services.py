@@ -399,14 +399,20 @@ class DepthError(ValueError):
     pass
 
 
-def decide_bore_depth(feature, mode, name):
-    """The operator's decision on what a bore's depth means for the drill; the name is required."""
+def decide_bore_depth(feature, mode, name, note=None):
+    """The operator's decision on what a bore's depth means for the drill (first, or a change): a new history row,
+    the feature's current mode. The name is required."""
+    from .models import BoreDepthDecision
+
     name = (name or "").strip()[:100]
     if not name:
         raise DepthError("The operator's name is required for the decision")
     if mode not in BORE_DEPTH_MODES:
         raise DepthError("Choose: to the full Ø or to the drill's point")
-    feature.depth_mode, feature.depth_decided_by, feature.depth_decided_at = mode, name, datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    feature.depth_decisions.append(BoreDepthDecision(mode=mode, note=(note or "").strip()[:200] or None,
+                                                     decided_by=name, decided_at=now))
+    feature.depth_mode, feature.depth_decided_by, feature.depth_decided_at = mode, name, now
     db.session.commit()
 
 

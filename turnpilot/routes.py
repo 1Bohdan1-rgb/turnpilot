@@ -916,7 +916,7 @@ def choose_bore_depth(job_id, feature_id):
     if mode not in services.BORE_DEPTH_MODES:
         abort(400)
     try:
-        services.decide_bore_depth(feature, mode, request.form.get("decided_by"))
+        services.decide_bore_depth(feature, mode, request.form.get("decided_by"), request.form.get("note"))
     except services.DepthError as e:
         flash(str(e), "error")
     else:
