@@ -495,11 +495,20 @@ def _tool_fields(form):
         max_ramp_source=form.get("max_ramp_source", "").strip()[:200] or None,
         min_bore_diameter=_number(form, "min_bore_diameter"),
         min_bore_source=form.get("min_bore_source", "").strip()[:200] or None,
+        point_angle_deg=_point_angle(form),
+        point_angle_source=form.get("point_angle_source", "").strip()[:200] or None,
         nose_radius=_number(form, "nose_radius"),
         tip_direction=_tip_direction(form),
         source=form.get("source", "").strip()[:300] or None,
         **values,
     )
+
+
+def _point_angle(form):
+    angle = _number(form, "point_angle_deg")
+    if angle is not None and not 60 <= angle <= 180:
+        raise FormError("Point angle must be within 60..180°")
+    return angle
 
 
 @bp.route("/tools", methods=["POST"])
@@ -744,6 +753,8 @@ def job_detail(job_id):
                            conflicts=services.radius_conflicts(job) if job.axial_order_known else {},
                            turret=services.job_turret(job, services.get_machine()),
                            suggestions=services.turret_suggestions(job, services.get_machine()),
+                           depth_hints=services.bore_depth_hints(job),
+                           depth_modes=services.BORE_DEPTH_MODES,
                            library=db.session.execute(db.select(Tool).filter_by(is_retired=False)
                                                       .order_by(Tool.name)).scalars().all())
 
@@ -889,6 +900,24 @@ def add_feature(job_id):
     except FormError as e:
         flash(str(e), "error")
     return redirect(url_for("main.job_detail", job_id=job.id))
+
+
+@bp.route("/jobs/<int:job_id>/features/<int:feature_id>/depth", methods=["POST"])
+def choose_bore_depth(job_id, feature_id):
+    """A bore: the drawing's depth is to the full Ø or to the drill's point; the operator's decision with a name."""
+    feature = db.get_or_404(Feature, feature_id)
+    if feature.job_id != job_id or feature.type != "bore":
+        abort(404)
+    mode = request.form.get("depth_mode")
+    if mode not in services.BORE_DEPTH_MODES:
+        abort(400)
+    try:
+        services.decide_bore_depth(feature, mode, request.form.get("decided_by"))
+    except services.DepthError as e:
+        flash(str(e), "error")
+    else:
+        flash(f"Bore Ø{feature.diameter:g}: depth {services.BORE_DEPTH_MODES[mode]} ({feature.depth_decided_by}).")
+    return redirect(url_for("main.job_detail", job_id=job_id))
 
 
 @bp.route("/jobs/<int:job_id>/features/<int:feature_id>/radius", methods=["POST"])

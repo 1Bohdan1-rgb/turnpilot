@@ -185,6 +185,10 @@ class OpData:
     nose_radius: float | None = None  # turning: rε (the operator's, else the insert code's); None: not known
     tip_direction: int | None = None  # turning: the imaginary tip's number T (0-9); None: not known
     pitch: float | None = None  # threading: the feature's pitch
+    point_angle: float | None = None  # drills: the point angle, degrees; None: not known
+    max_depth: float | None = None  # drills: the deepest hole they reach
+    depth_mode: str | None = None  # a bore's drill: "full_diameter" / "tip", the operator's decision
+    depth_decided: str | None = None  # who and when ("Bohdan 2026-10-16")
     warnings: tuple = ()  # the planner's warnings on the operation
 
 
@@ -774,8 +778,23 @@ class _Builder:
     def drill(self, op: OpData) -> Block | str:
         if not op.n or not op.depth:
             return "no spindle speed or depth: not generated"
+        point = (op.tool_diameter / 2 / math.tan(math.radians(op.point_angle / 2))
+                 if op.tool_diameter and op.point_angle else None)
+        if op.feature_type == "bore" and op.depth_mode is None:
+            return "the bore's depth (to the full Ø or to the point) is not decided: not generated"
+        if op.depth_mode == "full_diameter" and point is None:
+            return "the depth to the full Ø needs the drill's point angle: not generated"
+        drawn = op.depth
+        depth = _r3(drawn + point) if op.depth_mode == "full_diameter" else drawn
         q = self.m.peck_depth
-        b = self.block(op, f"DRILL D{op.tool_diameter or 0:g} DEPTH {op.depth:g} ON THE AXIS")
+        b = self.block(op, f"DRILL D{op.tool_diameter or 0:g} DEPTH {drawn:g} ON THE AXIS")
+        if op.depth_mode == "full_diameter":
+            b.commands.append(Comment(f"DEPTH {drawn:g} TO THE FULL D{op.tool_diameter:g}: POINT TO Z{-depth:g} "
+                                      f"({op.point_angle:g} DEG POINT {point:.2f}), {ascii_text(op.depth_decided or '')}"))
+        elif op.depth_mode == "tip":
+            b.commands.append(Comment(f"DEPTH {drawn:g} TO THE DRILL'S POINT"
+                                      + (f": FULL D{op.tool_diameter:g} {max(0.0, drawn - point):.2f} DEEP" if point else "")
+                                      + f", {ascii_text(op.depth_decided or '')}"))
         cz = self.m.clearance_z
         b.commands.append(Spindle("rpm", int(op.n), self.m.spindle, self.m.max_rpm))  # G97: fixed rpm on X0
         b.commands.append(Rapid(self.x_safe, self.z_safe))
@@ -783,17 +802,19 @@ class _Builder:
             b.commands.append(Coolant(True))
         b.commands += [Rapid(x=0.0), Rapid(z=_r3(cz))]
         reached = 0.0
-        while reached < op.depth - EPS:
-            target = min(op.depth, reached + q)
+        while reached < depth - EPS:
+            target = min(depth, reached + q)
             if reached > 0:
                 b.commands.append(Rapid(z=_r3(-reached + cz)))  # back down the drilled hole
             b.commands += [Feed(z=_r3(-target), f=op.f), Rapid(z=_r3(cz))]
             reached = target
         b.commands.append(Rapid(z=self.z_safe))
         self._end(b)
-        if op.tool_diameter:
-            b.warnings.append(f"Z is the drill's tip: its full Ø stops {round(0.182 * op.tool_diameter, 2):g} mm "
-                              "shorter (140° point): check the drawing's depth")
+        if op.depth_mode is None and op.tool_diameter:  # a tap drill: the drawing's depth at the point
+            b.warnings.append("Z is the drill's point: its full Ø stops shorter: check the drawing's depth")
+        if op.max_depth and depth > op.max_depth + EPS:
+            b.warnings.append(f"the drill's point goes to {depth:g} mm, the drill reaches {op.max_depth:g}: use a "
+                              "longer drill")
         b.warnings.append("the inner profile is not simulated (only the drill's path on the axis)")
         return b
 

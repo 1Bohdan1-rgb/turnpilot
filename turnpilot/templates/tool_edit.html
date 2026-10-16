@@ -36,6 +36,10 @@
     <input name="min_bore_diameter" type="number" step="any" min="0" value="{{ tool.min_bore_diameter if tool.min_bore_diameter is not none else '' }}"></label>
   <label>Source of DMIN (catalogue page, holder)
     <input name="min_bore_source" maxlength="200" value="{{ tool.min_bore_source or '' }}"></label>
+  <label>Point angle, ° (drills: the catalogue's SIG)
+    <input name="point_angle_deg" type="number" step="any" min="60" max="180" value="{{ tool.point_angle_deg if tool.point_angle_deg is not none else '' }}"></label>
+  <label>Source of the point angle (catalogue page)
+    <input name="point_angle_source" maxlength="200" value="{{ tool.point_angle_source or '' }}"></label>
   <label>ap rec (catalogue)
     <input name="ap_rec" type="number" step="any" min="0" value="{{ tool.ap_rec if tool.ap_rec is not none else '' }}"></label>
   <label>f rec (catalogue)

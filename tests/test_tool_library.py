@@ -258,7 +258,8 @@ def test_drill_migration_writes_what_the_seed_has_on_t10_t12():
     migration = _seed_migration("450337eecff1_max_depth_of_drills_860_gm_drills_on_.py")
     for position, d, code, page, feeds in migration.DRILLS:
         written = migration.drill(d, code, page, feeds)
-        assert {k: v for k, v in written.items() if k != "is_retired"} == TURRET_TOOLS[position], position
+        seed = {k: v for k, v in TURRET_TOOLS[position].items() if not k.startswith("point_angle")}  # e8a1b2c3d4f5
+        assert {k: v for k, v in written.items() if k != "is_retired"} == seed, position
 
 
 def test_seed_drills_on_t10_t12(app):

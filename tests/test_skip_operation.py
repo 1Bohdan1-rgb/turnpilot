@@ -11,7 +11,8 @@ NOTE = "860-GM: 140° point, self-centring; no centring (operator's decision, ca
 def stud(machine):
     """03057789-2-01: M20 × 24, a blind Ø10 × 5 bore (T12 Ø10 drill); the turret has no centre drill."""
     job = make_job([Feature(type="face"), Feature(type="od_turn", diameter=20, length=24),
-                    Feature(type="bore", diameter=10, length=5, ra=6.3), Feature(type="parting")],
+                    Feature(type="bore", diameter=10, length=5, ra=6.3, depth_mode="full_diameter",
+                            depth_decided_by="Bohdan"), Feature(type="parting")],
                    blank=22, length=29, stickout=35, approve=False, machine=machine)
     for op in job.current_operations:
         if op.tool_id:

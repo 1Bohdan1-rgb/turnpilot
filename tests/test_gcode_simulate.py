@@ -1,4 +1,6 @@
 """Roadmap stage 6, commit 6: the simulation reads the printed text and catches what must not reach the machine."""
+from datetime import datetime
+
 import pytest
 from gcode_jobs import make_job, ready_machine
 
@@ -112,7 +114,8 @@ def test_a_finishing_cut_deeper_than_the_inserts_ap_max(pin):
 
 def test_drilling_in_g96_and_threading_in_g96(app):
     machine = ready_machine()
-    features = [Feature(type="face"), Feature(type="bore", diameter=10, length=20, tolerance="H12"),
+    features = [Feature(type="face"), Feature(type="bore", diameter=10, length=20, tolerance="H12", depth_mode="tip",
+                        depth_decided_by="Bohdan", depth_decided_at=datetime(2026, 10, 16)),
                 Feature(type="od_turn", diameter=24, length=27),
                 Feature(type="thread", diameter=24, length=27, pitch=1.5, location="external"),
                 Feature(type="groove", diameter=20.5, start_diameter=24, length=3),

@@ -66,7 +66,16 @@
               <li>R{{ d.radius }} ({{ {"dimension": "the dimension", "drawn": "the geometry", "operator": "own value"}[d.source] }}),
                 {{ d.decided_by or "name not recorded" }}, {{ d.decided_at.strftime("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
             {% endfor %}</ol>{% endif %}
-          </details>{% endif %}</td>
+          </details>{% endif %}
+        {% if f.type == "bore" %}<div class="small">{% if f.depth_mode %}<span class="muted">depth {{ depth_modes[f.depth_mode] }}:
+            the operator's decision ({{ f.depth_decided_by }}, {{ f.depth_decided_at.strftime("%Y-%m-%d %H:%M") }})</span>
+          <details><summary>Change</summary>{% else %}<div class="warning">The depth {{ f.length }}: to the full Ø or to the
+            drill's point? Not programmed until you decide.{% endif %}
+            {% if depth_hints.get(f.id) %}<div class="muted">{{ depth_hints[f.id] }}</div>{% endif %}
+            <form method="post" action="{{ url_for('main.choose_bore_depth', job_id=job.id, feature_id=f.id) }}" class="inline-form">
+              {% for key, label in depth_modes.items() %}<button name="depth_mode" value="{{ key }}" class="small">Depth {{ label }}</button>{% endfor %}
+              <input name="decided_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
+            </form>{% if f.depth_mode %}</details>{% else %}</div>{% endif %}</div>{% endif %}</td>
       <td>{{ f.across_flats if f.across_flats is not none else "" }}</td>
       <td>{{ "%.2f"|format(f.confidence) if f.confidence is not none else "" }}</td>
       <td>

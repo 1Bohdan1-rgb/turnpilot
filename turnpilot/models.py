@@ -158,6 +158,10 @@ class Tool(db.Model):
     # Boring tools: the smallest bore the holder goes into (the catalogue's DMIN), with its source. Empty: not known.
     min_bore_diameter = db.Column(db.Float)
     min_bore_source = db.Column(db.String(200))
+    # Drills: the point angle (the catalogue's SIG, e.g. 140°) and its source. Empty: not known, a bore cannot be
+    # drilled "to the full Ø" with it (the point's length is not known).
+    point_angle_deg = db.Column(db.Float)
+    point_angle_source = db.Column(db.String(200))
     # Turning tools: the nose radius rε (empty: from the insert code) and the imaginary tip's direction number T
     # (0-9, as on the control's offset page; empty: not known, no nose radius compensation for this tool).
     nose_radius = db.Column(db.Float)
@@ -397,6 +401,11 @@ class Feature(db.Model):
     radius_source = db.Column(db.String(20))
     radius_decided_at = db.Column(db.DateTime)
     radius_note = db.Column(db.String(200))
+    # Bore: what the drawing's depth means for the drill, the operator's decision (no default): "full_diameter" (the
+    # full Ø reaches the depth, the point goes beyond it) or "tip" (the point stops at the depth); who and when.
+    depth_mode = db.Column(db.String(20))
+    depth_decided_by = db.Column(db.String(100))
+    depth_decided_at = db.Column(db.DateTime)
     confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 

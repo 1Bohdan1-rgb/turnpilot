@@ -5,6 +5,7 @@ not in git) made by this generator on 2026-10-09; these synthetic texts were not
 A deliberate change: run with UPDATE_GOLDEN=1, look at the diff, commit it with the reason.
 """
 import os
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,8 @@ def threaded_shaft():
     """M24×1.5 L22 at the free end (1.5×45° chamfer), relief Ø20.5 L3, taper Ø24 → Ø30 L4, Ø30 L20 with a 2×45°
     back chamfer, a Ø8 hole 16 deep: Ø32 bar."""
     return dict(features=[
-        Feature(type="face"), Feature(type="bore", diameter=8, length=16, tolerance="H12"),
+        Feature(type="face"), Feature(type="bore", diameter=8, length=16, tolerance="H12", depth_mode="tip",
+                                     depth_decided_by="Bohdan", depth_decided_at=datetime(2026, 10, 16)),
         Feature(type="od_turn", diameter=24, length=22), chamfer(24, 1.5, "left"),
         Feature(type="thread", diameter=24, length=22, pitch=1.5, location="external"),
         Feature(type="groove", diameter=20.5, start_diameter=24, length=3),

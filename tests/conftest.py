@@ -107,7 +107,7 @@ def seed_turret():
     from turnpilot.seed import TURRET_TOOLS
 
     def spec(position, tool):
-        data = {k: v for k, v in tool.items() if k != "grade"}
+        data = {k: v for k, v in tool.items() if k not in ("grade", "point_angle_deg", "point_angle_source")}
         data["vc_points"] = parse_vc_points(data.get("vc_points"))
         return ToolSpec(id=position, **data)
 

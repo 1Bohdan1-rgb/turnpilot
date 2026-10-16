@@ -72,6 +72,8 @@ TURRET_TOOLS = {
 # T10-T12: CoroDrill 860-GM solid carbide drills, 3×D (max depth 3 × D), external coolant, grade X1BM, steel P1.2:
 # Vc 100-125-150 (SRT B70), f per diameter (SRT B71), ISO P. ap is not a catalogue value: D / 2 (the radial cut).
 DRILL_SOURCE = "Sandvik Coromant Solid round tools 2020, steel P1.2, 860-GM 3×D, external coolant: {code} (code), B70 (Vc), B71 (f)"
+# The point angle (SIG 140°) is checked for the drills on B26 only (Ø8, Ø10); Ø6 (B25) is left empty.
+POINT_ANGLE_B26 = (140.0, "Sandvik Coromant Solid round tools 2020, B26 (PDF 226), column SIG")
 for _position, _d, _code, _page, (_fmin, _frec, _fmax) in (
     (10, 6.0, "860.1-0600-016A0-GM", "B25", (0.15, 0.20, 0.25)),
     (11, 8.0, "860.1-0800-025A0-GM", "B26", (0.16, 0.22, 0.28)),
@@ -81,6 +83,8 @@ for _position, _d, _code, _page, (_fmin, _frec, _fmax) in (
         name=f"Drill 860-GM Ø{_d:g}", type="drilling", insert_code=_code, grade="X1BM", iso_group="P",
         vc_min=100, vc_max=150, f_min=_fmin, f_max=_fmax, ap_min=_d / 2, ap_max=_d / 2, diameter=_d,
         max_depth=3 * _d, f_rec=_frec, vc_points="125", source=DRILL_SOURCE.format(code=_page))
+    if _page == "B26":
+        TURRET_TOOLS[_position].update(point_angle_deg=POINT_ANGLE_B26[0], point_angle_source=POINT_ANGLE_B26[1])
 
 # In the tool library but not in the turret (the operator chooses a position).
 # VCGT: PLACEHOLDER, NOT validated (aluminium, not checked).

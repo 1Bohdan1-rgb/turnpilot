@@ -391,6 +391,56 @@ def calculate_operations(job, machine):
     db.session.commit()
 
 
+BORE_DEPTH_MODES = {"full_diameter": "to the full Ø (the point goes beyond)", "tip": "to the drill's point"}
+
+
+class DepthError(ValueError):
+    pass
+
+
+def decide_bore_depth(feature, mode, name):
+    """The operator's decision on what a bore's depth means for the drill; the name is required."""
+    name = (name or "").strip()[:100]
+    if not name:
+        raise DepthError("The operator's name is required for the decision")
+    if mode not in BORE_DEPTH_MODES:
+        raise DepthError("Choose: to the full Ø or to the drill's point")
+    feature.depth_mode, feature.depth_decided_by, feature.depth_decided_at = mode, name, datetime.now(timezone.utc)
+    db.session.commit()
+
+
+def drill_point_length(diameter, angle):
+    """The length of a drill's point: D / 2 / tan(angle / 2) (140°, Ø10: 1.82)."""
+    import math
+
+    return diameter / 2 / math.tan(math.radians(angle / 2))
+
+
+def bore_drills(job):
+    """{bore feature id: the drilling operation's tool} in the current calculation."""
+    return {op.feature_id: op.tool for op in job.current_operations
+            if op.tool_type == "drilling" and op.tool and op.feature and op.feature.type == "bore"}
+
+
+def bore_depth_hints(job):
+    """{bore feature id: text} for the job page: where the drill's point and its full Ø end in each case."""
+    hints = {}
+    for feature_id, tool in bore_drills(job).items():
+        feature = next((f for f in job.active_features if f.id == feature_id), None)
+        if feature is None or not feature.length or not tool.diameter:
+            continue
+        if not tool.point_angle_deg:
+            hints[feature_id] = (f"{tool.name}: no point angle in the tool data, so only \"to the drill's point\" "
+                                 f"(Z-{feature.length:g}) can be programmed")
+            continue
+        cone = drill_point_length(tool.diameter, tool.point_angle_deg)
+        hints[feature_id] = (f"{tool.name}: point {cone:.2f} mm ({tool.point_angle_deg:g}°, Ø{tool.diameter:g}; "
+                             f"{tool.point_angle_source or 'source not given'}): to the full Ø the point goes to "
+                             f"Z-{feature.length + cone:.2f}; to the point Z-{feature.length:g}, the full Ø "
+                             f"{max(0.0, feature.length - cone):.2f} deep")
+    return hints
+
+
 class SkipError(ValueError):
     pass
 
@@ -437,9 +487,22 @@ def gcode_readiness(job, machine):
     programming = {f.name: getattr(machine, f.name) for f in machine_spec.PROGRAMMING_FIELDS} if machine else {}
     labels = {f.name: f.label for f in machine_spec.PROGRAMMING_FIELDS}
     job_setup = {"free_end": job.free_end, "stickout_mm": job.stickout_mm, "face_stock_mm": job.face_stock_mm}
-    return readiness.check(bool(job.axial_order_known), operations,
-                           [t.name for t in job.tools_changed_since_calculation], source.source if source else None,
-                           programming, labels, job_setup)
+    result = readiness.check(bool(job.axial_order_known), operations,
+                             [t.name for t in job.tools_changed_since_calculation], source.source if source else None,
+                             programming, labels, job_setup)
+    by_id = {op.id: op for op in job.current_operations}
+    for op_id in result.usable:  # a bore's drill: the operator decides what the drawing's depth means
+        op = by_id[op_id]
+        if op.tool_type != "drilling" or not op.feature or op.feature.type != "bore":
+            continue
+        name = f"bore Ø{op.feature.diameter:g} × {op.feature.length:g}"
+        if op.feature.depth_mode is None:
+            result.blockers.append(f"{name}: the depth to the full Ø or to the drill's point: the operator's "
+                                   "choice on the job page")
+        elif op.feature.depth_mode == "full_diameter" and op.tool and not op.tool.point_angle_deg:
+            result.blockers.append(f"{name}: the depth to the full Ø needs the point angle of {op.tool.name} "
+                                   "(tool data)")
+    return result
 
 
 def job_profile(job, radius_of=None):
@@ -551,6 +614,10 @@ def gcode_inputs(job, machine, readiness=None):
             max_ramp_angle=tool.max_ramp_angle if tool else None,
             nose_radius=(tool.nose_radius or planner.insert_nose_radius(tool.insert_code)) if tool else None,
             tip_direction=tool.tip_direction if tool else None,
+            point_angle=tool.point_angle_deg if tool else None, max_depth=tool.max_depth if tool else None,
+            depth_mode=op.feature.depth_mode if op.feature.type == "bore" else None,
+            depth_decided=(f"{op.feature.depth_decided_by} {op.feature.depth_decided_at:%Y-%m-%d}"
+                           if op.feature.depth_decided_at else None),
             warnings=tuple(w.strip() for w in (op.warning or "").split(";") if w.strip())))
     stock = planner.stock_diameter(job.blank_shape or "round", job.blank_diameter)
     job_data = gprogram.JobData(id=job.id, name=job.name, material=job.material.name, blank_diameter=stock,
@@ -716,6 +783,12 @@ def gcode_stale(record, machine):
             d = changed[-1]
             reasons.append(f"the decision on the arc's radius was changed to R{d.radius:g} by {d.decided_by} on "
                            f"{d.decided_at:%Y-%m-%d %H:%M}")
+    for feature in job.active_features:
+        if feature.depth_decided_at and record.created_at \
+                and feature.depth_decided_at.replace(tzinfo=None) > record.created_at.replace(tzinfo=None):
+            reasons.append(f"the decision on the bore Ø{feature.diameter:g}'s depth "
+                           f"({BORE_DEPTH_MODES[feature.depth_mode]}) was made by {feature.depth_decided_by} on "
+                           f"{feature.depth_decided_at:%Y-%m-%d %H:%M}")
     if job.tools_changed_since_calculation:
         reasons.append("tools changed since the calculation")
     made = record.created_at.replace(tzinfo=None) if record.created_at else None
