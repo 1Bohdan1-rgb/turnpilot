@@ -667,3 +667,23 @@ def test_a_taper_is_roughed_from_its_larger_ends_neighbour(turret):
     no_order = replace(job, axial_order=False)
     rough = next(op for op in plan_job(no_order, turret, max_rpm=4000) if op.feature_id == 3 and op.mode == "rough")
     assert rough.ref_diameter == 38  # from the bar
+
+
+def test_a_dxf_fillet_is_not_added_to_the_section_lengths():
+    """НД 012: R2.5 lies at the boundary of two sections whose lengths already hold it (the DXF reader's rule 4)."""
+    from types import SimpleNamespace as S
+
+    from turnpilot.planner import geometry_warnings
+    rows = [S(type="od_turn", diameter=45, length=5), S(type="fillet", radius=2.5, length=None),
+            S(type="od_turn", diameter=38.5, length=25)]
+    assert geometry_warnings(rows, 30) == ["section lengths sum to 32.5, overall length is 30"]
+    assert geometry_warnings(rows, 30, fillets_are_sections=False) == []
+
+
+def test_the_review_screen_takes_dxf_fillets_as_boundaries():
+    from turnpilot.routes import _geometry_warnings
+    rows = [dict(include=True, type="od_turn", diameter="45", length="5"),
+            dict(include=True, type="fillet", radius="2.5", length=""),
+            dict(include=True, type="od_turn", diameter="38.5", length="25")]
+    assert not any("sum to" in w for w in _geometry_warnings(rows, 30, from_dxf=True))
+    assert any("sum to 32.5" in w for w in _geometry_warnings(rows, 30))

@@ -716,15 +716,16 @@ def axial_length(feature) -> float | None:
     return feature.length
 
 
-def geometry_warnings(features, overall_length: float | None) -> list[str]:
+def geometry_warnings(features, overall_length: float | None, fillets_are_sections: bool = True) -> list[str]:
     """Consistency checks on the features of one part (duck-typed: type, diameter, length, radius).
 
-    - the axial sections add up to the overall length (±0.2 mm);
+    - the axial sections add up to the overall length (±0.2 mm); fillets_are_sections False (rows from a DXF): a
+      fillet is a transition at a boundary, inside the lengths of the sections it joins, so it is not added;
     - a thread is not longer than the section it is cut on;
     - a hex with both sizes: its diameter is not below its size across flats, nor well below S / cos 30°.
     """
     warnings = []
-    sections = [f for f in features if f.type in AXIAL_SECTION_TYPES]
+    sections = [f for f in features if f.type in AXIAL_SECTION_TYPES and (fillets_are_sections or f.type != "fillet")]
     if overall_length is not None and sections:
         lengths = [axial_length(f) for f in sections]
         total = round(sum(v for v in lengths if v is not None), 3)

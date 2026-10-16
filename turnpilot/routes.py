@@ -1273,7 +1273,7 @@ def _review_values_from_form(form):
     }
 
 
-def _geometry_warnings(rows, overall_length, drawing_numbers=None, general_ra=None):
+def _geometry_warnings(rows, overall_length, drawing_numbers=None, general_ra=None, from_dxf=False):
     """Checks on the rows as they stand on the review screen (edited values, included rows only).
 
     With the numbers of a CAD PDF, the rows' numbers are also checked against them (number_check);
@@ -1289,7 +1289,7 @@ def _geometry_warnings(rows, overall_length, drawing_numbers=None, general_ra=No
                         pitch_assumed=bool(r.get("pitch_assumed")))
         for r in included
     ]
-    warnings = planner.geometry_warnings(features, overall_length)
+    warnings = planner.geometry_warnings(features, overall_length, fillets_are_sections=not from_dxf)
     numbers = number_check.check_numbers(features, overall_length, general_ra, drawing_numbers)
     for row in rows:
         row["length_computed"] = None
@@ -1320,6 +1320,7 @@ def _render_review(extraction, values, status=200):
         geometry_warnings=_geometry_warnings(
             values["rows"], data.overall_length if data else None,
             services.drawing_numbers(extraction, current_app.instance_path), data.general_ra if data else None,
+            from_dxf=extraction.is_dxf,
         ),
         values=values,
         dxf_report=report,
