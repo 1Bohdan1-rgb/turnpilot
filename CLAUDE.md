@@ -871,6 +871,12 @@ Migration d6e8b0f4c215 (DB backup `instance/turnpilot.db.bak-2026-10-16-before-s
   operator's decision is no centring before the 860-GM drill (140°, self-centring). To be skipped on jobs/8 by the
   operator.
 
+## Axial order and the G-code link (2026-10-16)
+Commits 657eca3, this one. Adding a bore, an internal thread or an internal chamfer keeps `axial_order_known` (not part
+of the outer profile); other features reset it. jobs/8 restored to 1 (DB backup
+`instance/turnpilot.db.bak-2026-10-16-before-axial-order-job8`; operations v4 and the centring skip untouched). The
+"G-code" button is always on the job page and the process sheet; the G-code page names what blocks a program.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -880,7 +886,7 @@ Migration d6e8b0f4c215 (DB backup `instance/turnpilot.db.bak-2026-10-16-before-s
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1077 tests pass (2026-10-16). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1078 tests pass (2026-10-16). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
