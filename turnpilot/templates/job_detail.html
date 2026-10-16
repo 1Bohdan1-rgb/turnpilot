@@ -120,6 +120,41 @@
   {% if job.archived_operations %}<a href="{{ url_for('main.history', job_id=job.id) }}">Calculation history</a>{% endif %}
 </form>
 {% if job.axial_order_known %}
+<h2 id="turret">Turret set-up for this job</h2>
+<p class="muted small">The machine's turret, with this job's own changes (the machine and the other jobs keep theirs).
+  After a change: Calculate again; calculations made before keep their operations.</p>
+<div class="card">
+  <table>
+    <thead><tr><th>Pos.</th><th>Tool for this job</th><th>Change</th><th></th></tr></thead>
+    <tbody>
+    {% for s in turret %}
+      <tr{% if s.change %} class="changed"{% endif %}>
+        <td><strong>T{{ s.position }}</strong></td>
+        <td>{{ s.tool.name if s.tool else "— empty —" }}{% if s.tool %} <span class="small muted">{{ s.tool.insert_code }}</span>{% endif %}</td>
+        <td class="small">{% if s.change %}{{ s.change.machine_tool.name if s.change.machine_tool else "empty" }} → {{ s.tool.name if s.tool else "empty" }},
+          {{ s.change.decided_by }}, {{ s.change.created_at.strftime("%Y-%m-%d %H:%M") }}{% if s.change.note %}: {{ s.change.note }}{% endif %}{% else %}<span class="muted">the machine's</span>{% endif %}</td>
+        <td>{% if s.change %}<form method="post" action="{{ url_for('main.undo_job_turret_change', job_id=job.id, change_id=s.change.id) }}" class="inline-form">
+          <input name="decided_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
+          <button class="small">Undo</button></form>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <form method="post" action="{{ url_for('main.change_job_turret', job_id=job.id) }}" class="inline-form">
+    <select name="position" aria-label="Position">{% for s in turret %}<option value="{{ s.position }}">T{{ s.position }}</option>{% endfor %}</select>
+    <select name="tool_id" aria-label="Tool"><option value="">— empty —</option>
+      {% for t in library %}<option value="{{ t.id }}">{{ t.name }} ({{ t.insert_code }})</option>{% endfor %}</select>
+    <input name="note" maxlength="200" placeholder="note (optional)" aria-label="Note">
+    <input name="decided_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
+    <button class="small">Change for this job</button>
+  </form>
+  {% set undone = job.turret_changes|rejectattr("active")|list %}
+  {% if undone %}<details class="small"><summary>Undone changes ({{ undone|length }})</summary><ul class="muted">
+    {% for c in undone %}<li>T{{ c.position }}: {{ c.machine_tool.name if c.machine_tool else "empty" }} → {{ c.tool.name if c.tool else "empty" }},
+      {{ c.decided_by }} {{ c.created_at.strftime("%Y-%m-%d %H:%M") }}; undone by {{ c.removed_by }} {{ c.removed_at.strftime("%Y-%m-%d %H:%M") }}</li>{% endfor %}
+  </ul></details>{% endif %}
+</div>
+
 <h2>G-code set-up</h2>
 <form method="post" action="{{ url_for('main.gcode_setup', job_id=job.id) }}" class="card grid-form">
   <label>Free end (Z0) on the drawing

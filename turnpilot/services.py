@@ -171,6 +171,46 @@ def job_turret(job, machine) -> list[JobSlot]:
             else JobSlot(s.position, s.tool) for s in machine.slots]
 
 
+class TurretChangeError(ValueError):
+    pass
+
+
+def change_job_turret(job, machine, position, tool, name, note=None):
+    """For this job only, `position` takes `tool` (None: empty). The position's earlier change of the job, if any, is
+    undone by the same operator. Returns the new JobTurretChange."""
+    from .models import JobTurretChange
+
+    name = (name or "").strip()[:100]
+    if not name:
+        raise TurretChangeError("The operator's name is required for a turret change")
+    slot = next((s for s in machine.slots if s.position == position), None)
+    if slot is None:
+        raise TurretChangeError(f"The machine has no position T{position}")
+    if tool is not None and tool.is_retired:
+        raise TurretChangeError(f"Tool '{tool.name}' is retired")
+    current = next(s for s in job_turret(job, machine) if s.position == position)
+    if current.tool_id == (tool.id if tool else None):
+        raise TurretChangeError(f"T{position} already holds {tool.name if tool else 'nothing'} for this job")
+    now = datetime.now(timezone.utc)
+    if current.change is not None:
+        current.change.removed_by, current.change.removed_at = name, now
+    change = JobTurretChange(job=job, position=position, tool=tool, machine_tool=slot.tool, decided_by=name,
+                             note=(note or "").strip()[:200] or None, created_at=now)
+    db.session.add(change)
+    db.session.commit()
+    return change
+
+
+def undo_job_turret_change(change, name):
+    name = (name or "").strip()[:100]
+    if not name:
+        raise TurretChangeError("The operator's name is required to undo a turret change")
+    if not change.active:
+        raise TurretChangeError("This change is already undone")
+    change.removed_by, change.removed_at = name, datetime.now(timezone.utc)
+    db.session.commit()
+
+
 def turret_entries(machine, material=None, job=None):
     """The turret as the planner sees it (a job's: with its own changes); with a material, its cutting data from the
     confirmed catalogue rows."""

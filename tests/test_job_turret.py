@@ -77,3 +77,26 @@ def test_the_simulation_knows_the_job_turret(app):
     finally:
         simulate.simulate = real
     assert seen[3].insert_code == "VNMG160408-PM"
+
+
+def test_the_job_page_changes_and_undoes(app, client):
+    machine = ready_machine()
+    job = bore_job()
+    vnmg = tool("VNMG160404-PF")
+    response = client.post(f"/jobs/{job.id}/turret", data={"position": "12", "tool_id": str(vnmg.id)},
+                           follow_redirects=True)
+    assert "The operator&#39;s name is required" in response.get_data(as_text=True) and not job.turret_changes
+    client.post(f"/jobs/{job.id}/turret", data={"position": "12", "tool_id": str(vnmg.id), "decided_by": "Bohdan",
+                                                 "note": "for the R12.5"})
+    (c,) = job.turret_changes
+    assert (c.position, c.tool.insert_code, c.machine_tool.insert_code, c.decided_by, c.note) == (
+        12, "VNMG160404-PF", "860.1-1000-029A0-GM", "Bohdan", "for the R12.5")
+    page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
+    assert "Drill 860-GM Ø10 → Copy finishing VNMG (P)" in page and "Bohdan" in page
+    # a second change of the same position undoes the first
+    client.post(f"/jobs/{job.id}/turret", data={"position": "12", "tool_id": "", "decided_by": "Bohdan"})
+    assert [x.active for x in job.turret_changes] == [False, True]
+    assert next(s for s in services.job_turret(job, machine) if s.position == 12).tool is None
+    client.post(f"/jobs/{job.id}/turret/{job.turret_changes[1].id}/undo", data={"decided_by": "Bohdan"})
+    assert all(not x.active for x in job.turret_changes)
+    assert "Undone changes (2)" in client.get(f"/jobs/{job.id}").get_data(as_text=True)

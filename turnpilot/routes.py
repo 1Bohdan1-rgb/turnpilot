@@ -36,6 +36,7 @@ from .models import (
     TOOL_TYPES,
     Feature,
     Job,
+    JobTurretChange,
     MachineDocument,
     Material,
     Operation,
@@ -740,7 +741,42 @@ def job_detail(job_id):
     return render_template("job_detail.html", job=job, feature_types=FEATURE_TYPES, positions=POSITIONS,
                            machine_warnings=services.machine_warnings(job, services.get_machine()),
                            suggested_free_end=services.suggest_free_end(job),
-                           conflicts=services.radius_conflicts(job) if job.axial_order_known else {})
+                           conflicts=services.radius_conflicts(job) if job.axial_order_known else {},
+                           turret=services.job_turret(job, services.get_machine()),
+                           library=db.session.execute(db.select(Tool).filter_by(is_retired=False)
+                                                      .order_by(Tool.name)).scalars().all())
+
+
+@bp.route("/jobs/<int:job_id>/turret", methods=["POST"])
+def change_job_turret(job_id):
+    """For this job only: a turret position takes a library tool (or is emptied)."""
+    job = db.get_or_404(Job, job_id)
+    try:
+        position = _number(request.form, "position", int, required=True)
+        tool_id = _number(request.form, "tool_id", int)
+        tool = db.get_or_404(Tool, tool_id) if tool_id else None
+        change = services.change_job_turret(job, _machine_or_404(), position, tool, request.form.get("decided_by"),
+                                            request.form.get("note"))
+    except (FormError, services.TurretChangeError) as e:
+        flash(str(e), "error")
+    else:
+        flash(f"T{change.position} for this job: {change.machine_tool.name if change.machine_tool else 'empty'} -> "
+              f"{change.tool.name if change.tool else 'empty'}. Calculate the job again.")
+    return redirect(url_for("main.job_detail", job_id=job.id) + "#turret")
+
+
+@bp.route("/jobs/<int:job_id>/turret/<int:change_id>/undo", methods=["POST"])
+def undo_job_turret_change(job_id, change_id):
+    change = db.get_or_404(JobTurretChange, change_id)
+    if change.job_id != job_id:
+        abort(404)
+    try:
+        services.undo_job_turret_change(change, request.form.get("decided_by"))
+    except services.TurretChangeError as e:
+        flash(str(e), "error")
+    else:
+        flash(f"T{change.position} for this job is the machine's again. Calculate the job again.")
+    return redirect(url_for("main.job_detail", job_id=job_id) + "#turret")
 
 
 @bp.route("/jobs/<int:job_id>/gcode", methods=["GET", "POST"])
