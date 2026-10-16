@@ -774,7 +774,7 @@ def gcode_program(program_id):
     settings = json.loads(record.settings)
     stale = services.gcode_stale(record, machine)
     _, _, profile, _ = services.gcode_inputs(job, machine)
-    tools = {s.position: s.tool.name for s in machine.slots if s.tool}
+    tools = {s.position: s.tool.name for s in services.job_turret(job, machine) if s.tool}
     setup = {row["name"]: row["value"] for row in settings}
     drawing = svg.render(
         sim["segments"], sim["final_stock"], sim["z_top"], sim["dz"], profile.final_points,
@@ -986,7 +986,7 @@ def edit_operation(op_id):
         except (FormError, ValueError) as e:
             db.session.rollback()
             flash(str(e), "error")
-    slots = [s for s in machine.slots if s.tool is not None]
+    slots = [s for s in services.job_turret(op.job, machine) if s.tool is not None]
     return render_template("operation_edit.html", op=op, slots=slots)
 
 

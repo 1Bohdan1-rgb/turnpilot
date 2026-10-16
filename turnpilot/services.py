@@ -5,7 +5,7 @@ import json
 import os
 import re
 import uuid
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 from . import catalogue_file, catalogue_reader, cutting_data, drawing_reader, dxf_adapter, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
@@ -148,11 +148,35 @@ def _tool_spec(tool):
     )
 
 
-def turret_entries(machine, material=None):
-    """The turret as the planner sees it; with a material, its cutting data from the confirmed catalogue rows."""
+@dataclass
+class JobSlot:
+    """A turret position as a job uses it: the machine's tool, or the job's own change."""
+    position: int
+    tool: object  # Tool or None
+    change: object = None  # the active JobTurretChange of the position, if any
+
+    @property
+    def tool_id(self):
+        return self.tool.id if self.tool is not None else None
+
+    @property
+    def label(self):
+        return f"T{self.position}"
+
+
+def job_turret(job, machine) -> list[JobSlot]:
+    """The machine's turret with the job's active changes over it (a job without changes: the machine's)."""
+    changes = {c.position: c for c in (job.turret_changes if job is not None else []) if c.active}
+    return [JobSlot(s.position, changes[s.position].tool, changes[s.position]) if s.position in changes
+            else JobSlot(s.position, s.tool) for s in machine.slots]
+
+
+def turret_entries(machine, material=None, job=None):
+    """The turret as the planner sees it (a job's: with its own changes); with a material, its cutting data from the
+    confirmed catalogue rows."""
     rows = confirmed_rows() if material is not None else ()
     return [planner.TurretEntry(s.position, tool_spec(s.tool, material, rows))
-            for s in machine.slots if s.tool is not None]
+            for s in job_turret(job, machine) if s.tool is not None]
 
 
 def _roughness_for_planner(feature):
@@ -199,7 +223,7 @@ def _library_drill_for(job, machine, planned):
         return None
     if planned.tool_id is not None and planned.ref_diameter and abs(planned.ref_diameter - feature.diameter) <= 0.01:
         return None
-    in_turret = {slot.tool_id for slot in machine.slots if slot.tool_id}
+    in_turret = {slot.tool_id for slot in job_turret(job, machine) if slot.tool_id}
     drills = db.session.execute(db.select(Tool).filter_by(type="drilling", is_retired=False)).scalars().all()
     found = next((t for t in drills if t.id not in in_turret and t.diameter
                   and abs(t.diameter - feature.diameter) <= 0.01 and job.material.iso_group in t.iso_group), None)
@@ -219,7 +243,7 @@ def calculate_operations(job, machine):
         op.is_archived = True
     power = planner.PowerSpec(machine.power_kw, machine.drive_efficiency)
     limits = planner.MachineLimits(machine.min_rpm, machine.coolant, machine.live_tooling, machine.c_axis)
-    for planned in planner.plan_job(job_spec(job), turret_entries(machine, job.material), machine.max_rpm,
+    for planned in planner.plan_job(job_spec(job), turret_entries(machine, job.material, job), machine.max_rpm,
                                     machine.max_thread_feed,
                                     power, limits):
         library_drill = _library_drill_for(job, machine, planned)
@@ -414,7 +438,7 @@ def gcode_simulation(job, machine, text, profile=None):
     if profile is None:
         _, _, profile, _ = gcode_inputs(job, machine)
     tools = {}
-    for slot in machine.slots:
+    for slot in job_turret(job, machine):
         if slot.tool is not None:
             tools[slot.position] = gsim.ToolInfo(
                 slot.tool.type, slot.tool.ap_max, slot.tool.insert_width, slot.tool.max_ramp_angle,
@@ -627,9 +651,7 @@ def apply_operation_edit(op, machine, turret_position, vc, f, ap, passes):
     if turret_position != op.turret_position:
         slot = None
         if turret_position is not None:
-            slot = db.session.execute(
-                db.select(TurretSlot).filter_by(machine_id=machine.id, position=turret_position)
-            ).scalar_one_or_none()
+            slot = next((s for s in job_turret(op.job, machine) if s.position == turret_position), None)
             if slot is None or slot.tool is None:
                 raise ValueError(f"Turret position T{turret_position} is empty")
         changes["turret_position"] = (op.turret_position, turret_position)

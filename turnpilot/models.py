@@ -174,6 +174,30 @@ class Tool(db.Model):
     updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
 
 
+class JobTurretChange(db.Model):
+    """A change of the machine's turret for one job only ("T12: VNMG PF -> Drill Ø10"), by the operator. The machine's
+    turret and the other jobs are not changed. Never deleted: undoing it records who and when."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey("job.id", name="fk_job_turret_change_job_id"), nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+    tool_id = db.Column(db.Integer, db.ForeignKey("tool.id", name="fk_job_turret_change_tool_id"))  # empty: none
+    machine_tool_id = db.Column(db.Integer, db.ForeignKey("tool.id", name="fk_job_turret_change_machine_tool_id"))
+    decided_by = db.Column(db.String(100), nullable=False)
+    note = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, nullable=False, default=_now)
+    removed_by = db.Column(db.String(100))
+    removed_at = db.Column(db.DateTime)
+
+    job = db.relationship("Job", back_populates="turret_changes")
+    tool = db.relationship("Tool", foreign_keys=[tool_id])
+    machine_tool = db.relationship("Tool", foreign_keys=[machine_tool_id])  # what the machine had at that time
+
+    @property
+    def active(self):
+        return self.removed_at is None
+
+
 class TurretSlot(db.Model):
     __table_args__ = (db.UniqueConstraint("machine_id", "position"),)
 
@@ -312,6 +336,7 @@ class Job(db.Model):
         order_by=lambda: (Operation.calculation_version.desc(), Operation.sequence),
     )
     extraction = db.relationship("DrawingExtraction", back_populates="job", uselist=False)
+    turret_changes = db.relationship("JobTurretChange", back_populates="job", order_by="JobTurretChange.id")
 
     @property
     def blank_label(self):
