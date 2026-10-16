@@ -839,6 +839,25 @@ Plan agreed with the user (1–4; SolidWorks only; S355J2+N as P1.2). Commits 5e
   contour is symmetric about the axis (the reader's basic rule). Not patched: a half-section rule would be a reader
   change or a guess in the adapter.
 
+## Turret set-up per job (built 2026-10-16)
+Plan agreed with the user (1–5; the operator's name Bohdan). Commits 99d24e0 (model), 954c1d7 (job page), 0e943f5
+(suggestions), f20f7c3 (G-code, stale). Migration c5d7a9e3b104 (DB backups
+`instance/turnpilot.db.bak-2026-10-16-before-job-turret`, `…-before-turret-data`).
+- `JobTurretChange`: job, position, the tool (or empty), what the machine had then, the operator's name (required),
+  date, note; undone = removed_by / removed_at (never deleted). `services.job_turret(job, machine)` = the machine's
+  slots with the job's active changes: the calculation, the library-drill hint, the operation edit, the G-code
+  simulation and the program page use it.
+- `services.turret_suggestions`: from the current calculation, library tools the job lacks (a drill of a bore's
+  size; a turning tool with RMPX ≥ a concave arc's angle; a missing tool type; a narrower grooving insert), on an
+  empty position first, else one whose tool the job does not use (lowest); "Apply" with the operator's name.
+- G-code: the header lists the changes after the blank; the program page and a checklist item too; a program made
+  before a change of the set-up is out of date.
+- Data (2026-10-16, in the user's DB): the machine's T3 = Rough turning CNMG (M/N), T12 = Drill 860-GM Ø10; jobs/7
+  (НД 012) set-up T3 -> Copy roughing VNMG (P), T12 -> Copy finishing VNMG (P) (Bohdan). Calculated again: jobs/7 v8
+  (R12.5 roughed by T3, finished by T12), jobs/8 v2 (Ø10 drilled to size by T12, no boring); no suggestions left.
+  Approval and the G-code are the operator's. Tool 4 (DNMG) has RMPX 27° but no holder code and no tip direction T
+  (its contour goes without G42 until T is entered).
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -848,7 +867,7 @@ Plan agreed with the user (1–4; SolidWorks only; S355J2+N as P1.2). Commits 5e
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1056 tests pass (2026-10-15). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1075 tests pass (2026-10-16). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

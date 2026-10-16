@@ -420,6 +420,18 @@ presses Start after the machine check.
   `--tip-direction 4=3`, `--install 3=N123E2-0200-0002-GM` and `--max-ramp 4=27` set a tip direction, put a
   library tool at a position and give an RMPX in its temporary database only).
 
+## Turret set-up per job
+
+The machine's turret is its standing set-up, and a job uses it by default. A job that needs another tool gets its
+own changes over it ("T12: Drill 860-GM Ø10 -> Copy finishing VNMG (P)"), with the operator's name and the date; the
+machine's turret and the other jobs keep theirs. Undoing a change keeps it in the history.
+- From the job's calculation the page suggests the smallest change: a drill of a bore's size, a tool whose RMPX covers
+  a concave arc, a tool type the turret lacks, a narrow enough grooving insert, from the library; it goes on an empty
+  position, else one whose tool the job does not use. One click applies it, or the operator picks another position.
+- The calculation, the G-code and its simulation take the job's turret; the program's header, its page and the
+  operator's checklist list the changes for the setter; a program made before a change is out of date. Calculations
+  made before keep their operations.
+
 ## Planned: probing the blank, sending the program (stage 7)
 
 Not started; it needs the machine's passport to show a probe and the custom macro option (Fanuc Custom Macro B).
