@@ -316,7 +316,8 @@ def job_spec(job):
         material_name=job.material.name,
         kc1=job.material.kc1,
         mc=job.material.mc,
-        kc_source=job.material.kc_source,
+        kc1_source=job.material.kc1_source,
+        mc_source=job.material.mc_source,
     )
 
 

@@ -152,7 +152,14 @@ class JobSpec:
     material_name: str | None = None
     kc1: float | None = None
     mc: float | None = None
-    kc_source: str | None = None
+    kc1_source: str | None = None
+    mc_source: str | None = None
+
+    @property
+    def kc_source(self) -> str:
+        """Where kc1 and mc come from, each on its own (one may be verified, the other not)."""
+        return (f"kc1 {self.kc1:g}: {self.kc1_source or 'source not given'}; "
+                f"mc {self.mc:g}: {self.mc_source or 'source not given'}")
 
     @property
     def stock_diameter(self) -> float:
@@ -1455,7 +1462,7 @@ def _check_rough_power(op, tool, feature, job, from_diameter, allowance, power: 
     if power.power_kw is None:
         op.warnings.append(NO_POWER_WARNING.format(pc=pc, ap=op.ap))
         return
-    source = job.kc_source or "source not given"
+    source = job.kc_source
     if power.efficiency is None:
         # Without the efficiency the spindle's share is not known; the nominal power is an upper bound: a pass
         # above it cannot be cut, so its ap is reduced to fit it, and the efficiency is still to be checked.

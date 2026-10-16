@@ -21,7 +21,7 @@ def test_catalogue_group_is_saved_on_the_machine_page(app, client):
     steel = db.session.execute(db.select(Material).filter_by(iso_group="M")).scalar_one()
     form = {"action": "materials"}
     for m in db.session.execute(db.select(Material)).scalars():
-        form.update({f"m{m.id}-kc1": m.kc1, f"m{m.id}-mc": m.mc, f"m{m.id}-kc_source": m.kc_source or "",
+        form.update({f"m{m.id}-kc1": m.kc1, f"m{m.id}-mc": m.mc, f"m{m.id}-kc1_source": m.kc1_source or "", f"m{m.id}-mc_source": m.mc_source or "",
                      f"m{m.id}-catalogue_group": m.catalogue_group or ""})
     form[f"m{steel.id}-catalogue_group"] = " M1.1 "
     client.post("/machine", data=form)

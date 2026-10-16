@@ -224,10 +224,11 @@ class Material(db.Model):
     iso_group = db.Column(db.String(1), nullable=False)
     hardness_hb = db.Column(db.Integer)
     # Specific cutting force for the cutting power: kc = kc1 * hm^-mc (kc1 in N/mm² at hm = 1 mm), as the tool
-    # makers' catalogues give it per material group; kc_source says where the numbers come from.
+    # makers' catalogues give it per material group; kc1_source / mc_source say where each number comes from.
     kc1 = db.Column(db.Float)
     mc = db.Column(db.Float)
-    kc_source = db.Column(db.String(200))
+    kc1_source = db.Column(db.String(200))
+    mc_source = db.Column(db.String(200))
     # The tool maker's material group (e.g. Sandvik Coromant "P1.2"): the planner takes the cutting data of the
     # confirmed catalogue rows of this group. Empty: not known, no catalogue data.
     catalogue_group = db.Column(db.String(20))

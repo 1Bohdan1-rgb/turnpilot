@@ -71,7 +71,7 @@
 <form method="post" class="card">
   <input type="hidden" name="action" value="materials">
   <table>
-    <thead><tr><th>Material</th><th>ISO</th><th>kc1, N/mm²</th><th>mc</th><th>Source of kc1 / mc</th><th>Catalogue group</th></tr></thead>
+    <thead><tr><th>Material</th><th>ISO</th><th>kc1, N/mm²</th><th>mc</th><th>Source of kc1</th><th>Source of mc</th><th>Catalogue group</th></tr></thead>
     <tbody>
     {% for m in materials %}
       <tr>
@@ -79,7 +79,8 @@
         <td>{{ m.iso_group }}</td>
         <td><input name="m{{ m.id }}-kc1" type="number" step="any" min="0" value="{{ m.kc1 if m.kc1 is not none else '' }}"></td>
         <td><input name="m{{ m.id }}-mc" type="number" step="any" min="0" max="1" value="{{ m.mc if m.mc is not none else '' }}"></td>
-        <td><input name="m{{ m.id }}-kc_source" value="{{ m.kc_source or '' }}" size="60"></td>
+        <td><input name="m{{ m.id }}-kc1_source" value="{{ m.kc1_source or '' }}" size="40"></td>
+        <td><input name="m{{ m.id }}-mc_source" value="{{ m.mc_source or '' }}" size="30"></td>
         <td><input name="m{{ m.id }}-catalogue_group" value="{{ m.catalogue_group or '' }}" size="6" maxlength="20" placeholder="e.g. P1.2"></td>
       </tr>
     {% endfor %}

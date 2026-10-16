@@ -9,8 +9,7 @@ def test_s355_is_p12_with_its_sources(app):
     s355 = db.session.execute(db.select(Material).filter_by(name="S355J2+N (EN 10025-2)")).scalar_one()
     assert (s355.iso_group, s355.catalogue_group, s355.kc1, s355.mc, s355.hardness_hb) == ("P", "P1.2", 1600, 0.25,
                                                                                          None)
-    assert "A278 (PDF 282)" in s355.kc_source and "(PDF 682)" in s355.kc_source and "mc 0.25: not verified" in \
-        s355.kc_source
+    assert "A278 (PDF 282)" in s355.kc1_source and "(PDF 682)" in s355.kc1_source and s355.mc_source == "not verified"
 
 
 def test_a_s355_job_takes_the_p12_catalogue_data(app):

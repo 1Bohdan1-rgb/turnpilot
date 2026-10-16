@@ -10,19 +10,22 @@ MACHINE = dict(name="Lathe 1", max_rpm=4000, power_kw=11.0, max_diameter=300.0)
 # PLACEHOLDER: kc1 / mc are catalogue-type values written from memory, NOT checked against a catalogue.
 # Replace them with the values of the tool maker's catalogue in use (Machine page, Materials).
 KC_PLACEHOLDER = "PLACEHOLDER: catalogue-type value for {group} (e.g. Sandvik Coromant {code}), not verified"
-S355_KC_SOURCE = ("kc1 1600: Sandvik TT 2020 A278 (PDF 282), P1.2; group P1.2: TT cross reference list (PDF 682), "
-                  "S355J2G3 = P1.2.Z.AN; mc 0.25: not verified")
+KC1_P12_SOURCE = "Sandvik TT 2020 A278 (PDF 282), P1.2"  # kc1 1600 verified for P1.2 (stage 2, 2026-10-08)
+S355_KC1_SOURCE = (f"{KC1_P12_SOURCE}; group P1.2: TT cross reference list (PDF 682), S355J2G3 = P1.2.Z.AN")
+MC_NOT_VERIFIED = "not verified"
 MATERIALS = [
     dict(name="Steel 45 (C45)", iso_group="P", hardness_hb=200, kc1=1600, mc=0.25,
-         kc_source=KC_PLACEHOLDER.format(group="ISO P unalloyed steel", code="P1.2"),
+         kc1_source=KC1_P12_SOURCE, mc_source=MC_NOT_VERIFIED,
          catalogue_group="P1.2"),  # Sandvik Coromant's group of C45 (docs/turnpilot_catalog_P1.2.md)
     # S355J2+N is the current name of S355J2G3 (1.0570 / 1.0841), which Sandvik's cross reference list puts in P1.2
     dict(name="S355J2+N (EN 10025-2)", iso_group="P", hardness_hb=None, kc1=1600, mc=0.25,
-         kc_source=S355_KC_SOURCE, catalogue_group="P1.2"),
+         kc1_source=S355_KC1_SOURCE, mc_source=MC_NOT_VERIFIED, catalogue_group="P1.2"),
     dict(name="AISI 304", iso_group="M", hardness_hb=180, kc1=2000, mc=0.21,
-         kc_source=KC_PLACEHOLDER.format(group="ISO M austenitic stainless steel", code="M2")),
+         kc1_source=KC_PLACEHOLDER.format(group="ISO M austenitic stainless steel", code="M2"),
+         mc_source=KC_PLACEHOLDER.format(group="ISO M austenitic stainless steel", code="M2")),
     dict(name="Aluminium 6061", iso_group="N", hardness_hb=95, kc1=600, mc=0.25,
-         kc_source=KC_PLACEHOLDER.format(group="ISO N wrought aluminium alloy", code="N1.2")),
+         kc1_source=KC_PLACEHOLDER.format(group="ISO N wrought aluminium alloy", code="N1.2"),
+         mc_source=KC_PLACEHOLDER.format(group="ISO N wrought aluminium alloy", code="N1.2")),
 ]
 
 # Key = turret position. T1, T2, T4, T6-T9: Sandvik Coromant 2020 values for steel P1.2 with their pages

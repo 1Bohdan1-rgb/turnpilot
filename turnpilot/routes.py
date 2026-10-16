@@ -131,7 +131,8 @@ def machine():
                     material.mc = _number(request.form, prefix + "mc")
                     if material.mc is not None and material.mc >= 1:
                         raise FormError(f"{material.name}: mc is an exponent below 1 (e.g. 0.25)")
-                    material.kc_source = (request.form.get(prefix + "kc_source") or "").strip()[:200] or None
+                    for key in ("kc1_source", "mc_source"):
+                        setattr(material, key, (request.form.get(prefix + key) or "").strip()[:200] or None)
                     material.catalogue_group = (request.form.get(prefix + "catalogue_group") or "").strip()[:20] or None
                 flash("Materials saved.")
             elif request.form.get("action") == "turret":

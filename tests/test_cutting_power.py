@@ -10,12 +10,15 @@ def _materials():
     return {m.name: m for m in db.session.execute(db.select(Material)).scalars()}
 
 
-def test_seed_kc_values_are_marked_placeholders(app):
+def test_seed_kc_values_carry_their_own_sources(app):
+    """kc1 1600 of P1.2 is verified (TT A278); mc is not; AISI 304 and 6061 are placeholders."""
     materials = _materials()
-    assert (materials["Steel 45 (C45)"].kc1, materials["Steel 45 (C45)"].mc) == (1600, 0.25)
-    assert all(m.kc1 and m.mc and m.kc_source.startswith("PLACEHOLDER") for name, m in materials.items()
-               if name != "S355J2+N (EN 10025-2)")
-    assert materials["S355J2+N (EN 10025-2)"].kc_source.endswith("mc 0.25: not verified")
+    c45, s355 = materials["Steel 45 (C45)"], materials["S355J2+N (EN 10025-2)"]
+    assert (c45.kc1, c45.mc) == (1600, 0.25)
+    assert (c45.kc1_source, c45.mc_source) == ("Sandvik TT 2020 A278 (PDF 282), P1.2", "not verified")
+    assert s355.kc1_source.startswith("Sandvik TT 2020 A278 (PDF 282), P1.2") and s355.mc_source == "not verified"
+    assert all(m.kc1_source.startswith("PLACEHOLDER") and m.mc_source.startswith("PLACEHOLDER")
+               for name, m in materials.items() if name in ("AISI 304", "Aluminium 6061"))
     assert services.get_machine().drive_efficiency is None  # not guessed
 
 
@@ -39,17 +42,21 @@ def test_machine_page_edits_the_materials_kc(client):
     assert f'name="m{steel.id}-kc1"' in page and "PLACEHOLDER" in page
     form = {"action": "materials"}
     for m in _materials().values():
-        form.update({f"m{m.id}-kc1": str(m.kc1), f"m{m.id}-mc": str(m.mc), f"m{m.id}-kc_source": m.kc_source})
-    form.update({f"m{steel.id}-kc1": "1700", f"m{steel.id}-mc": "0.25", f"m{steel.id}-kc_source": "my catalogue p. 12"})
+        form.update({f"m{m.id}-kc1": str(m.kc1), f"m{m.id}-mc": str(m.mc), f"m{m.id}-kc1_source": m.kc1_source,
+                     f"m{m.id}-mc_source": m.mc_source})
+    form.update({f"m{steel.id}-kc1": "1700", f"m{steel.id}-mc": "0.25", f"m{steel.id}-kc1_source": "my catalogue p. 12",
+                 f"m{steel.id}-mc_source": "my catalogue p. 13"})
     client.post("/machine", data=form)
     db.session.expire_all()
     steel = _materials()["Steel 45 (C45)"]
-    assert (steel.kc1, steel.mc, steel.kc_source) == (1700, 0.25, "my catalogue p. 12")
-    form.update({f"m{steel.id}-kc1": "", f"m{steel.id}-mc": "", f"m{steel.id}-kc_source": ""})
+    assert (steel.kc1, steel.mc, steel.kc1_source, steel.mc_source) == (1700, 0.25, "my catalogue p. 12",
+                                                                          "my catalogue p. 13")
+    form.update({f"m{steel.id}-kc1": "", f"m{steel.id}-mc": "", f"m{steel.id}-kc1_source": "",
+                 f"m{steel.id}-mc_source": ""})
     client.post("/machine", data=form)
     db.session.expire_all()
     steel = _materials()["Steel 45 (C45)"]
-    assert (steel.kc1, steel.mc, steel.kc_source) == (None, None, None)
+    assert (steel.kc1, steel.mc, steel.kc1_source, steel.mc_source) == (None, None, None, None)
 
 
 def test_machine_page_rejects_an_mc_of_one_or_more(client):
@@ -81,7 +88,7 @@ from turnpilot.planner import (  # noqa: E402
 from turnpilot.seed import TURRET_TOOLS  # noqa: E402
 
 SEED = seed_turret()
-C45 = dict(material_name="Steel 45 (C45)", kc1=1600, mc=0.25, kc_source="test catalogue")
+C45 = dict(material_name="Steel 45 (C45)", kc1=1600, mc=0.25, kc1_source="test catalogue", mc_source="test catalogue")
 SEED_POWER = PowerSpec(11, 0.8)  # 8.8 kW at the spindle
 
 
@@ -105,7 +112,7 @@ def test_nd012_within_power_unchanged_with_a_note():
     rough = _rough(ND012, 55)
     op = rough[1]  # Ø50 from the bar Ø55: 2.1 × 1 at f 0.3, Vc 355: Pc 8.06
     assert (op.passes, op.ap, op.vc, op.f) == (1, 2.1, 355, 0.3) and not op.warnings
-    assert "Pc 8.06 kW ≤ 8.80 kW (11 × 0.8); kc 2162 N/mm² (test catalogue)" in op.notes
+    assert "Pc 8.06 kW ≤ 8.80 kW (11 × 0.8); kc 2162 N/mm² (kc1 1600: test catalogue; mc 0.25: test catalogue)" in op.notes
 
 
 def test_nd012_section_above_power_gets_more_thinner_passes():
@@ -177,7 +184,7 @@ def test_power_check_through_the_app(client):
     client.post("/machine", data={**PROFILE, "drive_efficiency": "0.5"})  # 5.5 kW: 2 × 2.15 gives Pc 5.77
     op = rough()
     assert op.passes == 3 and op.warning is None and "ap reduced for spindle power" in op.note
-    assert "PLACEHOLDER" in op.note  # the kc source is shown
+    assert "(kc1 1600: Sandvik TT 2020 A278 (PDF 282), P1.2; mc 0.25: not verified)" in op.note  # each source
 
 
 def test_above_the_nominal_power_ap_is_reduced_without_the_efficiency(app):
