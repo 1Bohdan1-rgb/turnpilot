@@ -17,6 +17,7 @@ from flask import (
 )
 
 from . import catalogue_reader, cutting_data as cd, drawing_reader, number_check, passport_reader, planner, services
+from .gcode import report as greport
 from .extraction_schema import (
     RADIUS_TYPES,
     START_DIAMETER_TYPES,
@@ -837,7 +838,8 @@ def gcode_program(program_id):
         flagged.setdefault(line, []).append(("warning", message))
     return render_template(
         "gcode_program.html", record=record, job=job, sim=sim, settings=settings, stale=stale, drawing=drawing,
-        lines=lines, flagged=flagged, demo=services.demo_settings(settings), checklist=services.gcode_checklist(record),
+        errors=greport.group(sim["errors"]), warnings=greport.group(sim["warnings"]), lines=lines,
+        flagged=flagged, demo=services.demo_settings(settings), checklist=services.gcode_checklist(record),
         ticked=json.loads(record.checklist) if record.checklist else {})
 
 

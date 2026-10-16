@@ -22,8 +22,8 @@
   <ul>{% for m in sim.incomplete %}<li>{{ m }}</li>{% endfor %}</ul></div>
 {% endif %}
 {% if sim.errors %}
-<div class="banner banner-stop"><strong>The simulation found {{ sim.errors|length }} error(s):</strong>
-  <ul>{% for line, m in sim.errors %}<li>{% if line %}<a href="#L{{ line }}">line {{ line }}</a>: {% endif %}{{ m }}</li>{% endfor %}</ul></div>
+<div class="banner banner-stop"><strong>The simulation found {{ errors|length }} error(s){% if sim.errors|length > errors|length %} on {{ sim.errors|length }} lines{% endif %}:</strong>
+  <ul>{% for g in errors %}<li>{% if g.line %}<a href="#L{{ g.line }}">{% if g.last != g.line %}lines {{ g.line }}–{{ g.last }}{% else %}line {{ g.line }}{% endif %}{% if g.count > 1 %} ({{ g.count }}×){% endif %}</a>: {% elif g.count > 1 %}({{ g.count }}×) {% endif %}{{ g.message }}</li>{% endfor %}</ul></div>
 {% elif not sim.incomplete %}
 <div class="banner banner-ok">The simulation found no error, and the program machines the whole outer profile.</div>
 {% endif %}
@@ -48,8 +48,8 @@
 {% if sim.warnings or sim.program_warnings %}
 <h2>Checks</h2>
 <ul class="card checks">
-  {% for line, m in sim.warnings %}<li>{% if line %}<a href="#L{{ line }}">line {{ line }}</a>: {% endif %}{{ m }}</li>{% endfor %}
-  {% for m in sim.program_warnings %}<li>{{ m }}</li>{% endfor %}
+  {% for g in warnings %}<li>{% if g.line %}<a href="#L{{ g.line }}">{% if g.last != g.line %}lines {{ g.line }}–{{ g.last }}{% else %}line {{ g.line }}{% endif %}{% if g.count > 1 %} ({{ g.count }}×){% endif %}</a>: {% elif g.count > 1 %}({{ g.count }}×) {% endif %}{{ g.message }}</li>{% endfor %}
+  {% for m in sim.program_warnings|unique %}<li>{{ m }}</li>{% endfor %}
 </ul>
 {% endif %}
 {% if sim.skipped %}
