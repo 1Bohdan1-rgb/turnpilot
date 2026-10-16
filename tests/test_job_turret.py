@@ -137,3 +137,24 @@ def test_a_copying_tool_is_suggested_for_a_steep_concave_arc(app):
     suggestions = services.turret_suggestions(job, machine)
     assert [(s.tool.insert_code, s.reason) for s in suggestions] == [
         ("VNMG160404-PF", "the concave R1.7 goes down at 36°: a tool with RMPX ≥ 36°")]
+
+
+def test_the_program_names_the_set_up_and_is_out_of_date_after_a_change(app, client):
+    from gcode_jobs import make_job as approved_job
+    machine = ready_machine()
+    job = approved_job()  # the pin: no bore, so T12 (the Ø10 drill) is not used
+    change(job, machine, 12, "VNMG160404-PF")
+    services.calculate_operations(job, machine)
+    for op in job.current_operations:
+        op.status = "approved"
+    db.session.commit()
+    _, record = services.generate_gcode(job, machine)
+    assert "(TURRET SET-UP FOR THIS JOB NOT THE MACHINE'S:)\n(T12: DRILL 860-GM D10 -> COPY FINISHING VNMG P BOHDAN," \
+           in record.text
+    items = dict(services.gcode_checklist(record))
+    assert items["turret_setup"].startswith("the turret is set up for this job: T12: Drill 860-GM Ø10 -> Copy "
+                                            "finishing VNMG (P) (Bohdan, ")
+    assert "Turret set-up for this job" in client.get(f"/gcode/{record.id}").get_data(as_text=True)
+    assert services.gcode_stale(record, machine) == []
+    services.undo_job_turret_change(job.turret_changes[0], "Bohdan")
+    assert "the job's turret set-up changed after this program" in services.gcode_stale(record, machine)

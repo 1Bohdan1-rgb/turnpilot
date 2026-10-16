@@ -527,6 +527,14 @@ def gcode_inputs(job, machine, readiness=None):
     return job_data, machine_data, profile, ops
 
 
+def turret_setup_lines(job) -> list[str]:
+    """The job's active turret changes for the setter: "T12: Copy finishing VNMG (P) -> Drill 860-GM Ø10 (Bohdan,
+    2026-10-16)"."""
+    return [f"T{c.position}: {c.machine_tool.name if c.machine_tool else 'empty'} -> "
+            f"{c.tool.name if c.tool else 'empty'} ({c.decided_by}, {c.created_at:%Y-%m-%d})"
+            for c in job.turret_changes if c.active]
+
+
 def gcode_program(job, machine):
     """(readiness, program or None): no program while anything blocks it."""
     from .gcode import program as gprogram
@@ -535,7 +543,13 @@ def gcode_program(job, machine):
     if not readiness.ok:
         return readiness, None
     job_data, machine_data, profile, ops = gcode_inputs(job, machine, readiness)
-    return readiness, gprogram.build(job_data, machine_data, profile, ops, readiness.skipped)
+    program = gprogram.build(job_data, machine_data, profile, ops, readiness.skipped)
+    setup = turret_setup_lines(job)
+    if setup:  # for the setter, right after the blank
+        at = next((i + 1 for i, line in enumerate(program.header) if line.startswith("BLANK ")), 0)
+        program.header[at:at] = ["TURRET SET-UP FOR THIS JOB (NOT THE MACHINE'S):"] + [
+            gprogram.ascii_text(line) for line in setup]
+    return readiness, program
 
 
 def gcode_simulation(job, machine, text, profile=None):
@@ -583,12 +597,17 @@ GCODE_CHECKLIST = (
 
 def gcode_checklist(record):
     """The operator's checklist of a program: with nose radius compensation, also the offset page's R and T."""
-    compensation = json.loads(record.simulation).get("compensation") or []
-    if not compensation:
-        return GCODE_CHECKLIST
-    offsets = ", ".join(f"T{pos:02d} R{r:g} T{t}" for pos, _, r, t in compensation)
-    return GCODE_CHECKLIST + (("nose_compensation", f"nose radius compensation G42: on the offset page {offsets} "
-                                                    "(R the nose radius, T the tip direction as the tool is mounted)"),)
+    sim = json.loads(record.simulation)
+    items = GCODE_CHECKLIST
+    setup = sim.get("turret_setup") or []
+    if setup:
+        items += (("turret_setup", "the turret is set up for this job: " + "; ".join(setup)),)
+    compensation = sim.get("compensation") or []
+    if compensation:
+        offsets = ", ".join(f"T{pos:02d} R{r:g} T{t}" for pos, _, r, t in compensation)
+        items += (("nose_compensation", f"nose radius compensation G42: on the offset page {offsets} "
+                                        "(R the nose radius, T the tip direction as the tool is mounted)"),)
+    return items
 
 
 def gcode_settings(job, machine):
@@ -633,6 +652,7 @@ def generate_gcode(job, machine):
         "final_stock": [round(r, 3) for r in result.final_stock[::10]], "z_top": result.z_top, "dz": 0.1,
         "program_warnings": program.warnings, "skipped": {str(k): v for k, v in program.skipped.items()},
         "compensation": [list(c) for c in program.compensation],
+        "turret_setup": turret_setup_lines(job),
     }
     record = GcodeProgram(job=job, calculation_version=job.last_calculation_version, dialect=fanuc.NAME, text=text,
                           sha256=hashlib.sha256(text.encode("ascii")).hexdigest(),
@@ -658,6 +678,10 @@ def gcode_stale(record, machine):
                            f"{d.decided_at:%Y-%m-%d %H:%M}")
     if job.tools_changed_since_calculation:
         reasons.append("tools changed since the calculation")
+    made = record.created_at.replace(tzinfo=None) if record.created_at else None
+    if made and any((c.created_at and c.created_at.replace(tzinfo=None) > made)
+                    or (c.removed_at and c.removed_at.replace(tzinfo=None) > made) for c in job.turret_changes):
+        reasons.append("the job's turret set-up changed after this program")
     then = {row["name"]: (row["value"], row["source"]) for row in json.loads(record.settings)}
     now = {row["name"]: (row["value"], row["source"]) for row in gcode_settings(job, machine)}
     changed = [row["label"] for row in gcode_settings(job, machine) if then.get(row["name"]) != now[row["name"]]]

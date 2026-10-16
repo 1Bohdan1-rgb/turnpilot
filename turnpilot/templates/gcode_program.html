@@ -57,6 +57,11 @@
 <ul class="card checks">{% for op_id, reason in sim.skipped.items() %}<li>operation {{ op_id }}: {{ reason }}</li>{% endfor %}</ul>
 {% endif %}
 
+{% if sim.turret_setup %}
+<h2>Turret set-up for this job</h2>
+<ul class="card checks">{% for line in sim.turret_setup %}<li>{{ line }}</li>{% endfor %}</ul>
+{% endif %}
+
 <h2>Operator's check</h2>
 <form method="post" action="{{ url_for('main.gcode_ready', program_id=record.id) }}" class="card">
   {% for key, text in checklist %}
