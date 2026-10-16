@@ -16,7 +16,7 @@ TOOL_TYPES = (
 )
 ISO_GROUPS = ("P", "M", "N")
 BLANK_SHAPES = ("round", "hex")
-OPERATION_STATUSES = ("proposed", "approved", "edited")
+OPERATION_STATUSES = ("proposed", "approved", "edited", "skipped")
 TURRET_POSITIONS = range(1, 13)  # T1..T12
 
 
@@ -428,6 +428,12 @@ class Operation(db.Model):
     note = db.Column(db.Text)
     warning = db.Column(db.Text)
     status = db.Column(db.String(10), nullable=False, default="proposed")
+    # "skipped": the operator leaves the operation out (e.g. no centring before a self-centring drill): who, when,
+    # why; carried to the same operation of a new calculation (skip_carried_from: the version it came from).
+    skipped_by = db.Column(db.String(100))
+    skipped_at = db.Column(db.DateTime)
+    skipped_note = db.Column(db.String(200))
+    skip_carried_from = db.Column(db.Integer)
     # Each "Calculate" creates a new version; older operations are archived, never deleted.
     calculation_version = db.Column(db.Integer, nullable=False, default=1)
     created_at = db.Column(db.DateTime, default=_now)  # empty for operations calculated before it was recorded

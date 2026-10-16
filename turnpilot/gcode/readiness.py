@@ -55,6 +55,7 @@ class OperationInfo:
     vc: float | None
     n: int | None
     f: float | None
+    skip: str | None = None  # the operator skipped it: why, in words
 
 
 @dataclass
@@ -100,7 +101,7 @@ def check(axial_order_known: bool, operations: list[OperationInfo], changed_tool
     if max_rpm_source not in MAX_RPM_SOURCES:
         result.blockers.append(NO_MAX_RPM)
     for op in sorted(operations, key=lambda o: o.sequence):
-        reason = skip_reason(op)
+        reason = op.skip or skip_reason(op)
         if reason:
             result.skipped[op.id] = reason
         else:

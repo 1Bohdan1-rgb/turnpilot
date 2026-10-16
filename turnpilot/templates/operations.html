@@ -51,16 +51,30 @@
       <td class="notes">
         {% if op.warning %}<div class="warning">⚠ {{ op.warning }}</div>{% endif %}
         {% if op.note %}<div>{{ op.note }}</div>{% endif %}
+        {% if op.status == "skipped" %}<div class="muted">skipped by {{ op.skipped_by }}{% if op.skipped_at %}, {{ op.skipped_at.strftime("%Y-%m-%d") }}{% endif %}{% if op.skip_carried_from %} (carried from v{{ op.skip_carried_from }}){% endif %}: {{ op.skipped_note }}</div>{% endif %}
       </td>
       <td><span class="badge badge-{{ op.status }}">{{ op.status }}</span>
         {% if op.edits %}<div class="muted small">{{ op.edits|length }} edit(s)</div>{% endif %}</td>
       <td class="row-actions">
-        {% if op.status != "approved" and op.tool %}
+        {% if op.status not in ("approved", "skipped") and op.tool %}
         <form method="post" action="{{ url_for('main.approve_operation', op_id=op.id) }}">
           <button type="submit">Approve</button>
         </form>
         {% endif %}
         <a class="button" href="{{ url_for('main.edit_operation', op_id=op.id) }}">Edit</a>
+        {% if op.status == "skipped" %}
+        <form method="post" action="{{ url_for('main.unskip_operation', op_id=op.id) }}" class="inline-form">
+          <input name="skipped_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
+          <button type="submit" class="small">Unskip</button>
+        </form>
+        {% else %}
+        <details class="small"><summary>Skip</summary>
+          <form method="post" action="{{ url_for('main.skip_operation', op_id=op.id) }}">
+            <input name="note" maxlength="200" placeholder="why (required)" aria-label="Why" required>
+            <input name="skipped_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
+            <button type="submit" class="small">Skip: leave out of the program</button>
+          </form></details>
+        {% endif %}
       </td>
     </tr>
   {% endfor %}

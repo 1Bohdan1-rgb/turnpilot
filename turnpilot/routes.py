@@ -1000,6 +1000,30 @@ def approve_operation(op_id):
     return redirect(url_for("main.operations", job_id=op.job_id))
 
 
+@bp.route("/operations/<int:op_id>/skip", methods=["POST"])
+def skip_operation(op_id):
+    op = db.get_or_404(Operation, op_id)
+    try:
+        services.skip_operation(op, request.form.get("skipped_by"), request.form.get("note"))
+    except services.SkipError as e:
+        flash(str(e), "error")
+    else:
+        flash(f"Operation {op.sequence} skipped: it is left out of the program.")
+    return redirect(url_for("main.operations", job_id=op.job_id))
+
+
+@bp.route("/operations/<int:op_id>/unskip", methods=["POST"])
+def unskip_operation(op_id):
+    op = db.get_or_404(Operation, op_id)
+    try:
+        services.unskip_operation(op, request.form.get("skipped_by"))
+    except services.SkipError as e:
+        flash(str(e), "error")
+    else:
+        flash(f"Operation {op.sequence} is proposed again.")
+    return redirect(url_for("main.operations", job_id=op.job_id))
+
+
 @bp.route("/operations/<int:op_id>/edit", methods=["GET", "POST"])
 def edit_operation(op_id):
     op = db.get_or_404(Operation, op_id)

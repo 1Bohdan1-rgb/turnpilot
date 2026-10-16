@@ -346,6 +346,9 @@ def calculate_operations(job, machine):
     Nothing is deleted: archived operations keep their status and edit log.
     """
     version = job.last_calculation_version + 1
+    # the operator's skips go on to the same operation (feature, type, mode) of the new version
+    skips = {(op.feature_id, op.tool_type, op.rough_finish): op for op in job.current_operations
+             if op.status == "skipped"}
     for op in job.current_operations:
         op.is_archived = True
     power = planner.PowerSpec(machine.power_kw, machine.drive_efficiency)
@@ -379,6 +382,42 @@ def calculate_operations(job, machine):
                 calculation_version=version,
             )
         )
+        skipped = skips.get((planned.feature_id, planned.tool_type, planned.mode))
+        if skipped is not None:
+            new = job.operations[-1]
+            new.status, new.skipped_by, new.skipped_at, new.skipped_note = (
+                "skipped", skipped.skipped_by, skipped.skipped_at, skipped.skipped_note)
+            new.skip_carried_from = skipped.skip_carried_from or skipped.calculation_version
+    db.session.commit()
+
+
+class SkipError(ValueError):
+    pass
+
+
+def skip_operation(op, name, note):
+    """The operator leaves an operation out: it blocks nothing and is not in the program. Name and note required."""
+    name, note = (name or "").strip()[:100], (note or "").strip()[:200]
+    if op.is_archived:
+        raise SkipError("Archived operations are read-only")
+    if not name or not note:
+        raise SkipError("The operator's name and a note are required to skip an operation")
+    db.session.add(Edit(operation=op, field="status", old_value=op.status, new_value=f"skipped ({name})"))
+    op.status, op.skipped_by, op.skipped_at, op.skipped_note = "skipped", name, datetime.now(timezone.utc), note
+    op.skip_carried_from = None
+    db.session.commit()
+
+
+def unskip_operation(op, name):
+    name = (name or "").strip()[:100]
+    if op.is_archived:
+        raise SkipError("Archived operations are read-only")
+    if not name:
+        raise SkipError("The operator's name is required")
+    if op.status != "skipped":
+        raise SkipError("The operation is not skipped")
+    db.session.add(Edit(operation=op, field="status", old_value="skipped", new_value=f"proposed ({name})"))
+    op.status, op.skipped_by, op.skipped_at, op.skipped_note, op.skip_carried_from = "proposed", None, None, None, None
     db.session.commit()
 
 
@@ -390,7 +429,8 @@ def gcode_readiness(job, machine):
         readiness.OperationInfo(
             id=op.id, sequence=op.sequence, tool_type=op.tool_type,
             feature_type=op.feature.type if op.feature else "", status=op.status, has_tool=op.tool_id is not None,
-            origin=op.cutting_data_origin, vc=op.vc, n=op.n, f=op.f)
+            origin=op.cutting_data_origin, vc=op.vc, n=op.n, f=op.f,
+            skip=f"skipped by the operator ({op.skipped_by}): {op.skipped_note}" if op.status == "skipped" else None)
         for op in job.current_operations
     ]
     source = machine.source_of("max_rpm") if machine else None
