@@ -121,3 +121,4 @@ def test_a_thread_whose_run_in_passes_over_a_larger_section_is_left_out(app):
     readiness, program = services.gcode_program(job, machine)
     thread = next(op for op in job.current_operations if op.tool_type == "threading")
     assert program.skipped[thread.id].startswith("the thread's run-in passes over material above its root")
+    assert program.skipped[thread.id].endswith("a free run-in of 6 mm: the machine value 6, at least 3 × P = 4.5)")

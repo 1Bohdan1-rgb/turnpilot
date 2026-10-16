@@ -516,6 +516,7 @@ Planner constants (`turnpilot/planner.py`):
 | `METRIC_THREAD_DEPTH_FACTOR` | 0.613·P | external thread depth | ISO 68-1 (h3), from memory | code | open (C77 depth is for the full profile, not used for VM: operator decision) |
 | `INTERNAL_THREAD_DEPTH_FACTOR` | 0.541·P | internal thread depth | ISO 68-1 (H1), from memory | code | open (as above) |
 | thread passes and infeed series | C77 count (P 1 / 1.5 / 2: 5 / 6 / 8; internal 1.5: 6); series ϕ 0.3, 1, x − 1 | thread passes | TT C77, C82 | code | verified (other pitches: the tool's ap range, open) |
+| `THREAD_RUN_IN_PITCHES` (`gcode/program.py`) | run-in ≥ 3·P (max with the machine's value) | G92 start Z | rule of thumb (the operator, 2026-10-16) | code | open |
 | thread spring pass | one 0 mm pass | thread passes | rule of thumb | code | open |
 | `TAP_HOLES_C157` / `TAP_HOLES_C158` | PHD (drill) and PHDX (max) for cutting taps: M3–M48 coarse (19), 17 fine; else d − P | tap drill Ø, the drills accepted | SRT C157, C158 | code | verified (other threads: d − P, open) |
 | `COARSE_PITCH_MM` (`extraction_schema.py`) | ISO 261 | pitch when the drawing has none ("check") | ISO, from memory | code | partly (C157 confirms the pitch of M3–M48 in its table; the other sizes open) |
@@ -877,6 +878,22 @@ of the outer profile); other features reset it. jobs/8 restored to 1 (DB backup
 `instance/turnpilot.db.bak-2026-10-16-before-axial-order-job8`; operations v4 and the centring skip untouched). The
 "G-code" button is always on the job page and the process sheet; the G-code page names what blocks a program.
 
+## Bore depth and the thread run-in (2026-10-16)
+Plan agreed with the user. Commit 480652f (bore depth) and the run-in commit. Migration e8a1b2c3d4f5 (Tool.point_angle_deg /
+point_angle_source, Feature.depth_mode / depth_decided_by / depth_decided_at). The dev server's reloader applied it
+before a backup was taken: `instance/turnpilot.db.bak-2026-10-16-after-bore-depth-migration` is AFTER it; the last
+backup before it is `…-before-axial-order-job8` (differs only by jobs/8's axial order flag).
+- Drill point angle: 860-GM Ø8 / Ø10 SIG 140° (SRT 2020 B26, PDF 226, the user; the point of Ø10 1.8 mm matches
+  D/2/tan 70°). Ø6 (B25) left empty: not checked.
+- A bore's depth: "to the full Ø" (the point goes D/2/tan(SIG/2) deeper: jobs/8 Ø10 × 5 → Z-6.82) or "to the drill's
+  point" (Z-5, the full Ø 3.18 deep); the operator's choice with a name on the job page, no default. Without it no
+  program; to the full Ø without a point angle: no program. The program's comment names the decision; a later
+  decision makes a program out of date. A change overwrites the fields (no history table). The planner's "drill too
+  short" stays on the drawing's depth; the G-code warns when the point goes past the drill's max depth.
+- Thread run-in: max(the machine's value, 3·P), the comment says which (M20×2.5 with 4.5 → 7.5). A run-in over a
+  larger section: the thread is left out, the reason names both values.
+- jobs/8: the depth decision is the operator's (not taken).
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -886,7 +903,7 @@ of the outer profile); other features reset it. jobs/8 restored to 1 (DB backup
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1078 tests pass (2026-10-16). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1082 tests pass (2026-10-16). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

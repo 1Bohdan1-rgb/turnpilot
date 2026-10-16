@@ -192,6 +192,11 @@ class OpData:
     warnings: tuple = ()  # the planner's warnings on the operation
 
 
+# A thread's run-in is at least 3 × P (the axis reaches the thread's feed before the thread): rule of thumb, the
+# operator's; not checked against a catalogue page (placeholder table: open).
+THREAD_RUN_IN_PITCHES = 3
+
+
 def _r3(value: float) -> float:
     return round(value + 0.0, 3)
 
@@ -740,7 +745,14 @@ class _Builder:
         infeed, _ = thread_infeed_plan(section.pitch, op.ap_min or 0.0, op.ap_max or 0.0) \
             if op.ap_max else thread_infeed_plan(section.pitch, 0.0, 1.0)
         d = section.turned_d
-        z_start = _r3(section.z_free + self.m.thread_run_in)
+        machine_run_in = self.m.thread_run_in or 0.0
+        rule = _r3(THREAD_RUN_IN_PITCHES * section.pitch)
+        run_in = max(machine_run_in, rule)
+        if rule > machine_run_in + EPS:
+            why = f"RUN-IN {run_in:g} = {THREAD_RUN_IN_PITCHES}XP{section.pitch:g} (MACHINE VALUE {machine_run_in:g} IS LESS)"
+        else:
+            why = f"RUN-IN {run_in:g} = MACHINE VALUE (NOT LESS THAN {THREAD_RUN_IN_PITCHES}XP{section.pitch:g} = {rule:g})"
+        z_start = _r3(section.z_free + run_in)
         # every pass drops to its diameter at the run-in's start: the material there (its allowance where no
         # finishing pass is written) must stay below the deepest pass
         root = d / 2 - sum(infeed)
@@ -750,10 +762,12 @@ class _Builder:
             radii = [r for z, r in self.p.turned_points if other.z_chuck - EPS <= z <= other.z_free + EPS]
             left = max(radii) + (0.0 if other.index in self.finished else self.allowance)
             if left > root - EPS:
-                return ("the thread's run-in passes over material above its root (a larger section, or one not "
-                        "finished by this program) towards the free end: not generated (the thread needs a free "
-                        "run-in)")
+                return (f"the thread's run-in passes over material above its root (a larger section, or one not "
+                        f"finished by this program) towards the free end: not generated (the thread needs a free "
+                        f"run-in of {run_in:g} mm: the machine value {machine_run_in:g}, at least "
+                        f"{THREAD_RUN_IN_PITCHES} × P = {rule:g})")
         b = self.block(op, f"THREAD M{section.d_free:g}X{section.pitch:g} G92 {len(infeed)} PASSES")
+        b.commands.append(Comment(why))
         x_start = _r3(d + 2 * self.m.clearance_x)
         b.commands.append(Spindle("rpm", int(op.n), self.m.spindle, self.m.max_rpm))
         b.commands.append(Rapid(self.x_safe, self.z_safe))

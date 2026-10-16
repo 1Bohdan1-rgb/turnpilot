@@ -52,8 +52,9 @@ def test_thread_in_g97_with_one_g92_line_per_pass(app):
     job = make_job(thread_job())
     thread = block(program_of(job, machine), "threading")
     op = next(o for o in job.current_operations if o.tool_type == "threading")
-    assert thread.commands[0] == Spindle("rpm", op.n, "M04", 3500)
-    assert thread.commands[2:4] == [Rapid(z=6.0), Rapid(x=25.85)]  # run-in 6, clearance 1 per side
+    assert thread.commands[0] == Comment("RUN-IN 6 = MACHINE VALUE (NOT LESS THAN 3XP1.5 = 4.5)")
+    assert thread.commands[1] == Spindle("rpm", op.n, "M04", 3500)
+    assert thread.commands[3:5] == [Rapid(z=6.0), Rapid(x=25.85)]  # run-in 6, clearance 1 per side
     infeed, method = thread_infeed_plan(1.5, 0.05, 0.2)
     assert method == "catalogue"
     passes = [c for c in thread.commands if isinstance(c, ThreadPass)]
@@ -61,6 +62,17 @@ def test_thread_in_g97_with_one_g92_line_per_pass(app):
     assert passes[0] == ThreadPass(round(23.85 - 2 * infeed[0], 3), -27.0, 1.5)
     assert passes[-1].x == passes[-2].x == round(23.85 - 2 * thread_depth(1.5), 3)  # the spring pass at full depth
     assert "check n·P" in thread.warnings[-1]
+
+
+def test_the_run_in_is_at_least_three_pitches(app):
+    """M20×2.5 (03057789-2-01) with the machine's 4.5: the run-in is 3 × 2.5 = 7.5, and the comment says why."""
+    machine = ready_machine(thread_run_in_mm=4.5)
+    features = [Feature(type="face"), Feature(type="od_turn", diameter=20, length=24),
+                Feature(type="thread", diameter=20, length=24, pitch=2.5, location="external"),
+                Feature(type="od_turn", diameter=26, length=10), Feature(type="parting")]
+    thread = block(program_of(make_job(features, blank=28, length=40, stickout=45), machine), "threading")
+    assert thread.commands[0] == Comment("RUN-IN 7.5 = 3XP2.5 (MACHINE VALUE 4.5 IS LESS)")
+    assert Rapid(z=7.5) in thread.commands
 
 
 def test_thread_ending_at_a_shoulder_is_flagged(app):
