@@ -20,9 +20,11 @@ def _thread_op(pitch, diameter=20):
 def test_passes_from_c77(pitch, passes):
     op = _thread_op(pitch)
     assert op.passes == passes + 1  # and the spring pass
-    assert f"{passes} passes: Sandvik TT 2020 C77 (count) and C82 (infeed series)" in op.notes
+    assert (f"V-profile: {passes} passes from Sandvik TT 2020 C77 (PDF 535), the full-profile count as C82 (PDF 540) "
+            "allows; infeed series C82") in op.notes  # T7 266RG-16VM01A001M
     h = planner.thread_depth(pitch)
-    assert op.depth == h and f"profile depth {h:g} (0.613·P) and the spring pass: not in the catalogue" in op.notes
+    assert op.depth == h and (f"depth {h:g} from the ISO thread profile (0.613·P), not C77's; spring pass: rule of "
+                              "thumb") in op.notes
     assert not any("ap_min" in w for w in op.warnings)  # the placeholder ap range of T7 is not used
 
 
@@ -56,5 +58,11 @@ def test_internal_threading_bar_takes_c77_internal_count():
     features = (FeatureSpec(1, "thread", diameter=20, length=20, pitch=1.5, location="internal"),)
     ops = plan_job(JobSpec("P", 30, 60, features), SEED + [TurretEntry(10, bar)], 4000)
     op = next(op for op in ops if op.tool_type == "threading_internal")
-    assert op.passes == 6 + 1 and "6 passes: Sandvik TT 2020 C77 (count) and C82 (infeed series)" in op.notes
-    assert "profile depth 0.812 (0.541·P) and the spring pass: not in the catalogue" in op.notes
+    assert op.passes == 6 + 1
+    assert "6 passes from Sandvik TT 2020 C77 (PDF 535, internal), infeed series C82 (PDF 540)" in op.notes
+    assert "depth 0.812 from the ISO thread profile (0.541·P), not C77's; spring pass: rule of thumb" in op.notes
+
+
+def test_a_full_profile_insert_is_not_called_v_profile():
+    assert planner.v_profile_insert("266RG-16VM01A001M") and planner.v_profile_insert("266RG-16 VM01A001M")
+    assert not planner.v_profile_insert("266RG-16MM01A150M") and not planner.v_profile_insert(None)

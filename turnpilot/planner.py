@@ -519,8 +519,16 @@ def _decreasing_infeed(h: float, n: int) -> list[float]:
 # V-profile insert takes the full profile's count (C82). C77's depths are the full profile's, so the depth stays
 # the formula. The infeed series of _decreasing_infeed is C82's (first pass ϕ = 0.3, second 1, then x − 1).
 THREAD_PASSES_C77 = {"external": {1.0: 5, 1.5: 6, 2.0: 8}, "internal": {1.5: 6}}
-THREAD_CATALOGUE_NOTE = "{n} passes: Sandvik TT 2020 C77 (count) and C82 (infeed series)"
-THREAD_DEPTH_NOTE = "profile depth {h:g} ({k:g}·P) and the spring pass: not in the catalogue"
+THREAD_CATALOGUE_NOTE = "{n} passes from Sandvik TT 2020 C77 (PDF 535), infeed series C82 (PDF 540)"
+THREAD_V_PROFILE_NOTE = ("V-profile: {n} passes from Sandvik TT 2020 C77 (PDF 535), the full-profile count as C82 "
+                         "(PDF 540) allows; infeed series C82")
+THREAD_INTERNAL_NOTE = "{n} passes from Sandvik TT 2020 C77 (PDF 535, internal), infeed series C82 (PDF 540)"
+THREAD_DEPTH_NOTE = "depth {h:g} from the ISO thread profile ({k:g}·P), not C77's; spring pass: rule of thumb"
+
+
+def v_profile_insert(code: str | None) -> bool:
+    """A CoroThread 266 V-profile insert (e.g. 266RG-16VM01A001M): it cuts several pitches, not the full profile."""
+    return bool(code and re.search(r"\d+VM\d", code.replace(" ", "")))
 
 
 def catalogue_thread_passes(pitch: float, location: str = "external") -> int | None:
@@ -1630,7 +1638,8 @@ def _plan_thread(op: PlannedOperation, tool: ToolSpec, feature: FeatureSpec,
     cutting = ", ".join(f"{d:g}" for d in infeed[:-1])
     op.notes.append(f"radial infeed per pass: {cutting} + spring pass")
     if method == "catalogue":
-        op.notes.append(THREAD_CATALOGUE_NOTE.format(n=passes))
+        note = THREAD_V_PROFILE_NOTE if v_profile_insert(tool.insert_code) else THREAD_CATALOGUE_NOTE
+        op.notes.append(note.format(n=passes))
         op.notes.append(THREAD_DEPTH_NOTE.format(h=op.depth, k=METRIC_THREAD_DEPTH_FACTOR))
         return
     if method == "equal":
@@ -1770,7 +1779,7 @@ def _plan_internal_thread_step(op, step, job, turret, max_rpm, max_thread_feed=N
         op.passes = len(infeed)
         op.notes.append(f"radial infeed per pass: {', '.join(f'{d:g}' for d in infeed[:-1])} + spring pass")
         if passes:
-            op.notes.append(THREAD_CATALOGUE_NOTE.format(n=passes))
+            op.notes.append(THREAD_INTERNAL_NOTE.format(n=passes))
             op.notes.append(THREAD_DEPTH_NOTE.format(h=op.depth, k=INTERNAL_THREAD_DEPTH_FACTOR))
     return op
 
