@@ -743,6 +743,7 @@ def job_detail(job_id):
                            suggested_free_end=services.suggest_free_end(job),
                            conflicts=services.radius_conflicts(job) if job.axial_order_known else {},
                            turret=services.job_turret(job, services.get_machine()),
+                           suggestions=services.turret_suggestions(job, services.get_machine()),
                            library=db.session.execute(db.select(Tool).filter_by(is_retired=False)
                                                       .order_by(Tool.name)).scalars().all())
 

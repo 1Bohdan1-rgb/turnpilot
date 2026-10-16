@@ -140,6 +140,17 @@
     {% endfor %}
     </tbody>
   </table>
+  {% if suggestions %}
+  <div class="warning small"><strong>Suggested for this job</strong> (from its calculation; one click, or choose another
+    position below):
+    <ul>{% for s in suggestions %}<li>{% if s.position %}T{{ s.position }}: {{ s.replaces.name if s.replaces else "empty" }} → {{ s.tool.name }} ({{ s.tool.insert_code }}), {{ s.reason }}
+      <form method="post" action="{{ url_for('main.change_job_turret', job_id=job.id) }}" class="inline-form">
+        <input type="hidden" name="position" value="{{ s.position }}"><input type="hidden" name="tool_id" value="{{ s.tool.id }}">
+        <input type="hidden" name="note" value="{{ s.reason }}">
+        <input name="decided_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
+        <button class="small">Apply</button></form>
+      {% else %}{{ s.tool.name }} ({{ s.tool.insert_code }}), {{ s.reason }}: no position this job leaves free — choose one below{% endif %}</li>{% endfor %}</ul></div>
+  {% endif %}
   <form method="post" action="{{ url_for('main.change_job_turret', job_id=job.id) }}" class="inline-form">
     <select name="position" aria-label="Position">{% for s in turret %}<option value="{{ s.position }}">T{{ s.position }}</option>{% endfor %}</select>
     <select name="tool_id" aria-label="Tool"><option value="">— empty —</option>

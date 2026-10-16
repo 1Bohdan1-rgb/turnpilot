@@ -201,6 +201,73 @@ def change_job_turret(job, machine, position, tool, name, note=None):
     return change
 
 
+@dataclass
+class TurretSuggestion:
+    """The smallest change of the job's turret that gives it a tool it lacks."""
+    tool: object  # the library Tool to put in
+    reason: str
+    position: int | None  # where (None: no position the job leaves free)
+    replaces: object = None  # the Tool now there (None: empty)
+
+
+def turret_suggestions(job, machine) -> list[TurretSuggestion]:
+    """From the job's current calculation: tools it lacks that the library has (a drill of a bore's size, a copying
+    tool whose RMPX covers a concave arc, a missing tool type, a grooving insert narrow enough), each with the position
+    to free: an empty one first, else one whose tool this job does not use (the lowest)."""
+    ops = job.current_operations
+    if not ops:
+        return []
+    slots = job_turret(job, machine)
+    in_turret = {s.tool_id for s in slots if s.tool_id}
+    iso = job.material.iso_group
+    library = [t for t in db.session.execute(db.select(Tool).filter_by(is_retired=False)).scalars()
+               if t.id not in in_turret and iso in t.iso_group]
+    features = {f.id: f for f in job.active_features}
+    specs = {f.id: f for f in job_spec(job).features}
+    wanted = []  # (tool, reason)
+
+    def want(tool, reason):
+        if tool is not None and all(t.id != tool.id for t, _ in wanted):
+            wanted.append((tool, reason))
+
+    for op in ops:
+        feature = features.get(op.feature_id)
+        if feature is None:
+            continue
+        warning = op.warning or ""
+        if op.tool_type == "drilling" and feature.type == "bore" and feature.diameter and not (
+                op.tool_id and op.ref_diameter and abs(op.ref_diameter - feature.diameter) <= 0.01):
+            want(next((t for t in library if t.type == "drilling" and t.diameter
+                       and abs(t.diameter - feature.diameter) <= 0.01), None),
+                 f"the bore Ø{feature.diameter:g} drilled to size in one operation")
+        if feature.type == "arc" and op.tool_type in ("turning_finish", "turning_rough") and job.axial_order_known:
+            angle = planner.concave_arc_angle(specs[feature.id])
+            have = op.tool.max_ramp_angle if op.tool else None
+            if angle is not None and (have is None or angle > have + 0.5):
+                types = ("turning_finish",) if op.tool_type == "turning_finish" else ("turning_rough",
+                                                                                      "turning_finish")
+                able = [t for t in library if t.type in types and t.max_ramp_angle is not None
+                        and angle <= t.max_ramp_angle + 0.5]
+                able.sort(key=lambda t: types.index(t.type))
+                want(able[0] if able else None, f"the concave R{feature.radius:g} goes down at {angle:.0f}°: "
+                                                f"a tool with RMPX ≥ {angle:.0f}°")
+        if op.tool_id is None and warning.startswith(f"No {op.tool_type} tool in the turret"):
+            want(next((t for t in library if t.type == op.tool_type), None), f"no {op.tool_type} tool in the turret")
+        if op.tool_type == "grooving" and op.tool_id is None and "narrower than the narrowest" in warning \
+                and feature.length:
+            fits = [t for t in library if t.type == "grooving" and t.insert_width
+                    and t.insert_width <= feature.length + 0.01]
+            want(max(fits, key=lambda t: t.insert_width) if fits else None,
+                 f"the groove {feature.length:g} mm needs a narrower insert")
+    used = {op.turret_position for op in ops if op.tool_id is not None and op.turret_position}
+    free = [s for s in slots if s.tool is None] + [s for s in slots if s.tool is not None and s.position not in used]
+    out = []
+    for tool, reason in wanted:
+        slot = free.pop(0) if free else None
+        out.append(TurretSuggestion(tool, reason, slot.position if slot else None, slot.tool if slot else None))
+    return out
+
+
 def undo_job_turret_change(change, name):
     name = (name or "").strip()[:100]
     if not name:
