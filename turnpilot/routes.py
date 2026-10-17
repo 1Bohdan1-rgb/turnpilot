@@ -666,7 +666,10 @@ def _job_from_form(form):
         blank_length=_number(form, "blank_length", required=True),
         blank_shape=blank_shape,
     )
-    machine = services.get_machine()  # a new job is planned for the first machine; the job page changes it
+    # a new job is planned for the machine it was started from (the shop page's card), else the first machine; the
+    # job page changes it
+    chosen = _number(form, "machine_id", int) if form.get("machine_id") else None
+    machine = (db.session.get(Machine, chosen) if chosen else None) or services.get_machine()
     job.machine = machine
     if machine and _stock_diameter(job) > machine.max_diameter:
         raise FormError(f"Blank diameter exceeds machine max diameter ({machine.max_diameter:g} mm)")
@@ -1367,11 +1370,14 @@ def _attach_dxf_rows(rows, report):
 
 def _render_review(extraction, values, status=200):
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
+    for_machine = _machine_from_args()
+    if for_machine is None and request.form.get("machine_id", "").isdigit():  # the confirm form sent back
+        for_machine = db.session.get(Machine, int(request.form["machine_id"]))
     data = services.extraction_data(extraction)
     report = services.dxf_report(extraction)
     _attach_dxf_rows(values["rows"], report)
     page = render_template(
-        "extraction_review.html",
+        "extraction_review.html", for_machine=for_machine,
         extraction=extraction,
         data=data,
         geometry_warnings=_geometry_warnings(
@@ -1418,15 +1424,22 @@ def upload_drawing():
         except services.UploadError as e:
             flash(str(e), "error")
             return redirect(url_for("main.upload_drawing"))
+        machine_id = _number(request.form, "machine_id", int) if request.form.get("machine_id") else None
         if extraction.status != "extracted":
             flash(_reading_error(extraction), "error")
-            return redirect(url_for("main.upload_drawing"))
-        return redirect(url_for("main.review_extraction", extraction_id=extraction.id))
+            return redirect(url_for("main.upload_drawing", machine_id=machine_id))
+        return redirect(url_for("main.review_extraction", extraction_id=extraction.id, machine_id=machine_id))
 
     recent = db.session.execute(
         db.select(DrawingExtraction).order_by(DrawingExtraction.created_at.desc()).limit(10)
     ).scalars().all()
-    return render_template("upload.html", recent=recent)
+    return render_template("upload.html", recent=recent, for_machine=_machine_from_args())
+
+
+def _machine_from_args():
+    """The machine a new job is started for (?machine_id=, from the shop page's card); None: not given."""
+    value = request.args.get("machine_id", "")
+    return db.session.get(Machine, int(value)) if value.isdigit() else None
 
 
 @bp.route("/extractions/<int:extraction_id>/review")

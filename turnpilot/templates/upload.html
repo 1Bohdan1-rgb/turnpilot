@@ -8,7 +8,10 @@
   For a PDF only the first page is read.
 </p>
 
+{% if for_machine %}<p class="warning">The new job will be planned for <strong>{{ for_machine.name }}</strong>
+  (from the shop page); the job page can change it.</p>{% endif %}
 <form method="post" enctype="multipart/form-data" class="card upload-form" id="upload-form">
+  {% if for_machine %}<input type="hidden" name="machine_id" value="{{ for_machine.id }}">{% endif %}
   <input type="file" name="drawing" accept=".png,.jpg,.jpeg,.pdf,.dxf,image/png,image/jpeg,application/pdf" required>
   <button type="submit" class="primary" id="read-button">Read drawing</button>
   <span class="muted small">Reading takes 3–7 minutes. A file already read by the same model is not sent again.</span>

@@ -111,7 +111,10 @@
   </figure>
   {% endif %}
 
+  {% if for_machine %}<p class="warning">The job will be planned for <strong>{{ for_machine.name }}</strong> (from the
+    shop page).</p>{% endif %}
   <form method="post" action="{{ url_for('main.confirm_extraction', extraction_id=extraction.id) }}" class="review-form">
+    {% if for_machine %}<input type="hidden" name="machine_id" value="{{ for_machine.id }}">{% endif %}
     <div class="card grid-form">
       <label>Job name <input name="name" value="{{ values.name }}" required></label>
       <label>Material

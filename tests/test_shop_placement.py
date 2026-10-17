@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from gcode_jobs import ready_machine
+from test_dxf_upload import no_api  # noqa: F401 (a fixture: no API call)
 
 from turnpilot import services
 from turnpilot.models import Machine, db
@@ -76,3 +77,28 @@ def test_a_machine_without_a_footprint_is_placed_but_not_checked(app, client):
     place(client, machine, 300, 6000)  # where a footprint would cross the wall
     m = machines_on(client.get("/shop").get_data(as_text=True))[machine.name]
     assert (m["x"], m["length"], m["conflicts"]) == (300, None, [])
+
+
+def test_upload_drawing_from_the_card_plans_the_new_job_for_that_machine(app, client, no_api, tmp_path):
+    """The card's "Upload drawing" opens the upload page for the machine; the job confirmed from it is planned for it
+    (a DXF here: no API call)."""
+    import dxf_drawings as dd
+    from test_dxf_upload import _confirm_form, _extractions
+
+    from turnpilot.models import Job
+
+    ready_machine()
+    client.post("/machines", data=NEW)
+    lathe2 = db.session.execute(db.select(Machine).filter_by(name="Lathe 2")).scalar_one()
+    assert f"/jobs/upload?machine_id=${{id}}" in client.get("/shop").get_data(as_text=True)
+    page = client.get(f"/jobs/upload?machine_id={lathe2.id}").get_data(as_text=True)
+    assert "The new job will be planned for <strong>Lathe 2</strong>" in page
+    data = dd.write(tmp_path / "sheet.dxf", dd.draw_pin).read_bytes()
+    response = client.post("/jobs/upload", data={"drawing": (io.BytesIO(data), "pin.dxf"), "machine_id": lathe2.id},
+                           content_type="multipart/form-data")
+    assert response.location.endswith(f"machine_id={lathe2.id}")
+    (pin,) = _extractions()
+    assert "planned for <strong>Lathe 2</strong>" in client.get(response.location).get_data(as_text=True)
+    client.post(f"/extractions/{pin.id}/confirm", data={**_confirm_form(pin), "machine_id": lathe2.id})
+    job = db.session.execute(db.select(Job)).scalar_one()
+    assert job.machine is lathe2 and services.job_machine(job) is lathe2

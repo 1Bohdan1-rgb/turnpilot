@@ -57,6 +57,7 @@
     panel: id => `/shop/machines/${id}?fragment=1`,
     machine: id => `/machines/${id}`,
     place: id => `/shop/machines/${id}/place`,
+    upload: id => `/jobs/upload?machine_id=${id}`,
   };
   const SNAP = 100;  // mm
   const LABEL = {running: "Running", setup: "Setup", stopped: "Stopped", free: "Free"};
@@ -210,7 +211,8 @@
       </dl>
       ${o ? `<div class="sf-bar" role="img" aria-label="${pct}% done"><i class="sf-${m.status}" style="width:${pct}%"></i></div>` : ""}
       <div class="sf-btns">
-        <a class="sf-button" href="${URLS.machine(m.id)}">Machine page</a>
+        <a class="sf-button" href="${URLS.upload(m.id)}">Upload drawing</a>
+        <a class="sf-button ghost" href="${URLS.machine(m.id)}">Machine page</a>
         <button type="button" class="sf-button ghost" id="sf-panel">Status and order</button>
         ${m.x !== null ? `<button type="button" class="sf-button ghost" id="sf-rotate">Rotate 90°</button>` : ""}
       </div>`;
