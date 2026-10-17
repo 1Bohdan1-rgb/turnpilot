@@ -197,6 +197,12 @@ class OpData:
 THREAD_RUN_IN_PITCHES = 3
 
 
+# A rapid keeps at least this far (per side, and along Z before a face) from the material the roughing already
+# written leaves; closer, the tool feeds. The operator's rule (2026-10-17); placeholder table: open.
+RAPID_STOCK_MARGIN_MM = 1.0
+STOCK_STEP_MM = 0.05  # the step of the stock look-up along Z
+
+
 def _r3(value: float) -> float:
     return round(value + 0.0, 3)
 
@@ -286,22 +292,25 @@ class _Builder:
         if section.kind == "arc" and not section.arc.convex and op.max_ramp_angle is not None:
             return self._copy_rough(op, section)
         name = _section_name(section)
-        b = self.block(op, f"ROUGH {name} {op.passes} X AP {op.ap:g} FROM D{op.ref_diameter:g}")
         own = [p for segment in section.segments() for p in segment.points()]  # its own, not a neighbour's step
         target = min(r for _, r in own) if section.kind in ("taper", "arc") else section.turned_d / 2
         allowance = max(0.0, op.ref_diameter / 2 - op.passes * op.ap - target)
         if abs(allowance - self.allowance) < 0.01:  # the planner's ap is rounded: the finishing tool's ap exactly
             allowance = self.allowance
-        step = (op.ref_diameter / 2 - target - allowance) / op.passes  # equal passes down to target + allowance
+        start, n_passes = op.ref_diameter / 2, op.passes
+        b = self.block(op, f"ROUGH {name} {op.passes} X AP {op.ap:g} FROM D{op.ref_diameter:g}")
+        step = (start - target - allowance) / n_passes  # equal passes down to target + allowance
         # the scans start where the section is lowest (a taper: its smaller end)
         z_mid = (section.z_free + section.z_chuck) / 2
         if section.kind in ("taper", "arc"):  # where it is lowest
             z_mid = min(own, key=lambda p: (p[1], -p[0]))[0]
-        passes = []
-        for i in range(1, op.passes + 1):
-            radius = op.ref_diameter / 2 - i * step
+        passes, in_air = [], 0
+        written = len(self.roughed)
+        for i in range(1, n_passes + 1):
+            radius = start - i * step
             level = radius - allowance
             if self._scan(z_mid, False, level) is not None:
+                del self.roughed[written:]  # nothing of this operation is written
                 return ("a larger diameter between this section and the free end: roughing it needs plunging, "
                         "not generated")
             shoulder = self._scan(z_mid, True, level)
@@ -310,30 +319,44 @@ class _Builder:
                 continue  # a taper's step that does not reach the part
             if self._roughed_to(z_end, radius):
                 continue  # an earlier pass already took the material down to this radius over the span
-            passes.append((radius, _r3(z_end)))
+            rapid_to = self._air_until(radius, z_end)
+            if rapid_to is None:
+                in_air += 1
+                continue  # the passes before took the material of the whole pass: left out
+            passes.append((radius, _r3(z_end), _r3(rapid_to) if rapid_to < -EPS else None))
+            self.roughed.append((0.0, _r3(z_end), radius))  # the next pass sees what this one leaves
         profile_pass = section.kind == "taper" and section.d_free < section.d_chuck and allowance >= 0
         arc_pass = None
         if section.kind == "arc":
             arc_pass, why = self._arc_profile_pass(section, allowance, op)
             if arc_pass is None:
+                del self.roughed[written:]
                 return why
         if not passes and not profile_pass and not arc_pass:
             self.covered.append(f"operation {op.id} (rough {name}): the passes before it already took the "
                                 f"material down to its Ø")
             return b  # no commands: left out of the program
-        self.roughed += [(0.0, z_end, radius) for radius, z_end in passes]
+        if in_air:
+            b.notes.append(f"{in_air} of the {n_passes} passes left out: the passes before took that material "
+                           f"(the process sheet starts from D{op.ref_diameter:g})")
+        if any(rapid_to is not None for _, _, rapid_to in passes):
+            b.notes.append(f"no material within {RAPID_STOCK_MARGIN_MM:g} mm on part of a pass: a rapid there")
         self._start(b, op)
-        for radius, z_end in passes:
-            b.commands += [Rapid(x=_r3(2 * radius)), Feed(z=z_end, f=op.f),
-                           Feed(x=_r3(2 * (radius + self.m.retract))), Rapid(z=self.z_safe)]
+        for radius, z_end, rapid_to in passes:
+            b.commands.append(Rapid(x=_r3(2 * radius)))
+            if rapid_to is not None:  # no material within the margin up to there: a rapid along Z
+                b.commands.append(Rapid(z=rapid_to))
+            b.commands += [Feed(z=z_end, f=op.f), Feed(x=_r3(2 * (radius + self.m.retract))), Rapid(z=self.z_safe)]
         if profile_pass:  # along the taper's line, the allowance above it: the steps' corners off
             r0, r1 = section.d_free / 2 + allowance, section.d_chuck / 2 + allowance
-            b.commands += [Rapid(z=_r3(section.z_free + self.m.clearance_z)), Rapid(x=_r3(2 * r0)),
-                           Feed(z=_r3(section.z_free), f=op.f), Feed(x=_r3(2 * r1), z=_r3(section.z_chuck)),
+            self._approach(b, r0, section.z_free + self.m.clearance_z, op.f)
+            b.commands += [Feed(z=_r3(section.z_free), f=op.f), Feed(x=_r3(2 * r1), z=_r3(section.z_chuck)),
                            Feed(x=_r3(2 * (r1 + self.m.retract))), Rapid(z=self.z_safe)]
             b.notes.append(f"taper: steps, then one pass along its line {allowance:g} mm above it")
         if arc_pass:
-            b.commands += arc_pass
+            (z_in, r_in), rest = arc_pass
+            self._approach(b, r_in, z_in, op.f)
+            b.commands += rest
             b.notes.append(f"arc: steps, then one pass along it {allowance:g} mm above it")
         self._end(b)
         if allowance:
@@ -421,11 +444,62 @@ class _Builder:
                           + ("has no max in-copying angle set" if op.max_ramp_angle is None
                              else f"may go down at {op.max_ramp_angle:g}° only") + ": not generated")
         z0, r0, z1, r1 = _r3(segment.z0), _r3(segment.r0), _r3(segment.z1), _r3(segment.r1)
-        return [Rapid(z=_r3(max(z0, section.z_free) + self.m.clearance_z)), Rapid(x=_r3(2 * r0)),
+        # ((where the tool comes in: z, r), the moves from there); the way in is the caller's (_approach)
+        return ((max(z0, section.z_free) + self.m.clearance_z, r0), [
                 Feed(z=z0, f=op.f),
                 ArcMove(x=_r3(2 * r1), z=z1, i=_r3(a.cr - r0), k=_r3(a.cz - z0),
                         clockwise=arc_direction(z0, r0, z1, r1, a.cz, a.cr)),
-                Feed(x=_r3(2 * (r1 + self.m.retract))), Rapid(z=self.z_safe)], None
+                Feed(x=_r3(2 * (r1 + self.m.retract))), Rapid(z=self.z_safe)]), None
+
+    def _stock_r(self, z: float) -> float:
+        """The material's radius at z as the roughing passes written so far leave it (an upper bound: other cuts are
+        not counted); in front of Z0 there is none (faced first)."""
+        if z > EPS:
+            return 0.0
+        r = self.stock_r
+        for _, z_end, radius in self.roughed:
+            if z_end - EPS <= z:
+                r = min(r, radius)
+        return r
+
+    def _stock_samples(self, z_a: float, z_b: float):
+        lo, hi = min(z_a, z_b), max(z_a, z_b)
+        n = max(1, math.ceil((hi - lo) / STOCK_STEP_MM))
+        return [(hi - (hi - lo) * i / n) for i in range(n + 1)]  # from the free end side
+
+    def _stock_max(self, z_a: float, z_b: float) -> float:
+        return max(self._stock_r(z) for z in self._stock_samples(z_a, z_b))
+
+    def _air_until(self, radius: float, z_end: float) -> float | None:
+        """Where a pass at radius from Z0 towards z_end may stop its rapid: the first z with material within the
+        margin of radius, plus the margin along Z; None: no material to cut on the whole pass."""
+        margin = RAPID_STOCK_MARGIN_MM
+        if self._stock_max(0.0, z_end) <= radius + EPS:
+            return None
+        for z in self._stock_samples(0.0, z_end):
+            if self._stock_r(z) > radius - margin + EPS:
+                return z + margin
+        return None
+
+    def _approach(self, b: Block, r_to: float, z_to: float, f: float | None) -> None:
+        """From where the block's moves leave the tool to (r_to, z_to): rapids only with the margin over the material
+        (up in X first when the way along Z is lower), the last part down in X fed when the material is closer."""
+        margin = RAPID_STOCK_MARGIN_MM
+        x_now, z_now = _position(b.commands)
+        r_now = (x_now if x_now is not None else self.x_safe) / 2
+        z_now = z_now if z_now is not None else self.z_safe
+        need = self._stock_max(z_to, z_now) + margin
+        if r_now < need - EPS:
+            b.commands.append(Rapid(x=_r3(2 * need)))
+            r_now = need
+        b.commands.append(Rapid(z=_r3(z_to)))
+        floor = self._stock_r(z_to) + margin
+        if r_to >= floor - EPS:
+            b.commands.append(Rapid(x=_r3(2 * r_to)))
+            return
+        if r_now > floor + EPS:
+            b.commands.append(Rapid(x=_r3(2 * floor)))
+        b.commands.append(Feed(x=_r3(2 * r_to), f=f))
 
     def _roughed_to(self, z_end: float, radius: float) -> bool:
         """Earlier passes left no material above radius between Z0 and z_end."""

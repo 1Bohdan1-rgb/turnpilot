@@ -88,7 +88,14 @@ def _block(b: Block, home: bool = True, stop: bool = True) -> list[str]:
     for warning in b.warnings:
         lines += comment_lines(f"CHECK: {warning}")
     lines += (_command(Home()) if home else []) + _command(ToolCall(b.tool_position))
+    split = not home  # the tool comes from the block before, not from the reference point
     for c in b.commands:
+        if split and isinstance(c, Rapid) and c.x is not None and c.z is not None:
+            lines += _command(Rapid(x=c.x)) + _command(Rapid(z=c.z))  # X to the safe diameter first, then Z
+            split = False
+            continue
+        if isinstance(c, (Rapid, Feed)):
+            split = False
         lines += _command(c)
     if stop:
         lines += _command(OptionalStop())
