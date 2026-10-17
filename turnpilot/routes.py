@@ -25,7 +25,9 @@ from .extraction_schema import (
     hex_across_flats,
     normalize_tolerance,
 )
-from .machine_spec import MACHINE_FIELDS, PROGRAMMING_FIELDS, SOURCE_OPERATOR, format_value, parse_value
+from .machine_spec import (
+    FIELDS_BY_NAME, MACHINE_FIELDS, PROGRAMMING_FIELDS, SOURCE_OPERATOR, format_value, parse_value,
+)
 from .models import (
     BLANK_SHAPES,
     FEATURE_TYPES,
@@ -38,6 +40,7 @@ from .models import (
     Feature,
     Job,
     JobTurretChange,
+    Machine,
     MachineDocument,
     Material,
     Operation,
@@ -73,11 +76,35 @@ def _number(form, key, cast=float, required=False, positive=True):
     return value
 
 
-def _machine_or_404():
-    machine = services.get_machine()
+def _machine_or_404(machine_id=None):
+    machine = db.get_or_404(Machine, machine_id) if machine_id is not None else services.get_machine()
     if machine is None:
         abort(404, "No machine configured. Run `flask --app turnpilot seed` first.")
     return machine
+
+
+@bp.route("/machines", methods=["GET", "POST"])
+def machines():
+    """All machines; a new one with its name and the four required values (typed by the operator, no default)."""
+    if request.method == "POST":
+        try:
+            values = {}
+            for key in services.NEW_MACHINE_FIELDS:
+                field = FIELDS_BY_NAME[key]
+                try:
+                    values[key] = parse_value(field, request.form.get(key))
+                except ValueError as e:
+                    raise FormError(str(e)) from None
+            machine = services.add_machine(request.form.get("name"), values)
+            db.session.commit()
+        except (FormError, services.MachineError) as e:
+            db.session.rollback()
+            flash(str(e), "error")
+            return redirect(url_for("main.machines"))
+        flash(f"Machine {machine.name} added: its turret, programming values and passport are empty.")
+        return redirect(url_for("main.machine", machine_id=machine.id))
+    return render_template("machines.html", machines=services.machines(),
+                           new_fields=[FIELDS_BY_NAME[k] for k in services.NEW_MACHINE_FIELDS])
 
 
 @bp.route("/")
@@ -86,8 +113,9 @@ def index():
 
 
 @bp.route("/machine", methods=["GET", "POST"])
-def machine():
-    machine = _machine_or_404()
+@bp.route("/machines/<int:machine_id>", methods=["GET", "POST"])
+def machine(machine_id=None):
+    machine = _machine_or_404(machine_id)
     if request.method == "POST":
         try:
             if request.form.get("action") == "profile":
@@ -144,7 +172,7 @@ def machine():
         except FormError as e:
             db.session.rollback()
             flash(str(e), "error")
-        return redirect(url_for("main.machine"))
+        return redirect(url_for("main.machine", machine_id=machine.id))
 
     tools = db.session.execute(db.select(Tool).filter_by(is_retired=False).order_by(Tool.name)).scalars().all()
     materials = db.session.execute(db.select(Material).order_by(Material.name)).scalars().all()
@@ -164,21 +192,22 @@ MAX_PASSPORT_PAGES = 20  # pages sent to the model in one reading (cost)
 
 
 @bp.route("/machine/passport", methods=["GET", "POST"])
-def machine_passport():
-    machine = _machine_or_404()
+@bp.route("/machines/<int:machine_id>/passport", methods=["GET", "POST"])
+def machine_passport(machine_id=None):
+    machine = _machine_or_404(machine_id)
     if request.method == "POST":
         upload = request.files.get("passport")
         if upload is None or not upload.filename:
             flash("Choose the machine passport (PDF).", "error")
-            return redirect(url_for("main.machine_passport"))
+            return redirect(url_for("main.machine_passport", machine_id=machine.id))
         try:
             document = services.store_passport(machine, upload.filename, upload.read(), current_app.instance_path)
         except services.UploadError as e:
             flash(str(e), "error")
-            return redirect(url_for("main.machine_passport"))
+            return redirect(url_for("main.machine_passport", machine_id=machine.id))
         return redirect(url_for("main.passport_pages", document_id=document.id))
     documents = db.session.execute(
-        db.select(MachineDocument).order_by(MachineDocument.created_at.desc())
+        db.select(MachineDocument).filter_by(machine_id=machine.id).order_by(MachineDocument.created_at.desc())
     ).scalars().all()
     return render_template("passport.html", machine=machine, documents=documents)
 
@@ -234,7 +263,7 @@ def passport_review(document_id):
     document = db.get_or_404(MachineDocument, document_id)
     if document.status not in ("read", "confirmed") or not document.reading:
         abort(404)
-    machine = _machine_or_404()
+    machine = document.machine
     values = {v.field: v for v in passport_reader.reading_from_json(document.reading)}
     rows = [dict(field=f, value=values[f.name], current=getattr(machine, f.name), source=machine.source_of(f.name))
             for f in MACHINE_FIELDS if f.name in values]
@@ -247,14 +276,14 @@ def confirm_passport(document_id):
     if document.status not in ("read", "confirmed") or not document.reading:
         abort(400)
     try:
-        count = services.confirm_passport(document, _machine_or_404(), request.form)
+        count = services.confirm_passport(document, document.machine, request.form)
     except (services.MachineError, ValueError) as e:
         db.session.rollback()
         flash(str(e), "error")
         return redirect(url_for("main.passport_review", document_id=document.id))
     db.session.commit()
     flash(f"{count} value(s) confirmed from the passport.")
-    return redirect(url_for("main.machine"))
+    return redirect(url_for("main.machine", machine_id=document.machine_id))
 
 
 @bp.route("/machine/passport/<int:document_id>/file")

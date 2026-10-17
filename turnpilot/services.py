@@ -39,6 +39,33 @@ def get_machine():
     return db.session.execute(db.select(Machine).order_by(Machine.id)).scalars().first()
 
 
+def machines():
+    return db.session.execute(db.select(Machine).order_by(Machine.id)).scalars().all()
+
+
+NEW_MACHINE_FIELDS = ("max_rpm", "power_kw", "max_diameter", "turret_positions")  # required, typed by the operator
+
+
+def add_machine(name, values):
+    """A new machine with the operator's name and required values (no default; the rest stays empty: no turret
+    tools, no programming values, no passport). Raises MachineError."""
+    name = (name or "").strip()[:100]
+    if not name:
+        raise MachineError("The machine's name is required")
+    if db.session.execute(db.select(Machine).filter_by(name=name)).scalar() is not None:
+        raise MachineError(f"A machine named {name} exists already")
+    missing = [machine_spec.FIELDS_BY_NAME[k].label for k in NEW_MACHINE_FIELDS if values.get(k) is None]
+    if missing:
+        raise MachineError("Required: " + ", ".join(missing))
+    machine = Machine(name=name, max_rpm=values["max_rpm"], power_kw=values["power_kw"],
+                      max_diameter=values["max_diameter"])
+    db.session.add(machine)
+    for key in NEW_MACHINE_FIELDS:
+        set_machine_value(machine, key, values[key], machine_spec.SOURCE_OPERATOR)
+    check_machine(machine)
+    return machine
+
+
 class MachineError(ValueError):
     pass
 

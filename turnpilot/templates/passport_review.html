@@ -50,7 +50,7 @@
   </div>
   <div class="actions">
     <button type="submit" class="primary">Confirm the ticked values</button>
-    <a href="{{ url_for('main.machine') }}">Cancel</a>
+    <a href="{{ url_for('main.machine', machine_id=document.machine_id) }}">Cancel</a>
   </div>
 </form>
 {% endblock %}

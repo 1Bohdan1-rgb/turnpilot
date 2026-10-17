@@ -5,7 +5,7 @@
 <p class="muted">{{ document.pages }} pages, {{ document.text_pages }} with text{% if document.text_pages == 0 %}
   (a scan: the pages are read as images, and every value gets a "check" badge){% endif %} ·
   <a href="{{ url_for('main.passport_file', document_id=document.id) }}" target="_blank">open the PDF</a> ·
-  <a href="{{ url_for('main.machine_passport') }}">all passports</a></p>
+  <a href="{{ url_for('main.machine_passport', machine_id=document.machine_id) }}">all passports</a></p>
 <p class="muted small">Tick the pages with the machine's technical data (at most {{ max_pages }}). Pages whose
   text has words like "technical", "характеристики", "rpm", "kW" are marked "likely".</p>
 <form method="post">

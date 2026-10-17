@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Machines{% endblock %}
+{% block content %}
+<h1>Machines</h1>
+<div class="card">
+  <table>
+    <thead><tr><th>Machine</th><th>Max rpm</th><th>Power S1, kW</th><th>Max Ø, mm</th><th>Turret</th><th>Passport</th></tr></thead>
+    <tbody>
+    {% for m in machines %}
+      <tr><td><a href="{{ url_for('main.machine', machine_id=m.id) }}">{{ m.name }}</a></td>
+        <td>{{ m.max_rpm }}</td><td>{{ m.power_kw }}</td><td>{{ m.max_diameter }}</td>
+        <td>{{ m.slots|length }} positions, {{ m.slots|selectattr("tool_id")|list|length }} with a tool</td>
+        <td><a href="{{ url_for('main.machine_passport', machine_id=m.id) }}">passport</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Add a machine</h2>
+<form method="post" class="card grid-form">
+  <label>Name <input name="name" maxlength="100" required></label>
+  {% for f in new_fields %}
+  <label>{{ f.label }}{% if f.unit %}, {{ f.unit }}{% endif %}
+    <input name="{{ f.name }}" type="number" step="{{ '1' if f.kind == 'int' else 'any' }}" min="0" required></label>
+  {% endfor %}
+  <p class="muted small">No value is filled in for you: type them from the machine's plate or passport. The new
+    machine's turret is empty, its programming values and passport too; the tool library, materials and cutting
+    data are shared by all machines.</p>
+  <button type="submit">Add the machine</button>
+</form>
+{% endblock %}

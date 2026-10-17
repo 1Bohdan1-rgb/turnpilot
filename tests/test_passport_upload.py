@@ -54,7 +54,7 @@ def test_upload_keeps_the_pdf_and_counts_its_pages(client, passport):
 
 def test_only_a_pdf_is_taken(client):
     response = _upload(client, b"\x89PNG\r\n\x1a\n...", "passport.png")
-    assert response.location.endswith("/machine/passport")
+    assert response.location.endswith("/machines/1/passport")  # the machine's own passports
     assert "The passport must be a PDF file." in client.get("/machine/passport").get_data(as_text=True)
     assert db.session.execute(db.select(MachineDocument)).first() is None
 
@@ -70,4 +70,4 @@ def test_the_operator_picks_the_pages(client, passport):
 
 
 def test_machine_page_links_to_the_passport(client):
-    assert "/machine/passport" in client.get("/machine").get_data(as_text=True)
+    assert "/machines/1/passport" in client.get("/machine").get_data(as_text=True)

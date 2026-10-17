@@ -2,7 +2,7 @@
 {% block title %}Machine passport{% endblock %}
 {% block content %}
 <h1>Machine passport</h1>
-<p class="muted">{{ machine.name }} · <a href="{{ url_for('main.machine') }}">back to the machine</a></p>
+<p class="muted">{{ machine.name }} · <a href="{{ url_for('main.machine', machine_id=machine.id) }}">back to the machine</a></p>
 <p class="muted small">Upload the machine's passport (PDF, up to 10 MB). Then pick the pages with its technical
   data: only those are read. The values read are shown with their page and quote for you to confirm; nothing
   reaches the machine profile before you confirm it, and nothing is guessed: a value the passport does not
