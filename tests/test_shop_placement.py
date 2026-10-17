@@ -102,3 +102,15 @@ def test_upload_drawing_from_the_card_plans_the_new_job_for_that_machine(app, cl
     client.post(f"/extractions/{pin.id}/confirm", data={**_confirm_form(pin), "machine_id": lathe2.id})
     job = db.session.execute(db.select(Job)).scalar_one()
     assert job.machine is lathe2 and services.job_machine(job) is lathe2
+
+
+def test_the_page_offers_dragging_from_the_list_and_x_y_in_the_card(app, client):
+    """A machine not placed yet is dragged from the list by pointer events (mouse or finger, not HTML5 drag and drop,
+    which phones lack) or placed by X / Y in its card; the card's light buttons have a visible text colour."""
+    ready_machine()
+    upload_plan(client)
+    page = client.get("/shop").get_data(as_text=True)
+    assert "function dragFromList(" in page and 'draggable="true"' not in page
+    assert 'id="sf-place"' in page and "Place on the plan" in page and "give X / Y in its card" in page
+    css = (Path(__file__).resolve().parent.parent / "turnpilot" / "static" / "style.css").read_text(encoding="utf-8")
+    assert ".shop-floor a.sf-button.ghost { color:var(--sf-ink); }" in css

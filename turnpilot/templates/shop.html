@@ -160,12 +160,9 @@
     const un = document.getElementById("sf-unplaced");
     const rest = M.filter(m => m.x === null);
     un.innerHTML = rest.length ? `<span class="sf-note">Not on the plan yet:</span> ` + rest.map(m =>
-      `<button type="button" class="sf-chip sf-machine-chip" draggable="true" data-id="${m.id}"><span class="sf-dot sf-${m.status}"></span>${esc(m.name)}</button>`).join(" ")
-      + (svg ? ` <span class="sf-note">drag one onto the plan</span>` : "") : "";
-    un.querySelectorAll("button").forEach(b => {
-      b.addEventListener("click", () => select(Number(b.dataset.id)));
-      b.addEventListener("dragstart", e => e.dataTransfer.setData("text/plain", b.dataset.id));
-    });
+      `<button type="button" class="sf-chip sf-machine-chip" data-id="${m.id}"><span class="sf-dot sf-${m.status}"></span>${esc(m.name)}</button>`).join(" ")
+      + (svg ? ` <span class="sf-note">drag one onto the plan, or give X / Y in its card</span>` : "") : "";
+    un.querySelectorAll("button").forEach(b => dragFromList(b, M.find(m => m.id === Number(b.dataset.id))));
   }
 
   // search and the status filter: the others dim
@@ -220,7 +217,18 @@
         <a class="sf-button ghost" href="${URLS.machine(m.id)}">Machine page</a>
         <button type="button" class="sf-button ghost" id="sf-panel">Status and order</button>
         ${m.x !== null ? `<button type="button" class="sf-button ghost" id="sf-rotate">Rotate 90°</button>` : ""}
-      </div>`;
+      </div>
+      ${svg ? `<form class="sf-place" id="sf-place">
+        <label>X, mm <input name="x" type="number" step="100" min="0" value="${m.x ?? ""}" required></label>
+        <label>Y, mm <input name="y" type="number" step="100" min="0" value="${m.y ?? ""}" required></label>
+        <label>Rotation <select name="r">${[0, 90, 180, 270].map(r => `<option ${r === m.rotation ? "selected" : ""}>${r}</option>`).join("")}</select></label>
+        <button type="submit" class="sf-button ghost">Place on the plan</button>
+      </form>` : ""}`;
+    const form = document.getElementById("sf-place");
+    if (form) form.addEventListener("submit", e => {
+      e.preventDefault();
+      place(m.id, Number(form.x.value), Number(form.y.value), Number(form.r.value));
+    });
     document.getElementById("sf-panel").addEventListener("click", () => openPanel(m.id));
     const rot = document.getElementById("sf-rotate");
     if (rot) rot.addEventListener("click", () => place(m.id, m.x, m.y, (m.rotation + 90) % 360));
@@ -267,12 +275,29 @@
       if (x !== m.x || y !== m.y) place(m.id, x, y, m.rotation);
     });
   }
-  if (svg) {
-    svg.addEventListener("dragover", e => e.preventDefault());
-    svg.addEventListener("drop", e => {
-      e.preventDefault();
-      const id = Number(e.dataTransfer.getData("text/plain"));
-      if (id) { const [x, y] = toPlan(e); place(id, x, y, 0); }
+  // a machine not placed yet: dragged from the list onto the plan (mouse or finger), a click selects it
+  function dragFromList(chip, m) {
+    let start = null, ghost = null;
+    chip.addEventListener("pointerdown", e => { start = [e.clientX, e.clientY]; chip.setPointerCapture(e.pointerId); });
+    chip.addEventListener("pointermove", e => {
+      if (!start || !svg) return;
+      if (!ghost && Math.hypot(e.clientX - start[0], e.clientY - start[1]) < 4) return;
+      if (!ghost) { ghost = document.createElement("div"); ghost.className = "sf-ghost"; ghost.textContent = m.name;
+                    document.body.appendChild(ghost); }
+      ghost.style.left = `${e.clientX + 8}px`; ghost.style.top = `${e.clientY + 8}px`;
+    });
+    chip.addEventListener("pointerup", e => {
+      const dragged = !!ghost;
+      if (ghost) { ghost.remove(); ghost = null; }
+      start = null;
+      if (!dragged) { select(m.id); return; }
+      const box = svg.getBoundingClientRect();
+      if (e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom) {
+        const [x, y] = toPlan(e);
+        place(m.id, x, y, 0);
+      } else {
+        msg.textContent = "Drop the machine on the plan.";
+      }
     });
   }
 

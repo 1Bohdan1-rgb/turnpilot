@@ -302,6 +302,14 @@ svg.sf-plan { display:block; width:100%; min-width:900px; height:auto; }
 .sf-button { font-size:13px; padding:8px 12px; border-radius:6px; border:1px solid var(--sf-ink); background:var(--sf-ink);
   color:var(--sf-sheet); cursor:pointer; text-decoration:none; }
 .shop-floor a.sf-button { color:var(--sf-sheet); }
+.shop-floor a.sf-button.ghost { color:var(--sf-ink); }
+.sf-machine-chip { touch-action:none; }
+.sf-ghost { position:fixed; z-index:20; pointer-events:none; padding:4px 8px; border-radius:6px; font-size:12px;
+  background:var(--card); color:var(--text); border:1px solid var(--border); box-shadow:0 2px 6px rgba(0,0,0,.2); }
+.sf-place { display:flex; flex-wrap:wrap; gap:8px; align-items:end; }
+.sf-place label { font-size:12px; color:var(--sf-ink2); }
+.sf-place input, .sf-place select { font:inherit; width:90px; padding:5px 6px; border:1px solid var(--sf-hair);
+  background:var(--sf-sheet); color:var(--sf-ink); border-radius:6px; }
 .sf-button.ghost { background:transparent; color:var(--sf-ink); }
 .shop-panel { max-width:min(760px, calc(100vw - 32px)); width:100%; border:1px solid var(--border); border-radius:10px;
   background:var(--card); color:var(--text); }
