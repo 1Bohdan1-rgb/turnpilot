@@ -66,3 +66,27 @@ def test_an_arc_is_cut_along_its_length():
                    "G03 X20. Z-10. I0. K-10. F0.1", "M01")
     assert estimate(text, 12, 12, 2.0).operations[0].cut_s == pytest.approx(
         2 / (0.1 * 1000 / 60) + (math.pi * 10 / 2) / (0.1 * 1000 / 60), rel=1e-3)
+
+
+def test_the_program_page_shows_the_time_by_operation_and_for_the_order(app, client):
+    from gcode_jobs import make_job, ready_machine
+
+    from turnpilot import services
+    from turnpilot.models import Feature, db
+
+    machine = ready_machine()
+    job = make_job([Feature(type="face"), Feature(type="od_turn", diameter=20, length=24), Feature(type="parting")],
+                   blank=22, length=29, stickout=35, machine=machine)
+    job.quantity = 50
+    db.session.commit()
+    response = client.post(f"/jobs/{job.id}/gcode", follow_redirects=True)
+    page = response.get_data(as_text=True)
+    assert "Cycle time" in page and "Without the passport" in page and "without the parts not set" in page
+    assert "order of 50:" in page
+    form = {"action": "profile", "name": machine.name, "max_rpm": str(machine.max_rpm), "power_kw": str(machine.power_kw),
+            "max_diameter": str(machine.max_diameter), "turret_positions": str(machine.turret_positions or 12),
+            "rapid_x_m_min": "12", "rapid_z_m_min": "15", "tool_change_s": "1.5"}
+    client.post("/machine", data=form)
+    assert (machine.rapid_x_m_min, machine.rapid_z_m_min, machine.tool_change_s) == (12, 15, 1.5)
+    page = client.get(response.request.path).get_data(as_text=True)
+    assert "without the parts not set" not in page and "Tool change time (tool to tool) 1.5 (operator)" in page

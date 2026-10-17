@@ -34,6 +34,41 @@
   The operator presses Start after the machine check.</div>
 {% endif %}
 
+{% macro mmss(s) %}{{ "%d:%04.1f"|format((s // 60)|int, s % 60) }}{% endmacro %}
+{% set ct = cycle.time %}
+<h2 id="cycle-time">Cycle time</h2>
+<div class="card">
+  {% if ct.errors %}<p class="warning">The program text cannot be read for the time.</p>{% else %}
+  {% if cycle.demo %}<div class="banner banner-stop"><strong>DEMO values</strong> in the machine's rapid rates / tool
+    change time: the time shows the structure only, not this machine's seconds.</div>
+  {% elif cycle.estimate %}<p class="warning small"><strong>Without the passport — an estimate.</strong>{% if not ct.complete %}
+    Not set on the Machine page:{% for label, (v, src) in cycle.sources.items() if v is none %} {{ label }}{% if not loop.last %},{% endif %}{% endfor %}:
+    that part of the time is not in the total.{% endif %}</p>{% endif %}
+  <table>
+    <thead><tr><th>N</th><th>Operation</th><th>Cutting</th><th>Thread</th><th>Rapid</th><th>Tool change</th>
+      <th>Dwell</th><th>Total, m:s</th></tr></thead>
+    <tbody>
+    {% for op in ct.operations %}
+      <tr><td>{{ op.number if op.number is not none else "" }}</td><td class="small">{{ op.title }}</td>
+        <td>{{ "%.1f"|format(op.cut_s) }} s</td><td>{{ "%.1f"|format(op.thread_s) if op.thread_s else "" }}{% if op.thread_s %} s{% endif %}</td>
+        <td>{% if op.rapid_s is not none %}{{ "%.1f"|format(op.rapid_s) }} s{% else %}<span class="muted small">not set
+          (X {{ "%.0f"|format(op.rapid_x_mm) }} / Z {{ "%.0f"|format(op.rapid_z_mm) }} mm)</span>{% endif %}</td>
+        <td>{% if op.tool_changes %}{% if op.tool_change_s is not none %}{{ "%.1f"|format(op.tool_change_s) }} s{% else %}<span class="muted small">{{ op.tool_changes }} × not set</span>{% endif %}{% endif %}</td>
+        <td>{{ "%.1f"|format(op.dwell_s) ~ " s" if op.dwell_s else "" }}</td>
+        <td><strong>{{ mmss(op.total_s) }}</strong></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p><strong>Part: {{ mmss(ct.total_s) }}</strong> ({{ "%.1f"|format(ct.total_s) }} s){% if not ct.complete %},
+    without the parts not set{% endif %} · <strong>order of {{ cycle.quantity }}: {{ mmss(cycle.order_s) }}</strong>
+    ({{ "%.2f"|format(cycle.order_s / 3600) }} h)</p>
+  <p class="muted small">From the program's text: feeds by f·n (G96: n from the diameter, up to G50), G92 at n·P,
+    rapids per axis, G04, one tool change per T. Not counted: acceleration of the axes and the spindle, M01, loading
+    the part or feeding the bar, and the moves to and from the reference point (taken as part of the tool change).
+    Values: {% for label, (v, src) in cycle.sources.items() %}{{ label }} {{ v if v is not none else "—" }} ({{ src or ("source not recorded" if v is not none else "not set") }}){% if not loop.last %}; {% endif %}{% endfor %}.</p>
+  {% endif %}
+</div>
+
 <h2>Simulation</h2>
 <div class="card sim-card">
   {{ drawing|safe }}

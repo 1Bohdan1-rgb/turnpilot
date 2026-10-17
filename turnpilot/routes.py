@@ -842,6 +842,7 @@ def gcode_program(program_id):
         "gcode_program.html", record=record, job=job, sim=sim, settings=settings, stale=stale, drawing=drawing,
         errors=greport.group(sim["errors"]), warnings=greport.group(sim["warnings"]), lines=lines,
         flagged=flagged, demo=services.demo_settings(settings), checklist=services.gcode_checklist(record),
+        cycle=services.cycle_time(record, machine),
         ticked=json.loads(record.checklist) if record.checklist else {})
 
 

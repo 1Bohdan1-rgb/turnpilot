@@ -846,6 +846,27 @@ def gcode_stale(record, machine):
     return reasons
 
 
+CYCLE_TIME_FIELDS = ("rapid_x_m_min", "rapid_z_m_min", "tool_change_s")
+
+
+def cycle_time(record, machine):
+    """The program's time by operation, from its text and the machine's current rapid rates and tool change time,
+    with where those come from: an estimate unless all three are from the passport."""
+    from .gcode import cycle_time as gtime
+
+    result = gtime.estimate(record.text, machine.rapid_x_m_min, machine.rapid_z_m_min, machine.tool_change_s)
+    sources = {}
+    for name in CYCLE_TIME_FIELDS:
+        value, source = getattr(machine, name), machine.source_of(name)
+        sources[machine_spec.FIELDS_BY_NAME[name].label] = (
+            value, source.source if source and value is not None else None)
+    from_passport = all(src == machine_spec.SOURCE_PASSPORT for _, src in sources.values())
+    quantity = record.job.quantity or 1
+    return {"time": result, "sources": sources, "estimate": not from_passport,
+            "demo": any(src == "demo" for _, src in sources.values()),
+            "quantity": quantity, "order_s": quantity * result.total_s}
+
+
 class GcodeError(ValueError):
     pass
 
