@@ -1,70 +1,217 @@
 {% extends "base.html" %}
 {% block title %}Shop{% endblock %}
 {% block content %}
-<h1>Shop</h1>
-<p class="muted small">The plan of the machines. Drag a machine to another cell (or give its row and column in its
-  panel). The status, the order running and the progress are set by the operator by hand: nothing is sent to or read
-  from the machines.</p>
-{% macro card(c) %}
-  {% set m = c.machine %}
-  <div class="shop-machine status-{{ c.status|replace(' ', '-') }}" draggable="true" data-machine="{{ m.id }}"
-       data-panel="{{ url_for('main.shop_machine', machine_id=m.id, fragment=1) }}" tabindex="0" role="button"
-       aria-label="{{ m.name }}: {{ c.status }}">
-    <strong>{{ m.name }}</strong>
-    <span class="shop-status">{{ c.status }}</span>
-    {% if c.order %}<span class="small">{{ c.order.job.name }} · {{ c.order.done }}/{{ c.order.quantity }}</span>
-      {% if c.progress and c.progress.left_s is not none %}<span class="small muted">left
-        {{ "%d:%02d"|format((c.progress.left_s // 3600)|int, ((c.progress.left_s % 3600) // 60)|int) }} h{% if not c.progress.complete %} (incomplete){% endif %}</span>{% endif %}
-    {% else %}<span class="small muted">no order running</span>{% endif %}
+<div class="shop-floor" id="shop-floor">
+<header class="sf-head">
+  <div>
+    <h1>Shop floor</h1>
+    <p class="sf-sub">{% if plan %}{{ plan.name }} · {{ "%g"|format(plan.width_mm) }} × {{ "%g"|format(plan.height_mm) }} mm ·
+      uploaded by {{ record.uploaded_by }} {{ record.uploaded_at.strftime("%Y-%m-%d") }}{% else %}No plan uploaded yet{% endif %} ·
+      <a href="{{ url_for('main.shop_plan_page') }}">plan file</a>. Statuses and progress are set by the operator by hand:
+      nothing is sent to or read from the machines.</p>
   </div>
-{% endmacro %}
-<div class="shop-scroll">
-  <div class="shop-grid" style="grid-template-columns: repeat({{ plan.cols }}, minmax(150px, 1fr));">
-    {% for r in range(1, plan.rows + 1) %}{% for col in range(1, plan.cols + 1) %}
-      <div class="shop-cell" data-row="{{ r }}" data-col="{{ col }}">
-        {% set c = plan.placed.get((r, col)) %}{% if c %}{{ card(c) }}{% endif %}
-      </div>
-    {% endfor %}{% endfor %}
+  <div class="sf-tools">
+    <input id="sf-q" type="search" placeholder="Find: name, type, control…" aria-label="Find a machine">
+    {% for s, label in [("running", "Running"), ("setup", "Setup"), ("stopped", "Stopped"), ("free", "Free")] %}
+    <button type="button" class="sf-chip" data-s="{{ s }}" aria-pressed="false"><span class="sf-dot sf-{{ s }}"></span>{{ label }}</button>
+    {% endfor %}
+    <span class="sf-count" id="sf-count"></span>
+    <button type="button" class="sf-chip" id="sf-theme" aria-label="Light or dark theme">◐ Theme</button>
   </div>
+</header>
+
+<div class="sf-wrap">
+  <div>
+    <div class="sf-planbox">
+    {% if plan %}
+      <svg class="sf-plan" id="sf-plan" viewBox="{{ view_box }}" role="img" aria-label="Top view of the shop with its machines"
+           data-width="{{ plan.width_mm }}" data-height="{{ plan.height_mm }}" data-text="{{ text_size }}">
+        <defs><pattern id="sf-hatch" width="300" height="300" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="300" class="sf-hatch-line" vector-effect="non-scaling-stroke"/></pattern></defs>
+        {{ svg }}
+        <g id="sf-machines"></g>
+      </svg>
+    {% else %}
+      <p class="sf-empty">No shop plan yet: upload its JSON file on the <a href="{{ url_for('main.shop_plan_page') }}">plan
+        page</a> (an example: <code>docs/shop_plan_example.json</code>).</p>
+    {% endif %}
+    </div>
+    <div class="sf-unplaced" id="sf-unplaced"></div>
+  </div>
+  <aside class="sf-card" id="sf-card" aria-live="polite"><p class="sf-note">Click a machine.</p></aside>
 </div>
-{% if plan.unplaced %}
-<h2>Not placed yet</h2>
-<div class="shop-unplaced">{% for c in plan.unplaced %}{{ card(c) }}{% endfor %}</div>
-{% endif %}
 
 <dialog id="shop-panel" class="shop-panel">
   <form method="dialog"><button class="small" aria-label="Close">Close</button></form>
   <div id="shop-panel-body"></div>
 </dialog>
+</div>
 
 <script>
 (function () {
-  const panel = document.getElementById("shop-panel");
-  const body = document.getElementById("shop-panel-body");
-  function open(card) {
-    fetch(card.dataset.panel).then(r => r.text()).then(html => { body.innerHTML = html; panel.showModal(); });
-  }
-  const again = new URLSearchParams(location.search).get("open");  // back from a panel's form: open it again
-  if (again) {
-    const card = document.querySelector(`.shop-machine[data-machine="${CSS.escape(again)}"]`);
-    if (card) open(card);
-  }
-  document.querySelectorAll(".shop-machine").forEach(card => {
-    card.addEventListener("click", () => open(card));
-    card.addEventListener("keydown", e => { if (e.key === "Enter") open(card); });
-    card.addEventListener("dragstart", e => e.dataTransfer.setData("text/plain", card.dataset.machine));
+  const M = {{ machines|tojson }};
+  const URLS = {
+    panel: id => `/shop/machines/${id}?fragment=1`,
+    machine: id => `/machines/${id}`,
+  };
+  const LABEL = {running: "Running", setup: "Setup", stopped: "Stopped", free: "Free"};
+  const ns = "http://www.w3.org/2000/svg";
+  const floor = document.getElementById("shop-floor");
+  const svg = document.getElementById("sf-plan");
+  const layer = document.getElementById("sf-machines");
+  const T = svg ? Number(svg.dataset.text) : 0;
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+  // theme: the system's, or the operator's choice remembered in this browser
+  try { const t = localStorage.getItem("sf-theme"); if (t) floor.dataset.theme = t; } catch (e) {}
+  document.getElementById("sf-theme").addEventListener("click", () => {
+    const dark = floor.dataset.theme ? floor.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    floor.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("sf-theme", floor.dataset.theme); } catch (e) {}
   });
-  document.querySelectorAll(".shop-cell").forEach(cell => {
-    cell.addEventListener("dragover", e => { e.preventDefault(); cell.classList.add("over"); });
-    cell.addEventListener("dragleave", () => cell.classList.remove("over"));
-    cell.addEventListener("drop", e => {
-      e.preventDefault();
-      const id = e.dataTransfer.getData("text/plain");
-      const data = new URLSearchParams({row: cell.dataset.row, col: cell.dataset.col});
-      fetch(`/shop/machines/${id}/place`, {method: "POST", body: data, headers: {"X-Requested-With": "fetch"}})
-        .then(() => location.reload());
+
+  // the shapes of the mock-up, in their own units; each is scaled to the machine's footprint (length × width)
+  function turret(cx, cy, r, n) {
+    let s = `<circle cx="${cx}" cy="${cy}" r="${r}" class="sh2"/>`;
+    for (let i = 0; i < n; i++) { const a = i * 2 * Math.PI / n;
+      s += `<rect x="${(cx + Math.cos(a) * (r + 2.5) - 2).toFixed(1)}" y="${(cy + Math.sin(a) * (r + 2.5) - 2).toFixed(1)}" width="4" height="4" class="sh-ink2"/>`; }
+    return s + `<circle cx="${cx}" cy="${cy}" r="3" class="sh-ink"/>`;
+  }
+  function pockets(cx, cy, r, n) {
+    let s = `<circle cx="${cx}" cy="${cy}" r="${r}" class="sh2"/>`;
+    for (let i = 0; i < n; i++) { const a = i * 2 * Math.PI / n;
+      s += `<circle cx="${(cx + Math.cos(a) * (r - 4)).toFixed(1)}" cy="${(cy + Math.sin(a) * (r - 4)).toFixed(1)}" r="2" class="sh-ink2"/>`; }
+    return s;
+  }
+  const SHAPE = {  // [the body's box: x0, y0, w, h], the drawing
+    cnc_lathe: [[-55, -28, 110, 54], () => `
+      <rect class="sh body" x="-55" y="-28" width="110" height="54" rx="4"/>
+      <rect class="sh2" x="-55" y="-28" width="28" height="54" rx="4"/>
+      <rect class="glass" x="-22" y="-20" width="60" height="34" rx="2"/>
+      <circle class="sh2" cx="-17" cy="-3" r="11"/><circle cx="-17" cy="-3" r="3" class="sh-ink"/>
+      ${turret(12, 0, 8, 8)}
+      <rect class="sh2" x="27" y="-9" width="9" height="12"/>
+      <rect x="41" y="10" width="13" height="14" rx="1.5" class="sh-ink"/>`],
+    manual_lathe: [[-60, -24, 120, 48], () => `
+      <rect class="sh body" x="-60" y="-14" width="120" height="30" rx="2"/>
+      <path d="M-34-8H58M-34 10H58" class="sh-line"/>
+      <rect class="sh2" x="-60" y="-24" width="28" height="48" rx="2"/>
+      <circle class="sh2" cx="-26" cy="0" r="9"/><circle cx="-26" cy="0" r="2.5" class="sh-ink"/>
+      <rect class="sh2" x="0" y="-12" width="16" height="28"/><rect class="sh2" x="42" y="-9" width="14" height="18"/>`],
+    mill: [[-42, -36, 84, 64], () => `
+      <rect class="sh body" x="-42" y="-36" width="84" height="64" rx="4"/>
+      ${pockets(-30, -20, 12, 16)}
+      <rect class="glass" x="-20" y="-6" width="50" height="26" rx="1"/>
+      <path d="M-16 0H26M-16 7H26M-16 14H26" class="sh-line"/>
+      <circle class="sh2" cx="5" cy="-20" r="8"/><circle cx="5" cy="-20" r="3" class="sh-ink"/>
+      <rect x="32" y="0" width="8" height="20" rx="1.5" class="sh-ink"/>`],
+    saw: [[-28, -20, 130, 40], () => `
+      <rect class="sh body" x="-28" y="-20" width="56" height="40" rx="3"/>
+      <ellipse cx="0" cy="0" rx="20" ry="7" class="sh-line" fill="none"/><path d="M-20 0H20" class="sh-blade"/>
+      <rect class="sh2" x="28" y="-6" width="74" height="12"/>
+      <path d="M36-6v12M46-6v12M56-6v12M66-6v12M76-6v12M86-6v12M96-6v12" class="sh-line"/>`],
+    cmm: [[-36, -26, 72, 52], () => `
+      <rect class="sh body stone" x="-32" y="-26" width="64" height="52"/>
+      <rect class="sh2" x="-36" y="-6" width="72" height="10"/><circle cx="6" cy="-1" r="4" class="sh-ink"/>`],
+  };
+
+  // the machines on the plan
+  function draw() {
+    if (!layer) return;
+    layer.innerHTML = "";
+    const marker = T * 3;  // a machine with no footprint or type: a marker of a fixed size on screen, not to scale
+    M.filter(m => m.x !== null).forEach(m => {
+      const g = document.createElementNS(ns, "g");
+      g.setAttribute("class", `m ${m.status}`); g.setAttribute("tabindex", "0"); g.setAttribute("role", "button");
+      g.setAttribute("aria-label", `${m.name}, ${m.status_label}`); g.dataset.id = m.id;
+      g.setAttribute("transform", `translate(${m.x} ${m.y}) rotate(${m.rotation})`);
+      const shape = m.kind && SHAPE[m.kind];
+      let L = m.length, W = m.width, inner;
+      if (shape && L && W) {
+        const [x0, y0, w, h] = shape[0];
+        inner = `<g transform="scale(${L / w} ${W / h}) translate(${-(x0 + w / 2)} ${-(y0 + h / 2)})">${shape[1]()}</g>`;
+      } else {
+        L = W = marker;
+        inner = `<rect class="unknown body" x="${-L / 2}" y="${-W / 2}" width="${L}" height="${W}"/>
+                 <g transform="rotate(${-m.rotation})"><text class="m-q" y="${T / 2}" font-size="${T * 1.4}" text-anchor="middle">?</text></g>`;
+      }
+      const pad = T * .6;
+      g.innerHTML = `<rect class="halo" x="${-L / 2 - pad}" y="${-W / 2 - pad}" width="${L + 2 * pad}" height="${W + 2 * pad}" rx="${pad}"/>`
+        + inner + (m.alarm ? `<text class="m-alarm" x="${L / 2}" y="${-W / 2}" font-size="${T * 1.5}">!</text>` : "")
+        + `<g transform="rotate(${-m.rotation})"><text class="m-name" y="${Math.max(L, W) / 2 + pad + T}" font-size="${T}" text-anchor="middle">${esc(m.name.toUpperCase())}</text></g>`;
+      g.querySelectorAll("*").forEach(e => e.setAttribute("vector-effect", "non-scaling-stroke"));
+      g.addEventListener("click", () => select(m.id));
+      g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(m.id); } });
+      layer.appendChild(g);
     });
-  });
+    const un = document.getElementById("sf-unplaced");
+    const rest = M.filter(m => m.x === null);
+    un.innerHTML = rest.length ? `<span class="sf-note">Not on the plan yet:</span> ` + rest.map(m =>
+      `<button type="button" class="sf-chip sf-machine-chip" data-id="${m.id}"><span class="sf-dot sf-${m.status}"></span>${esc(m.name)}</button>`).join(" ") : "";
+    un.querySelectorAll("button").forEach(b => b.addEventListener("click", () => select(Number(b.dataset.id))));
+  }
+
+  // search and the status filter: the others dim
+  let filterS = null, sel = null;
+  function apply() {
+    const q = document.getElementById("sf-q").value.trim().toLowerCase();
+    let n = 0;
+    M.forEach(m => {
+      const hay = [m.name, m.kind_label, m.control, LABEL[m.status], m.status_label, m.order && m.order.job].join(" ").toLowerCase();
+      const ok = (!q || hay.includes(q)) && (!filterS || m.status === filterS);
+      if (ok) n++;
+      document.querySelectorAll(`[data-id="${m.id}"]`).forEach(e => e.classList.toggle("dim", !ok));
+    });
+    document.getElementById("sf-count").textContent = `${n} of ${M.length} shown`;
+  }
+  document.getElementById("sf-q").addEventListener("input", apply);
+  document.querySelectorAll(".sf-chip[data-s]").forEach(c => c.addEventListener("click", () => {
+    filterS = filterS === c.dataset.s ? null : c.dataset.s;
+    document.querySelectorAll(".sf-chip[data-s]").forEach(b => b.setAttribute("aria-pressed", b.dataset.s === filterS));
+    apply();
+  }));
+
+  // the card
+  function select(id) {
+    sel = id;
+    const m = M.find(x => x.id === id);
+    document.querySelectorAll("#sf-machines .m").forEach(e => e.classList.toggle("sel", Number(e.dataset.id) === id));
+    const o = m.order, warn = [];
+    if (!m.kind) warn.push("type not set (Machine page): drawn as a grey marker");
+    if (!m.length || !m.width) warn.push("footprint not set (passport or Machine page): not drawn to scale");
+    const pct = o ? Math.round(o.done / o.quantity * 100) : 0;
+    document.getElementById("sf-card").innerHTML = `
+      <div class="sf-kind">${esc(m.kind_label || "type not set")}</div>
+      <h2>${esc(m.name)}</h2>
+      <span class="sf-pill sf-${m.status}">${esc(m.status_label)}${m.alarm ? " !" : ""}</span>
+      ${warn.map(w => `<p class="sf-warn">${esc(w)}</p>`).join("")}
+      <dl>
+        <dt>Control</dt><dd>${esc(m.control || "not set")}</dd>
+        <dt>Capacity</dt><dd>${esc(m.capacity)}</dd>
+        <dt>Footprint</dt><dd>${m.length && m.width ? `${m.length} × ${m.width} mm` : "not set"}</dd>
+        ${m.status_by ? `<dt>Status by</dt><dd>${esc(m.status_by)}${m.status_note ? ": " + esc(m.status_note) : ""}</dd>` : ""}
+        ${m.placed_by ? `<dt>Placed</dt><dd>${esc(m.placed_by)}, ${esc(m.placed_at)}</dd>` : ""}
+        ${o ? `<dt>Order</dt><dd>${o.id} · ${esc(o.job)}</dd><dt>Done</dt><dd>${o.done} of ${o.quantity}</dd>
+          ${o.part ? `<dt>Per part</dt><dd>${esc(o.part)}</dd><dt>Left</dt><dd>${esc(o.left)}${o.incomplete ? " (incomplete: no rapids / tool changes without the passport's values)" : ""}</dd>` : ""}
+          ${o.no_program ? `<dt>Time</dt><dd>no program for this machine</dd>` : ""}`
+          : `<dt>Order</dt><dd>none running</dd>`}
+      </dl>
+      ${o ? `<div class="sf-bar" role="img" aria-label="${pct}% done"><i class="sf-${m.status}" style="width:${pct}%"></i></div>` : ""}
+      <div class="sf-btns">
+        <a class="sf-button" href="${URLS.machine(m.id)}">Machine page</a>
+        <button type="button" class="sf-button ghost" id="sf-panel">Status and order</button>
+      </div>`;
+    document.getElementById("sf-panel").addEventListener("click", () => openPanel(m.id));
+  }
+  const panel = document.getElementById("shop-panel"), body = document.getElementById("shop-panel-body");
+  function openPanel(id) {
+    fetch(URLS.panel(id)).then(r => r.text()).then(html => { body.innerHTML = html; panel.showModal(); });
+  }
+
+  draw(); apply();
+  const again = new URLSearchParams(location.search).get("open");  // back from the panel's form: open it again
+  if (again && M.some(m => m.id === Number(again))) { select(Number(again)); openPanel(Number(again)); }
+  else if (M.length) select((M.find(m => m.order) || M[0]).id);
 })();
 </script>
 {% endblock %}

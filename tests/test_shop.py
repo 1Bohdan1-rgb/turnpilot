@@ -1,40 +1,63 @@
-"""The shop page (stage 7.1): the machines on a plan, each with the operator's status and the order running; the
-panel shows the order's operations and the time left. Everything by hand: nothing goes to or from the machines."""
+"""The shop page (stages 7.1, 7.2): the plan from its file, the machines on it with the operator's status and the
+order running; everything by hand, nothing goes to or from the machines."""
+import io
+import json
+from pathlib import Path
+
 from gcode_jobs import make_job, ready_machine
 
 from turnpilot import services
-from turnpilot.models import Feature, Machine, db
+from turnpilot.models import Feature, MachinePlacement, db
 
-NEW = {"name": "Lathe 2", "max_rpm": "3000", "power_kw": "7.5", "max_diameter": "250", "turret_positions": "8"}
+EXAMPLE = Path(__file__).resolve().parent.parent / "docs" / "shop_plan_example.json"
 
 
-def test_place_status_and_the_running_order_on_the_plan(app, client):
+def upload_plan(client):
+    client.post("/shop/plan", data={"plan": (io.BytesIO(EXAMPLE.read_bytes()), "shop.json"), "uploaded_by": "Bohdan"},
+                content_type="multipart/form-data")
+
+
+def machines_on(page):
+    start = page.index("const M = ") + len("const M = ")
+    return json.loads(page[start:page.index(";\n", start)])
+
+
+def test_without_a_plan_the_page_says_so_and_lists_the_machines(app, client):
     machine = ready_machine()
+    page = client.get("/shop").get_data(as_text=True)
+    assert "No shop plan yet" in page and "<svg class=\"sf-plan\"" not in page
+    (m,) = machines_on(page)
+    assert (m["name"], m["x"], m["status"]) == (machine.name, None, "free")
+
+
+def test_the_plan_and_a_machine_with_its_status_and_order(app, client):
+    machine = ready_machine()
+    upload_plan(client)
     job = make_job([Feature(type="face"), Feature(type="od_turn", diameter=20, length=24), Feature(type="parting")],
                    blank=22, length=29, stickout=35, machine=machine)
     services.generate_gcode(job, machine)
-    client.post("/machines", data=NEW)
-    lathe2 = db.session.execute(db.select(Machine).filter_by(name="Lathe 2")).scalar_one()
-    page = client.get("/shop").get_data(as_text=True)
-    assert "Not placed yet" in page and "no order running" in page
-    client.post(f"/shop/machines/{machine.id}/place", data={"row": "1", "col": "1"})
-    client.post(f"/shop/machines/{lathe2.id}/place", data={"row": "1", "col": "2"})
-    client.post(f"/shop/machines/{lathe2.id}/place", data={"row": "1", "col": "1"})  # a taken cell: the two swap
-    assert (lathe2.shop_row, lathe2.shop_col, machine.shop_col) == (1, 1, 2)
-    response = client.post(f"/shop/machines/{machine.id}/place", data={"row": "25", "col": "1"},
-                           headers={"X-Requested-With": "fetch"})
-    assert response.status_code == 400 and "row 1 to 20" in response.get_json()["error"]
-    assert client.post(f"/shop/machines/{machine.id}/status", data={"status": "running"},
-                       follow_redirects=True).get_data(as_text=True).count("name is required") == 1
-    client.post(f"/shop/machines/{machine.id}/status", data={"status": "running", "decided_by": "Bohdan"})
-    client.post(f"/shop/machines/{machine.id}/status", data={"status": "alarm", "decided_by": "Bohdan",
-                                                             "note": "door"})
-    assert [s.status for s in machine.statuses] == ["running", "alarm"] and machine.status.note == "door"
-    order = services.create_order(job, machine, 40, "Bohdan")
+    order = services.create_order(job, machine, 50, "Bohdan")
     services.make_order_current(order, "Bohdan")
-    services.set_order_done(order, 10, "Bohdan")
+    services.set_order_done(order, 1, "Bohdan")
+    services.set_machine_status(machine, "running", "Bohdan")
+    db.session.add(MachinePlacement(machine_id=machine.id, x_mm=4000, y_mm=6800, rotation=0, placed_by="Bohdan"))
+    db.session.commit()
     page = client.get("/shop").get_data(as_text=True)
-    assert "status-alarm" in page and f"{job.name} · 10/40" in page and "(incomplete)" in page
+    assert 'viewBox="-1500 -1500 75000 42200"' in page and "MAIN WALKWAY 2.4 m" in page and "p-column" in page
+    (m,) = machines_on(page)
+    assert (m["x"], m["y"], m["status"], m["status_by"], m["kind"], m["length"]) == (4000, 6800, "running", "Bohdan",
+                                                                                      None, None)
+    o = m["order"]
+    assert (o["id"], o["done"], o["quantity"], o["incomplete"]) == (order.id, 1, 50, True)
+    assert o["left"].count(":") == 2
+    services.set_machine_status(machine, "alarm", "Bohdan", "door")
+    (m,) = machines_on(client.get("/shop").get_data(as_text=True))
+    assert (m["status"], m["alarm"], m["status_note"]) == ("stopped", True, "door")
+
+
+def test_the_status_panel_of_7_1_still_opens_from_the_card(app, client):
+    machine = ready_machine()
     panel = client.get(f"/shop/machines/{machine.id}?fragment=1").get_data(as_text=True)
-    assert "<html" not in panel and f"Order {order.id}" in panel and "time incomplete" in panel
-    assert "done 10 of 40" in panel and "Set the status" in panel
+    assert "<html" not in panel and "Set the status" in panel and "Place on the plan" not in panel
+    client.post(f"/shop/machines/{machine.id}/status", data={"status": "running", "decided_by": "Bohdan"})
+    assert machine.status.status == "running"

@@ -1807,20 +1807,6 @@ def order_progress(order):
 
 # --- the shop page -----------------------------------------------------------------------------------------------
 
-SHOP_MAX_ROWS, SHOP_MAX_COLS = 20, 12
-
-
-def place_machine(machine, row, col):
-    """The machine's cell on the shop plan (1-based); a cell holding another machine swaps the two."""
-    if row is None or col is None or not (1 <= row <= SHOP_MAX_ROWS and 1 <= col <= SHOP_MAX_COLS):
-        raise OrderError(f"A place on the plan: row 1 to {SHOP_MAX_ROWS}, column 1 to {SHOP_MAX_COLS}")
-    other = db.session.execute(db.select(Machine).filter_by(shop_row=row, shop_col=col)).scalar()
-    if other is not None and other is not machine:
-        other.shop_row, other.shop_col = machine.shop_row, machine.shop_col
-    machine.shop_row, machine.shop_col = row, col
-    db.session.commit()
-
-
 def set_machine_status(machine, status, name, note=None):
     from .models import MACHINE_STATUSES, MachineStatus
 
@@ -1846,20 +1832,54 @@ def machine_orders(machine):
                               .order_by(Order.id)).scalars().all()
 
 
-def shop_plan():
-    """The machines on the plan's grid (row, col) and the ones not placed yet, each with its status, current order
-    and that order's progress."""
-    cards = []
+STATUS_CLASS = {"free": "free", "setting up": "setup", "running": "running", "stopped": "stopped", "alarm": "stopped"}
+
+
+def _clock(seconds):
+    seconds = int(round(seconds))
+    return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
+
+
+def shop_machines():
+    """Each machine as the shop page draws it: its place, type, footprint, status (the operator's, 7.1), the order
+    running and its progress; nothing that is not set is filled in."""
+    from .models import MACHINE_KINDS
+
+    out = []
     for m in machines():
+        status = m.status.status if m.status else "free"
         order = current_order(m)
-        cards.append({"machine": m, "status": m.status.status if m.status else "free", "order": order,
-                      "progress": order_progress(order) if order else None})
-    placed = [c for c in cards if c["machine"].shop_row and c["machine"].shop_col]
-    rows = max([c["machine"].shop_row for c in placed] + [2]) + 1
-    cols = max([c["machine"].shop_col for c in placed] + [4]) + 1
-    return {"cards": cards, "placed": {(c["machine"].shop_row, c["machine"].shop_col): c for c in placed},
-            "unplaced": [c for c in cards if c not in placed], "rows": min(rows, SHOP_MAX_ROWS),
-            "cols": min(cols, SHOP_MAX_COLS)}
+        progress = order_progress(order) if order else None
+        place = m.placement
+        capacity = [f"Ø max {m.max_diameter:g}"]
+        if m.max_bar_diameter:
+            capacity.append(f"bar Ø{m.max_bar_diameter:g}")
+        if m.max_turning_length:
+            capacity.append(f"turning length {m.max_turning_length:g}")
+        item = {
+            "id": m.id, "name": m.name, "kind": m.machine_kind,
+            "kind_label": MACHINE_KINDS.get(m.machine_kind) if m.machine_kind else None,
+            "control": m.control, "capacity": " · ".join(capacity),
+            "status": STATUS_CLASS.get(status, "free"), "status_label": status, "alarm": status == "alarm",
+            "status_by": m.status.decided_by if m.status else None,
+            "status_note": m.status.note if m.status else None,
+            "x": place.x_mm if place else None, "y": place.y_mm if place else None,
+            "rotation": place.rotation if place else 0,
+            "placed_by": place.placed_by if place else None,
+            "placed_at": place.placed_at.strftime("%Y-%m-%d %H:%M") if place else None,
+            "length": m.footprint_length_mm, "width": m.footprint_width_mm,
+            "order": None,
+        }
+        if order:
+            item["order"] = {
+                "id": order.id, "job": order.job.name, "done": order.done, "quantity": order.quantity,
+                "part": f"{progress['part_s']:.1f} s" if progress["part_s"] is not None else None,
+                "left": _clock(progress["left_s"]) if progress["left_s"] is not None else None,
+                "incomplete": bool(progress["program"]) and not progress["complete"],
+                "no_program": progress["program"] is None,
+            }
+        out.append(item)
+    return out
 
 
 # --- the shop's plan (7.2) ---------------------------------------------------------------------------------------

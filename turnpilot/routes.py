@@ -1579,7 +1579,14 @@ def _local(url):
 def shop():
     from .models import MACHINE_STATUSES
 
-    return render_template("shop.html", plan=services.shop_plan(), statuses=MACHINE_STATUSES)
+    from . import shop_svg
+
+    record, plan = services.current_shop_plan()
+    return render_template("shop.html", record=record, plan=plan, statuses=MACHINE_STATUSES,
+                           svg=shop_svg.plan_svg(plan) if plan else None,
+                           view_box=shop_svg.view_box(plan) if plan else None,
+                           text_size=shop_svg.text_size(plan) if plan else None,
+                           machines=services.shop_machines())
 
 
 @bp.route("/shop/machines/<int:machine_id>")
@@ -1598,9 +1605,7 @@ def shop_machine(machine_id):
 def shop_machine_action(machine_id, action):
     machine = db.get_or_404(Machine, machine_id)
     try:
-        if action == "place":
-            services.place_machine(machine, _number(request.form, "row", int), _number(request.form, "col", int))
-        elif action == "status":
+        if action == "status":
             services.set_machine_status(machine, request.form.get("status"), request.form.get("decided_by"),
                                         request.form.get("note"))
         else:

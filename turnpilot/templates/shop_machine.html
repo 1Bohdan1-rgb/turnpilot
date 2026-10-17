@@ -26,9 +26,4 @@
   {{ o.done }} of {{ o.quantity }}
   <button class="small" formaction="{{ url_for('main.order_action', order_id=o.id, action='current') }}">Running now</button></li>{% endfor %}</ul>{% endif %}
 </form>
-<form method="post" action="{{ url_for('main.shop_machine_action', machine_id=machine.id, action='place') }}" class="inline-form">
-  <label class="small">Row <input name="row" type="number" min="1" max="20" step="1" value="{{ machine.shop_row or '' }}" required></label>
-  <label class="small">Column <input name="col" type="number" min="1" max="12" step="1" value="{{ machine.shop_col or '' }}" required></label>
-  <button class="small">Place on the plan</button>
-</form>
 {% endblock %}
