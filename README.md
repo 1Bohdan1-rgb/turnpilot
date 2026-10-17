@@ -432,6 +432,16 @@ machine's turret and the other jobs keep theirs. Undoing a change keeps it in th
   operator's checklist list the changes for the setter; a program made before a change is out of date. Calculations
   made before keep their operations.
 
+## Cycle time
+
+The program page shows the time of a program by operation (block N), the part's time and the order's (quantity × the
+part's), read from the program's text as the control would run it: feeds by f·n (with G96, n from the diameter along
+the move, up to G50), G92 passes at n·P, rapids per axis at the machine's rapid traverse X / Z, G04 dwells and one tool
+change per T. Not counted: acceleration, M01, loading the part or feeding the bar, and the moves to and from the
+reference point (taken as part of the tool change). The rapid traverse X / Z and the tool change time come from the
+passport or the operator (Machine page), with no default: without them their part is left out of the total and shown
+as not set; unless all three are from the passport the time is marked "without the passport — an estimate".
+
 ## Skipping an operation
 
 The operator may leave any operation out (e.g. no centring before the self-centring 860-GM drill, 140° point): "Skip"

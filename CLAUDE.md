@@ -913,6 +913,21 @@ Plan 1–7 agreed with the user. Commits cb18301 … and the history commit. DB 
   116.5 → no warning). Model readings unchanged. The old НД 012 extraction 27 still sums to 92 (another cause, not
   looked at). Frozen files untouched.
 
+## Cycle time (built 2026-10-17)
+Plan 1–4 agreed with the user. Commits fb401ae (fields), 5125f10 (estimate), 8cae788 (page) and the docs commit.
+Migration b8d4f0a2c6e1 (DB backup `instance/turnpilot.db.bak-2026-10-17-before-cycle-time`, taken before the file).
+- `Machine.rapid_x_m_min / rapid_z_m_min / tool_change_s`: in `MACHINE_FIELDS`, so in the passport reading too (prompt
+  version passport:4a869bb9; no call made). The user's DB: empty (no passport).
+- `gcode/cycle_time.py` reads the program's text (fanuc.parse): G01/G02/G03 ∫ dl/(f·n) in steps ≤ 0.1 mm (G96 n from
+  the diameter, ≤ G50), G92 per pass |ΔZ|/(n·P) plus its rapids, G00 max(|ΔX/2|/vX, |ΔZ|/vZ), G04 P, T × the tool
+  change time. Not counted: acceleration, M01, loading, the moves to / from the reference point. Works on programs
+  made before (computed when the page opens, from the current machine values; no staleness).
+- Program page: a table by block N, the part, the order (job.quantity); "without the passport — an estimate"; DEMO
+  banner when a value's source is "demo".
+- Measured (scratchpad `cycle_check.py`): user's DB, cutting + threading only (rapids / changes not set): jobs/8
+  program 7 12.1 s, jobs/7 program 5 94.7 s. A temporary copy with DEMO values (rapid X 20, Z 24 m/min, change 1.5 s;
+  not this machine's): jobs/8 22.5 s, jobs/7 121.4 s. Not compared with a real run.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -922,7 +937,7 @@ Plan 1–7 agreed with the user. Commits cb18301 … and the history commit. DB 
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1091 tests pass (2026-10-16). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1097 tests pass (2026-10-17). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
