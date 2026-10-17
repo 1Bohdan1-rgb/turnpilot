@@ -28,8 +28,9 @@ def test_an_order_takes_the_program_for_its_machine_and_counts_the_time_left(app
     assert progress["left_s"] == 50 * progress["part_s"]
     client.post(f"/orders/{order.id}/done", data={"done": "20", "decided_by": "Bohdan"})
     first = progress["blocks"][0]
-    client.post(f"/orders/{order.id}/mark", data={"block": first["number"], "title": first["title"], "done": "1",
-                                                   "decided_by": "Ivan"})
+    assert "name is required" in client.post(f"/orders/{order.id}/mark", data={"block": first["number"]},
+                                             follow_redirects=True).get_data(as_text=True)
+    client.post(f"/orders/{order.id}/mark", data={"block": first["number"], "decided_by": "Ivan"})
     progress = services.order_progress(order)
     assert order.done == 20 and progress["left_s"] == 30 * progress["part_s"]
     assert progress["blocks"][0]["done"] and order.events[-1].kind == "done"
@@ -55,3 +56,37 @@ def test_one_job_on_two_machines_and_one_running_order_per_machine(app, client):
     assert (a.is_current, b.is_current, c.is_current) == (False, True, True)
     services.close_order(c, "Bohdan")
     assert (c.status, c.is_current) == ("closed", False)
+
+
+def test_a_mark_shows_who_and_when_and_is_cancelled_by_a_new_row(app, client):
+    machine = ready_machine()
+    job = stud(machine)
+    services.generate_gcode(job, machine)
+    order = services.create_order(job, machine, 5, "Bohdan")
+    n = services.order_progress(order)["blocks"][0]["number"]
+    client.post(f"/orders/{order.id}/mark", data={"block": n, "decided_by": "Ivan"})
+    page = client.get(f"/orders/{order.id}").get_data(as_text=True)
+    assert "✓" in page and "Ivan," in page and "Cancel the mark" in page
+    assert page.count('name="decided_by"') == 1  # one operator field for the whole panel
+    assert "counts the finished parts only" in page
+    client.post(f"/orders/{order.id}/unmark", data={"block": n, "decided_by": "Bohdan"})
+    assert [(m.done, m.decided_by) for m in order.marks] == [(True, "Ivan"), (False, "Bohdan")]
+    assert n not in order.done_blocks and "mark cancelled" in client.get(f"/orders/{order.id}").get_data(as_text=True)
+    assert "is not marked already" in client.post(f"/orders/{order.id}/unmark", data={"block": n, "decided_by": "B"},
+                                                  follow_redirects=True).get_data(as_text=True)
+    response = client.post(f"/orders/{order.id}/done", data={"done": "1", "decided_by": "B", "back": "//evil.test/x"})
+    assert response.location.endswith(f"/orders/{order.id}")  # only a path on this site
+
+
+def test_the_shop_panel_takes_the_operator_from_the_machine_status(app, client):
+    machine = ready_machine()
+    job = stud(machine)
+    services.generate_gcode(job, machine)
+    order = services.create_order(job, machine, 5, "Bohdan")
+    services.make_order_current(order, "Bohdan")
+    services.set_machine_status(machine, "running", "Ivan")
+    panel = client.get(f"/shop/machines/{machine.id}?fragment=1").get_data(as_text=True)
+    assert panel.count('name="decided_by"') == 1 and 'value="Ivan"' in panel
+    response = client.post(f"/orders/{order.id}/mark", data={"block": services.order_progress(order)["blocks"][0][
+        "number"], "decided_by": "Ivan", "back": f"/shop?open={machine.id}"})
+    assert response.location.endswith(f"/shop?open={machine.id}")

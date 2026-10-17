@@ -615,12 +615,14 @@ class Order(db.Model):
     marks = db.relationship("OrderOperationMark", back_populates="order", order_by="OrderOperationMark.id")
 
     @property
+    def last_marks(self):
+        """{block N: its last mark} (a block marked done, then cancelled, has its cancelling mark last)."""
+        return {m.block: m for m in self.marks}
+
+    @property
     def done_blocks(self):
         """The program blocks (N) the operator marked done (the last mark of a block counts)."""
-        state = {}
-        for m in self.marks:
-            state[m.block] = m.done
-        return {block for block, done in state.items() if done}
+        return {block for block, m in self.last_marks.items() if m.done}
 
 
 class OrderEvent(db.Model):

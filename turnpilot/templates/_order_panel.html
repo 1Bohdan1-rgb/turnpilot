@@ -1,6 +1,12 @@
-{# One order: its operations (the program's blocks) with the operator's marks, parts done, time left. #}
+{# One order: its operations (the program's blocks) with the operator's marks, parts done, time left. One form with
+one operator field for the whole panel (in_form: the page around it holds the form and the field). #}
 {% macro mmss(s) %}{{ "%d:%02d:%02d"|format((s // 3600)|int, ((s % 3600) // 60)|int, (s % 60)|int) }}{% endmacro %}
 {% set p = progress %}
+{% if not in_form %}<form method="post" class="order-form" action="{{ url_for('main.order_action', order_id=order.id, action='done') }}">
+  <input type="hidden" name="back" value="{{ back }}">
+  <label class="small operator-field">Operator <input name="decided_by" maxlength="100" required
+    value="{{ order.machine.status.decided_by if order.machine.status else '' }}" aria-label="Operator's name"></label>
+{% endif %}
 <div class="order-panel">
   <h2>Order {{ order.id }}: {{ order.quantity }} × <a href="{{ url_for('main.job_detail', job_id=order.job_id) }}">{{ order.job.name }}</a>
     on {{ order.machine.name }}{% if order.status == "closed" %} (closed){% elif order.is_current %} (running now){% endif %}</h2>
@@ -20,16 +26,17 @@
   {% else %}
     {% if p.stale %}<p class="warning small">Program {{ p.program.id }} is out of date: {{ p.stale|join("; ") }}.</p>{% endif %}
     <table>
-      <thead><tr><th>N</th><th>Operation</th><th>Time</th><th>Done</th></tr></thead>
+      <thead><tr><th>N</th><th>Operation</th><th>Time</th><th>This part</th></tr></thead>
       <tbody>
       {% for b in p.blocks %}
         <tr{% if b.done %} class="changed"{% endif %}><td>{{ b.number }}</td><td class="small">{{ b.title }}</td>
           <td>{{ "%.1f"|format(b.seconds) }} s</td>
-          <td><form method="post" action="{{ url_for('main.order_action', order_id=order.id, action='mark') }}" class="inline-form">
-            <input type="hidden" name="block" value="{{ b.number }}"><input type="hidden" name="title" value="{{ b.title }}">
-            <input type="hidden" name="done" value="{{ '0' if b.done else '1' }}"><input type="hidden" name="back" value="{{ back }}">
-            <input name="decided_by" maxlength="100" placeholder="name" aria-label="Operator's name" required size="8">
-            <button class="small">{{ "Undo" if b.done else "Done" }}</button></form></td></tr>
+          <td>{% if b.done %}<span class="done-mark">✓</span> <span class="small">{{ b.mark.decided_by }},
+              {{ b.mark.decided_at.strftime("%Y-%m-%d %H:%M") }}</span>
+            {% if order.status == "open" %}<button class="small" name="block" value="{{ b.number }}"
+              formaction="{{ url_for('main.order_action', order_id=order.id, action='unmark') }}">Cancel the mark</button>{% endif %}
+          {% elif order.status == "open" %}<button class="small" name="block" value="{{ b.number }}"
+              formaction="{{ url_for('main.order_action', order_id=order.id, action='mark') }}">Done</button>{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -39,22 +46,21 @@
       {% elif not p.complete %}<span class="warning small">time incomplete: {{ p.missing|join(", ") }} not set (no
         passport): rapids / tool changes are not in it</span>
       {% elif p.estimate %}<span class="muted small">without the passport — an estimate</span>{% endif %}</p>
+    <p class="muted small">"Left" counts the finished parts only: (all − done) × the part's time. The marks above are
+      the progress of the part on the machine now; they do not change "left" until "Parts done" is saved.</p>
   {% endif %}
   {% if order.status == "open" %}
-  <form method="post" action="{{ url_for('main.order_action', order_id=order.id, action='done') }}" class="inline-form">
+  <p class="inline-form">
     <label class="small">Parts done <input name="done" type="number" min="0" max="{{ order.quantity }}" step="1" value="{{ order.done }}"></label>
-    <input name="decided_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
-    <input type="hidden" name="back" value="{{ back }}"><button class="small">Save</button></form>
-  <form method="post" class="inline-form">
-    <input name="decided_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
-    <input type="hidden" name="back" value="{{ back }}">
+    <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='done') }}">Save parts done</button>
     {% if not order.is_current %}<button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='current') }}">Running now on {{ order.machine.name }}</button>{% endif %}
     <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='program') }}">Take the latest program</button>
     <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='close') }}">Close the order</button>
-  </form>
+  </p>
   {% endif %}
-  {% if order.events %}<details class="small"><summary>History ({{ order.events|length + order.marks|length }})</summary><ul class="muted">
+  {% if order.events or order.marks %}<details class="small"><summary>History ({{ order.events|length + order.marks|length }})</summary><ul class="muted">
     {% for e in order.events %}<li>{{ e.decided_at.strftime("%Y-%m-%d %H:%M") }} {{ e.decided_by }}: {{ e.kind }} {{ e.value or "" }}</li>{% endfor %}
-    {% for m in order.marks %}<li>{{ m.decided_at.strftime("%Y-%m-%d %H:%M") }} {{ m.decided_by }}: N{{ m.block }} {{ "done" if m.done else "not done" }}</li>{% endfor %}
+    {% for m in order.marks %}<li>{{ m.decided_at.strftime("%Y-%m-%d %H:%M") }} {{ m.decided_by }}: N{{ m.block }} {{ "done" if m.done else "mark cancelled" }}</li>{% endfor %}
   </ul></details>{% endif %}
 </div>
+{% if not in_form %}</form>{% endif %}

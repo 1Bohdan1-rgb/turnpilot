@@ -1542,9 +1542,9 @@ def order_action(order_id, action):
     try:
         if action == "done":
             services.set_order_done(order, _number(request.form, "done", int), name)
-        elif action == "mark":
-            services.mark_order_block(order, _number(request.form, "block", int, required=True),
-                                      request.form.get("title"), request.form.get("done") == "1", name)
+        elif action in ("mark", "unmark"):
+            services.mark_order_block(order, _number(request.form, "block", int, required=True), action == "mark",
+                                      name)
         elif action == "current":
             services.make_order_current(order, name)
         elif action == "close":
@@ -1556,8 +1556,12 @@ def order_action(order_id, action):
     except (FormError, services.OrderError) as e:
         db.session.rollback()
         flash(str(e), "error")
-    back = request.form.get("back")
-    return redirect(back if back and back.startswith("/") else url_for("main.order_detail", order_id=order.id))
+    return redirect(_local(request.form.get("back")) or url_for("main.order_detail", order_id=order.id))
+
+
+def _local(url):
+    """A path on this site (never another host), else None."""
+    return url if url and url.startswith("/") and not url.startswith("//") and "\\" not in url else None
 
 
 # --- the shop page (stage 7.1: by hand, nothing connected to the machines) --------------------------------------
@@ -1600,4 +1604,4 @@ def shop_machine_action(machine_id, action):
         flash(str(e), "error")
     if request.headers.get("X-Requested-With") == "fetch":
         return {"ok": True}
-    return redirect(url_for("main.shop"))
+    return redirect(_local(request.form.get("back")) or url_for("main.shop"))

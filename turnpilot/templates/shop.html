@@ -44,6 +44,11 @@
   function open(card) {
     fetch(card.dataset.panel).then(r => r.text()).then(html => { body.innerHTML = html; panel.showModal(); });
   }
+  const again = new URLSearchParams(location.search).get("open");  // back from a panel's form: open it again
+  if (again) {
+    const card = document.querySelector(`.shop-machine[data-machine="${CSS.escape(again)}"]`);
+    if (card) open(card);
+  }
   document.querySelectorAll(".shop-machine").forEach(card => {
     card.addEventListener("click", () => open(card));
     card.addEventListener("keydown", e => { if (e.key === "Enter") open(card); });

@@ -1735,10 +1735,19 @@ def set_order_done(order, done, name):
     db.session.commit()
 
 
-def mark_order_block(order, block, title, done, name):
+def mark_order_block(order, block, done, name):
+    """The operator marks a block of the order's program done (or cancels the mark): a new history row."""
     from .models import OrderOperationMark
 
-    order.marks.append(OrderOperationMark(block=block, title=(title or "")[:200], done=done, decided_by=_name(name)))
+    name = _name(name)
+    if order.status != "open":
+        raise OrderError("A closed order is not marked")
+    titles = {b["number"]: b["title"] for b in order_progress(order)["blocks"]}
+    if block not in titles:
+        raise OrderError(f"N{block} is not an operation of program {order.program_id}")
+    if (block in order.done_blocks) == done:
+        raise OrderError(f"N{block} is {'marked done' if done else 'not marked'} already")
+    order.marks.append(OrderOperationMark(block=block, title=titles[block][:200], done=done, decided_by=name))
     db.session.commit()
 
 
@@ -1785,8 +1794,9 @@ def order_progress(order):
                 "estimate": True, "demo": False, "missing": []}
     cycle = cycle_time(order.program, order.machine)
     time = cycle["time"]
-    done = order.done_blocks
-    blocks = [{"number": op.number, "title": op.title, "seconds": op.total_s, "done": op.number in done}
+    marks = order.last_marks
+    blocks = [{"number": op.number, "title": op.title, "seconds": op.total_s,
+               "done": op.number in marks and marks[op.number].done, "mark": marks.get(op.number)}
               for op in time.operations if op.number is not None]
     missing = [label for label, (value, _) in cycle["sources"].items() if value is None]
     return {"program": order.program, "blocks": blocks, "part_s": time.total_s,
