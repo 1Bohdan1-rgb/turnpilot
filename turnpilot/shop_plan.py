@@ -102,3 +102,63 @@ def parse(text: str) -> Plan:
             path = ".".join(str(p) for p in err["loc"])
             problems.append(f"{path}: {err['msg']}" if path else err["msg"])
         raise PlanError("; ".join(problems)) from None
+
+
+# --- a machine's footprint on the plan and what it runs into ------------------------------------------------------
+
+SNAP_MM = 100  # a machine is placed on a 100 mm step
+
+
+def footprint_rect(x, y, rotation, length, width):
+    """(x0, y0, x1, y1) of a footprint centred at (x, y): length along X at 0° / 180°, along Y at 90° / 270°."""
+    dx, dy = (length, width) if rotation in (0, 180) else (width, length)
+    return x - dx / 2, y - dy / 2, x + dx / 2, y + dy / 2
+
+
+def _overlap(a, b) -> bool:
+    """Two rectangles share an area (touching edges do not count)."""
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _segment_hits(rect, p, q) -> bool:
+    """The segment p-q crosses the rectangle's inside (Liang-Barsky)."""
+    x0, y0, x1, y1 = rect
+    (px, py), (qx, qy) = p, q
+    dx, dy = qx - px, qy - py
+    t0, t1 = 0.0, 1.0
+    for edge_p, edge_q in ((-dx, px - x0), (dx, x1 - px), (-dy, py - y0), (dy, y1 - py)):
+        if edge_p == 0:
+            if edge_q <= 0:
+                return False
+            continue
+        t = edge_q / edge_p
+        if edge_p < 0:
+            t0 = max(t0, t)
+        else:
+            t1 = min(t1, t)
+        if t0 >= t1:
+            return False
+    return True
+
+
+def conflicts(plan: Plan, rect, others) -> list[str]:
+    """What a footprint runs into: walls (with their thickness), columns, walkways and the other machines' footprints
+    (others: [(name, rect)]). A warning each; the place is kept (the operator decides)."""
+    out = []
+    for i, w in enumerate(plan.walls):
+        half = w.thickness_mm / 2
+        grown = (rect[0] - half, rect[1] - half, rect[2] + half, rect[3] + half)
+        points = list(w.points) + ([w.points[0]] if w.closed else [])
+        if any(_segment_hits(grown, p, q) for p, q in zip(points, points[1:])):
+            out.append(f"crosses a wall (walls[{i}])")
+    for c in plan.columns:
+        h = c.size_mm / 2
+        if _overlap(rect, (c.x_mm - h, c.y_mm - h, c.x_mm + h, c.y_mm + h)):
+            out.append(f"stands on a column at ({c.x_mm:g}, {c.y_mm:g})")
+    for a in plan.walkways:
+        if _overlap(rect, (a.x_mm, a.y_mm, a.x_mm + a.width_mm, a.y_mm + a.height_mm)):
+            out.append(f"stands on a walkway{' (' + a.label + ')' if a.label else ''}")
+    for name, other in others:
+        if _overlap(rect, other):
+            out.append(f"overlaps {name}")
+    return out

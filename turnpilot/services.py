@@ -1845,6 +1845,8 @@ def shop_machines():
     running and its progress; nothing that is not set is filled in."""
     from .models import MACHINE_KINDS
 
+    _, plan = current_shop_plan()
+    clashes = placement_conflicts(plan) if plan else {}
     out = []
     for m in machines():
         status = m.status.status if m.status else "free"
@@ -1868,6 +1870,7 @@ def shop_machines():
             "placed_by": place.placed_by if place else None,
             "placed_at": place.placed_at.strftime("%Y-%m-%d %H:%M") if place else None,
             "length": m.footprint_length_mm, "width": m.footprint_width_mm,
+            "conflicts": clashes.get(m.id, []),
             "order": None,
         }
         if order:
@@ -1906,3 +1909,45 @@ def store_shop_plan(text, filename, name):
     db.session.add(record)
     db.session.commit()
     return record
+
+
+ROTATIONS = (0, 90, 180, 270)
+
+
+def place_machine(machine, x, y, rotation, name):
+    """The operator puts a machine on the plan: its centre on a 100 mm step, a rotation of 0 / 90 / 180 / 270; a new
+    history row with the name. Raises OrderError (no name, no plan, outside the plan, another rotation)."""
+    from .models import MachinePlacement
+    from .shop_plan import SNAP_MM
+
+    name = _name(name)
+    _, plan = current_shop_plan()
+    if plan is None:
+        raise OrderError("No shop plan yet: upload its file first")
+    if x is None or y is None:
+        raise OrderError("A place on the plan: X and Y in mm")
+    if rotation not in ROTATIONS:
+        raise OrderError("Rotation: 0, 90, 180 or 270")
+    x, y = round(x / SNAP_MM) * SNAP_MM, round(y / SNAP_MM) * SNAP_MM
+    if not (0 <= x <= plan.width_mm and 0 <= y <= plan.height_mm):
+        raise OrderError(f"({x:g}, {y:g}) is outside the plan 0..{plan.width_mm:g} × 0..{plan.height_mm:g} mm")
+    record = MachinePlacement(machine_id=machine.id, x_mm=x, y_mm=y, rotation=rotation, placed_by=name)
+    db.session.add(record)
+    db.session.commit()
+    db.session.refresh(machine)
+    return record
+
+
+def placement_conflicts(plan):
+    """{machine id: [what its footprint runs into]} for the placed machines with a footprint (the others cannot be
+    checked: no size)."""
+    from .shop_plan import conflicts, footprint_rect
+
+    rects = {}
+    for m in machines():
+        p = m.placement
+        if p and m.footprint_length_mm and m.footprint_width_mm:
+            rects[m.id] = (m.name, footprint_rect(p.x_mm, p.y_mm, p.rotation, m.footprint_length_mm,
+                                                  m.footprint_width_mm))
+    return {mid: conflicts(plan, rect, [other for oid, other in rects.items() if oid != mid])
+            for mid, (_, rect) in rects.items()}

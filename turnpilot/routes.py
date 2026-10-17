@@ -1605,7 +1605,13 @@ def shop_machine(machine_id):
 def shop_machine_action(machine_id, action):
     machine = db.get_or_404(Machine, machine_id)
     try:
-        if action == "status":
+        if action == "place":
+            rotation = request.form.get("rotation", "")
+            services.place_machine(machine, _float_or_none(request.form.get("x_mm")),
+                                   _float_or_none(request.form.get("y_mm")),
+                                   int(rotation) if rotation.lstrip("-").isdigit() else None,
+                                   request.form.get("placed_by"))
+        elif action == "status":
             services.set_machine_status(machine, request.form.get("status"), request.form.get("decided_by"),
                                         request.form.get("note"))
         else:
@@ -1644,3 +1650,10 @@ def shop_plan_page():
         return redirect(url_for("main.shop"))
     plans = db.session.execute(db.select(ShopPlan).order_by(ShopPlan.id.desc())).scalars().all()
     return render_template("shop_plan.html", plans=plans)
+
+
+def _float_or_none(text):
+    try:
+        return float(text) if text not in (None, "") else None
+    except ValueError:
+        return None

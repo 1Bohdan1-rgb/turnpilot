@@ -1,0 +1,78 @@
+"""Machines placed on the shop plan (7.2): a 100 mm step, a rotation, the operator's name and the time, every place
+kept; a footprint that runs into a wall, a column, a walkway or another machine is kept with a warning."""
+import io
+import json
+from pathlib import Path
+
+from gcode_jobs import ready_machine
+
+from turnpilot import services
+from turnpilot.models import Machine, db
+
+EXAMPLE = Path(__file__).resolve().parent.parent / "docs" / "shop_plan_example.json"
+NEW = {"name": "Lathe 2", "max_rpm": "3000", "power_kw": "7.5", "max_diameter": "250", "turret_positions": "8"}
+
+
+def upload_plan(client):
+    client.post("/shop/plan", data={"plan": (io.BytesIO(EXAMPLE.read_bytes()), "shop.json"), "uploaded_by": "Bohdan"},
+                content_type="multipart/form-data")
+
+
+def place(client, machine, x, y, rotation=0, name="Bohdan"):
+    return client.post(f"/shop/machines/{machine.id}/place", headers={"X-Requested-With": "fetch"},
+                       data={"x_mm": x, "y_mm": y, "rotation": rotation, "placed_by": name})
+
+
+def machines_on(page):
+    start = page.index("const M = ") + len("const M = ")
+    return {m["name"]: m for m in json.loads(page[start:page.index(";\n", start)])}
+
+
+def lathe(machine, length=4400, width=2200):
+    machine.machine_kind, machine.footprint_length_mm, machine.footprint_width_mm = "cnc_lathe", length, width
+    db.session.commit()
+    return machine
+
+
+def test_a_place_needs_a_plan_and_a_name_snaps_to_100_mm_and_is_kept(app, client):
+    machine = ready_machine()
+    assert "No shop plan yet" in place(client, machine, 9000, 6000).get_json()["error"]
+    upload_plan(client)
+    assert place(client, machine, 9000, 6000, name="").get_json()["error"] == "The operator's name is required"
+    assert "outside the plan" in place(client, machine, 80000, 6000).get_json()["error"]
+    assert place(client, machine, 9000, 6000, rotation=45).get_json()["error"] == "Rotation: 0, 90, 180 or 270"
+    assert place(client, machine, 9037, 5962).get_json() == {"ok": True}
+    place(client, machine, 9037, 5962, rotation=90, name="Ivan")
+    assert [(p.x_mm, p.y_mm, p.rotation, p.placed_by) for p in machine.placements] == [
+        (9000, 6000, 0, "Bohdan"), (9000, 6000, 90, "Ivan")]
+    m = machines_on(client.get("/shop").get_data(as_text=True))[machine.name]
+    assert (m["x"], m["y"], m["rotation"], m["placed_by"]) == (9000, 6000, 90, "Ivan")
+
+
+def test_running_into_a_wall_a_column_a_walkway_or_a_machine_is_kept_with_a_warning(app, client):
+    machine = lathe(ready_machine())
+    upload_plan(client)
+    client.post("/machines", data=NEW)
+    other = lathe(db.session.execute(db.select(Machine).filter_by(name="Lathe 2")).scalar_one())
+    place(client, machine, 9000, 6000)  # free: the turning bay between the columns
+    assert machines_on(client.get("/shop").get_data(as_text=True))[machine.name]["conflicts"] == []
+    place(client, machine, 300, 6000)  # across the outer wall at X0
+    assert machines_on(client.get("/shop").get_data(as_text=True))[machine.name]["conflicts"] == [
+        "crosses a wall (walls[0])"]
+    place(client, machine, 6000, 12400)  # on the column of axis 2, over the main walkway
+    found = machines_on(client.get("/shop").get_data(as_text=True))[machine.name]["conflicts"]
+    assert "stands on a column at (6000, 12400)" in found and "stands on a walkway (MAIN WALKWAY 2.4 m)" in found
+    place(client, machine, 9000, 6000)
+    place(client, other, 10000, 6500)
+    on_plan = machines_on(client.get("/shop").get_data(as_text=True))
+    assert on_plan[machine.name]["conflicts"] == ["overlaps Lathe 2"]
+    assert on_plan["Lathe 2"]["conflicts"] == [f"overlaps {machine.name}"]
+    assert (machine.placement.x_mm, other.placement.x_mm) == (9000, 10000)  # both places kept
+
+
+def test_a_machine_without_a_footprint_is_placed_but_not_checked(app, client):
+    machine = ready_machine()
+    upload_plan(client)
+    place(client, machine, 300, 6000)  # where a footprint would cross the wall
+    m = machines_on(client.get("/shop").get_data(as_text=True))[machine.name]
+    assert (m["x"], m["length"], m["conflicts"]) == (300, None, [])

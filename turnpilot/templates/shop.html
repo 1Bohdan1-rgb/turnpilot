@@ -16,6 +16,8 @@
     <button type="button" class="sf-chip" data-s="{{ s }}" aria-pressed="false"><span class="sf-dot sf-{{ s }}"></span>{{ label }}</button>
     {% endfor %}
     <span class="sf-count" id="sf-count"></span>
+    <label class="sf-operator">Operator <input id="sf-operator" maxlength="100" autocomplete="off"
+      aria-label="Operator's name (for moving a machine)"></label>
     <button type="button" class="sf-chip" id="sf-theme" aria-label="Light or dark theme">◐ Theme</button>
   </div>
 </header>
@@ -36,6 +38,7 @@
         page</a> (an example: <code>docs/shop_plan_example.json</code>).</p>
     {% endif %}
     </div>
+    <p class="sf-msg" id="sf-msg" role="status"></p>
     <div class="sf-unplaced" id="sf-unplaced"></div>
   </div>
   <aside class="sf-card" id="sf-card" aria-live="polite"><p class="sf-note">Click a machine.</p></aside>
@@ -53,7 +56,9 @@
   const URLS = {
     panel: id => `/shop/machines/${id}?fragment=1`,
     machine: id => `/machines/${id}`,
+    place: id => `/shop/machines/${id}/place`,
   };
+  const SNAP = 100;  // mm
   const LABEL = {running: "Running", setup: "Setup", stopped: "Stopped", free: "Free"};
   const ns = "http://www.w3.org/2000/svg";
   const floor = document.getElementById("shop-floor");
@@ -122,7 +127,8 @@
     const marker = T * 3;  // a machine with no footprint or type: a marker of a fixed size on screen, not to scale
     M.filter(m => m.x !== null).forEach(m => {
       const g = document.createElementNS(ns, "g");
-      g.setAttribute("class", `m ${m.status}`); g.setAttribute("tabindex", "0"); g.setAttribute("role", "button");
+      g.setAttribute("class", `m ${m.status}${m.conflicts.length ? " conflict" : ""}`);
+      g.setAttribute("tabindex", "0"); g.setAttribute("role", "button");
       g.setAttribute("aria-label", `${m.name}, ${m.status_label}`); g.dataset.id = m.id;
       g.setAttribute("transform", `translate(${m.x} ${m.y}) rotate(${m.rotation})`);
       const shape = m.kind && SHAPE[m.kind];
@@ -137,18 +143,23 @@
       }
       const pad = T * .6;
       g.innerHTML = `<rect class="halo" x="${-L / 2 - pad}" y="${-W / 2 - pad}" width="${L + 2 * pad}" height="${W + 2 * pad}" rx="${pad}"/>`
+        + (m.conflicts.length ? `<rect class="clash" x="${-L / 2 - pad * 2}" y="${-W / 2 - pad * 2}" width="${L + 4 * pad}" height="${W + 4 * pad}" rx="${pad}"/>` : "")
         + inner + (m.alarm ? `<text class="m-alarm" x="${L / 2}" y="${-W / 2}" font-size="${T * 1.5}">!</text>` : "")
         + `<g transform="rotate(${-m.rotation})"><text class="m-name" y="${Math.max(L, W) / 2 + pad + T}" font-size="${T}" text-anchor="middle">${esc(m.name.toUpperCase())}</text></g>`;
       g.querySelectorAll("*").forEach(e => e.setAttribute("vector-effect", "non-scaling-stroke"));
-      g.addEventListener("click", () => select(m.id));
       g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(m.id); } });
+      dragOnPlan(g, m);
       layer.appendChild(g);
     });
     const un = document.getElementById("sf-unplaced");
     const rest = M.filter(m => m.x === null);
     un.innerHTML = rest.length ? `<span class="sf-note">Not on the plan yet:</span> ` + rest.map(m =>
-      `<button type="button" class="sf-chip sf-machine-chip" data-id="${m.id}"><span class="sf-dot sf-${m.status}"></span>${esc(m.name)}</button>`).join(" ") : "";
-    un.querySelectorAll("button").forEach(b => b.addEventListener("click", () => select(Number(b.dataset.id))));
+      `<button type="button" class="sf-chip sf-machine-chip" draggable="true" data-id="${m.id}"><span class="sf-dot sf-${m.status}"></span>${esc(m.name)}</button>`).join(" ")
+      + (svg ? ` <span class="sf-note">drag one onto the plan</span>` : "") : "";
+    un.querySelectorAll("button").forEach(b => {
+      b.addEventListener("click", () => select(Number(b.dataset.id)));
+      b.addEventListener("dragstart", e => e.dataTransfer.setData("text/plain", b.dataset.id));
+    });
   }
 
   // search and the status filter: the others dim
@@ -185,6 +196,7 @@
       <h2>${esc(m.name)}</h2>
       <span class="sf-pill sf-${m.status}">${esc(m.status_label)}${m.alarm ? " !" : ""}</span>
       ${warn.map(w => `<p class="sf-warn">${esc(w)}</p>`).join("")}
+      ${m.conflicts.map(c => `<p class="sf-warn">On the plan it ${esc(c)}: check the place.</p>`).join("")}
       <dl>
         <dt>Control</dt><dd>${esc(m.control || "not set")}</dd>
         <dt>Capacity</dt><dd>${esc(m.capacity)}</dd>
@@ -200,17 +212,68 @@
       <div class="sf-btns">
         <a class="sf-button" href="${URLS.machine(m.id)}">Machine page</a>
         <button type="button" class="sf-button ghost" id="sf-panel">Status and order</button>
+        ${m.x !== null ? `<button type="button" class="sf-button ghost" id="sf-rotate">Rotate 90°</button>` : ""}
       </div>`;
     document.getElementById("sf-panel").addEventListener("click", () => openPanel(m.id));
+    const rot = document.getElementById("sf-rotate");
+    if (rot) rot.addEventListener("click", () => place(m.id, m.x, m.y, (m.rotation + 90) % 360));
   }
   const panel = document.getElementById("shop-panel"), body = document.getElementById("shop-panel-body");
   function openPanel(id) {
     fetch(URLS.panel(id)).then(r => r.text()).then(html => { body.innerHTML = html; panel.showModal(); });
   }
 
+  // placing: a machine dragged on the plan (or a chip dropped on it) goes to the nearest 100 mm, with the operator's
+  // name; without a name nothing is saved
+  const msg = document.getElementById("sf-msg");
+  function toPlan(evt) {
+    const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    return [Math.round(p.x / SNAP) * SNAP, Math.round(p.y / SNAP) * SNAP];
+  }
+  function place(id, x, y, rotation) {
+    const name = document.getElementById("sf-operator").value.trim();
+    if (!name) { msg.textContent = "Type your name in the Operator field: the place is saved with it."; draw(); return; }
+    const body = new URLSearchParams({x_mm: x, y_mm: y, rotation: rotation, placed_by: name});
+    fetch(URLS.place(id), {method: "POST", body, headers: {"X-Requested-With": "fetch"}})
+      .then(r => r.json().then(j => [r.ok, j]))
+      .then(([ok, j]) => {
+        if (!ok) { msg.textContent = j.error; draw(); return; }
+        location.href = `${location.pathname}?select=${id}`;
+      });
+  }
+  function dragOnPlan(g, m) {
+    let start = null;
+    g.addEventListener("pointerdown", e => { start = [e.clientX, e.clientY]; g.setPointerCapture(e.pointerId); });
+    g.addEventListener("pointermove", e => {
+      if (!start) return;
+      if (Math.hypot(e.clientX - start[0], e.clientY - start[1]) < 4 && !g.classList.contains("moving")) return;
+      g.classList.add("moving");
+      const [x, y] = toPlan(e);
+      g.setAttribute("transform", `translate(${x} ${y}) rotate(${m.rotation})`);
+    });
+    g.addEventListener("pointerup", e => {
+      const moved = g.classList.contains("moving");
+      start = null; g.classList.remove("moving");
+      if (!moved) { select(m.id); return; }
+      const [x, y] = toPlan(e);
+      if (x !== m.x || y !== m.y) place(m.id, x, y, m.rotation);
+    });
+  }
+  if (svg) {
+    svg.addEventListener("dragover", e => e.preventDefault());
+    svg.addEventListener("drop", e => {
+      e.preventDefault();
+      const id = Number(e.dataTransfer.getData("text/plain"));
+      if (id) { const [x, y] = toPlan(e); place(id, x, y, 0); }
+    });
+  }
+
   draw(); apply();
   const again = new URLSearchParams(location.search).get("open");  // back from the panel's form: open it again
+  const picked = Number(new URLSearchParams(location.search).get("select"));
   if (again && M.some(m => m.id === Number(again))) { select(Number(again)); openPanel(Number(again)); }
+  else if (picked && M.some(m => m.id === picked)) select(picked);
   else if (M.length) select((M.find(m => m.order) || M[0]).id);
 })();
 </script>

@@ -247,7 +247,13 @@ tr.row-demo td { background: #fff4d6; }
 .sf-wrap { display:grid; grid-template-columns:minmax(0, 1fr) 300px; gap:16px; align-items:start; }
 @media (max-width: 900px) { .sf-wrap { grid-template-columns:minmax(0, 1fr); } }
 .sf-planbox { background:var(--sf-sheet); border:1px solid var(--sf-hair); border-radius:4px; overflow:auto; min-width:0; }
-svg.sf-plan { display:block; width:100%; min-width:900px; height:auto; touch-action:none; }
+svg.sf-plan { display:block; width:100%; min-width:900px; height:auto; }
+.m { touch-action:none; } .m.moving { opacity:.7; cursor:grabbing; }
+.m .clash { fill:none; stroke:var(--sf-warn); stroke-width:2.5; stroke-dasharray:6 4; }
+.sf-operator { flex-direction:row; align-items:center; gap:6px; color:var(--sf-ink2); }
+.sf-operator input { font:inherit; padding:6px 8px; border:1px solid var(--sf-hair); background:var(--sf-sheet);
+  color:var(--sf-ink); border-radius:6px; width:130px; }
+.sf-msg { min-height:1em; margin:6px 0 0; color:var(--sf-stop); font-size:13px; }
 .sf-empty { padding:24px; }
 .sf-unplaced { margin-top:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .p-sheet { fill:var(--sf-sheet); }
