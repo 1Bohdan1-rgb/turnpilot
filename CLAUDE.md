@@ -68,8 +68,8 @@ Stages, in this order:
    profile first, one control, simulation required.
    **Built 2026-10-09** (see "Stage 6: G-code"): the operator checked the Zavisa 36 pin program as a turner; ready
    to run waits for the machine's real values (passport, the operator's programming values).
-7. Probing the blank and sending the program to the machine. **7.1 (machines, orders, the shop page by hand) built
-   2026-10-17** (see "Stage 7.1"); the rest **planned 2026-10-10, not started**: it starts only
+7. Probing the blank and sending the program to the machine. **7.1 (machines, orders, the shop page by hand) and 7.2
+   (the shop plan in mm) built 2026-10-17** (see "Stage 7.1", "Stage 7.2"); the rest **planned 2026-10-10, not started**: it starts only
    once the machine's passport shows a probe and the custom macro option (Fanuc Custom Macro B).
    - At the program's start a probing block (Custom Macro B) measures the blank's real Ø and stick-out and sets
      Z0 on the face.
@@ -981,6 +981,31 @@ and the docs commit. No migration; the files frozen by `dxf-blind-freeze` untouc
   (114 − 22 = 92). Fixed the same day (ab942d5: od_turn + thread); extractions 28 (job 4) and 30 (job 7) sum to 114.
   Not a bug now: 27 is a stale reading never confirmed (no job).
 
+## Stage 7.2: the shop plan (built 2026-10-17, by hand, no connection)
+Plan 1–6 agreed with the user (the mock-up committed as a reference; Lathe 1's type left to the user; a footprint
+running into a wall / column / walkway / machine kept with a yellow warning). Commits 8003903 (plan file, schema),
+6ecceb5 (type, footprint), 2cc8e1a (plan page), 057db90 (drag, rotate, conflicts), 0569fe7 (Upload drawing from the
+card), a fix (machines listed without a plan) and the docs commit. Migration e2a7c3d5f9b1 (ShopPlan, MachinePlacement,
+Machine.machine_kind / footprint_length_mm / footprint_width_mm); DB backup
+`instance/turnpilot.db.bak-2026-10-17-before-shop-plan` (taken before the migration file, the server stopped).
+- `turnpilot/shop_plan.py`: pydantic `Plan` (extra keys refused, every point on the sheet), `parse` (PlanError with
+  the field's path), footprint rectangles (rotation 0 / 90 / 180 / 270), `conflicts` (walls with their thickness by
+  Liang-Barsky, columns, walkways, other machines; touching is not a conflict). `turnpilot/shop_svg.py`: the plan as
+  SVG in mm (viewBox = sheet + 1.5 m; lines non-scaling; label height = the longer side / 80).
+- `services.place_machine` (name required, a plan required, snapped to 100 mm, inside the sheet, rotation one of four;
+  a new MachinePlacement row each time), `placement_conflicts`, `shop_machines` (the page's data: status class from
+  7.1's statuses, alarm = stopped + "!", the order running and its progress, conflicts).
+- The footprint fields are in `MACHINE_FIELDS`: the passport reading's prompt version is passport:1b575a6b (no call).
+- The 7.1 grid (`shop_row / shop_col`) is not shown and not converted to mm (that would invent a place); the columns
+  stay in the DB. The status / order panel of 7.1 opens from the card.
+- The operator's name is typed on the page for each move (not remembered, not filled in).
+- Checked in a copy of the user's DB (port 5002, the example plan, two DEMO machines): drag without a name refused,
+  with a name saved and shown with a yellow outline over the walkway; dark theme; phone width (the page 407 px, the
+  plan scrolls in a 310 px box). The user's DB: no plan uploaded, Lathe 1 not placed (listed under the plan), its
+  order 1 (1 of 50, 12.1 s a part, incomplete) and status running (Bohdan) in the card.
+- pytest took 15+ min once: the computer was switched off during that run; a timed run with durations: 1121 tests in
+  4 min, the slowest 7.8 s (test_gcode_nose), nothing waits on a server.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -990,7 +1015,7 @@ and the docs commit. No migration; the files frozen by `dxf-blind-freeze` untouc
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1112 tests pass (2026-10-17). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1125 tests pass (2026-10-17). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

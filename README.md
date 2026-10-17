@@ -461,6 +461,23 @@ as not set; unless all three are from the passport the time is marked "without t
   part's time, marked incomplete without the passport's values. Nothing is sent to or read from the machines (that is
   stage 7.4).
 
+## The shop plan (stage 7.2)
+
+- The plan is a JSON file in mm (walls with their thickness, doors / roller doors / exits / windows, columns,
+  walkways, zones, storage, fixtures, labels; X right, Y down from the top left corner), uploaded on Shop → plan file
+  with the operator's name; it is checked (every point on the sheet, no unknown key) and every upload is kept.
+  `docs/shop_plan_example.json` is an invented shop (the mock-up `docs/shop_floor_mockup.html`, in mm).
+- A machine's type (CNC lathe, manual lathe, machining centre, saw, CMM) is the operator's choice on its page; its
+  footprint (length along the spindle × width) comes from the passport or the operator. Without either it is a grey
+  marker, not to scale, with a warning: nothing is guessed.
+- The operator drags a machine (or a machine not yet placed) onto the plan: its centre goes to the nearest 100 mm,
+  the card rotates it by 90°; every place is kept with the name and the time. A footprint that crosses a wall,
+  stands on a column or a walkway, or overlaps another machine is kept with a yellow outline and a warning.
+- Status colours from the operator's statuses (alarm: the stopped colour and "!"), search by name / type / control,
+  a filter by status (the others dim), the card (type, control, capacity, the order running, done / all, the
+  part's time, the time left, incomplete without the passport's values; Upload drawing for a job on this machine,
+  Machine page, Status and order), a light and a dark theme on this page; on a phone the plan scrolls in its box.
+
 ## Tool groups and rapids over the material
 
 - Operations one after another with the same tool: one G28 and tool change for the group; every block keeps its
