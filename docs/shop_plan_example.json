@@ -1,0 +1,549 @@
+{
+ "name": "Example shop (invented, from the mock-up)",
+ "width_mm": 72000,
+ "height_mm": 39200,
+ "walls": [
+  {
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     50400,
+     0
+    ],
+    [
+     50400,
+     4800
+    ],
+    [
+     72000,
+     4800
+    ],
+    [
+     72000,
+     28000
+    ],
+    [
+     58400,
+     28000
+    ],
+    [
+     58400,
+     39200
+    ],
+    [
+     26400,
+     39200
+    ],
+    [
+     26400,
+     30400
+    ],
+    [
+     0,
+     30400
+    ]
+   ],
+   "thickness_mm": 300,
+   "closed": true
+  },
+  {
+   "points": [
+    [
+     26400,
+     30400
+    ],
+    [
+     29200,
+     30400
+    ]
+   ],
+   "thickness_mm": 150
+  },
+  {
+   "points": [
+    [
+     32400,
+     30400
+    ],
+    [
+     40800,
+     30400
+    ]
+   ],
+   "thickness_mm": 150
+  },
+  {
+   "points": [
+    [
+     42800,
+     30400
+    ],
+    [
+     48000,
+     30400
+    ]
+   ],
+   "thickness_mm": 150
+  },
+  {
+   "points": [
+    [
+     50000,
+     30400
+    ],
+    [
+     50400,
+     30400
+    ],
+    [
+     50400,
+     28000
+    ]
+   ],
+   "thickness_mm": 150
+  },
+  {
+   "points": [
+    [
+     36800,
+     30400
+    ],
+    [
+     36800,
+     39200
+    ]
+   ],
+   "thickness_mm": 150
+  },
+  {
+   "points": [
+    [
+     47600,
+     30400
+    ],
+    [
+     47600,
+     39200
+    ]
+   ],
+   "thickness_mm": 150
+  },
+  {
+   "points": [
+    [
+     59200,
+     20000
+    ],
+    [
+     64000,
+     20000
+    ]
+   ],
+   "thickness_mm": 150
+  },
+  {
+   "points": [
+    [
+     66400,
+     20000
+    ],
+    [
+     72000,
+     20000
+    ]
+   ],
+   "thickness_mm": 150
+  },
+  {
+   "points": [
+    [
+     59200,
+     20000
+    ],
+    [
+     59200,
+     28000
+    ]
+   ],
+   "thickness_mm": 150
+  }
+ ],
+ "openings": [
+  {
+   "kind": "roller_door",
+   "x_mm": 72000,
+   "y_mm": 13200,
+   "width_mm": 5600,
+   "along": "y",
+   "label": "ROLLER DOOR 5.6 m"
+  },
+  {
+   "kind": "exit",
+   "x_mm": 0,
+   "y_mm": 21600,
+   "width_mm": 1760,
+   "along": "y",
+   "label": "FIRE EXIT"
+  },
+  {
+   "kind": "exit",
+   "x_mm": 53600,
+   "y_mm": 39200,
+   "width_mm": 1760,
+   "along": "x",
+   "label": "STAFF ENTRANCE"
+  },
+  {
+   "kind": "door",
+   "x_mm": 40800,
+   "y_mm": 30400,
+   "width_mm": 2000,
+   "along": "x"
+  },
+  {
+   "kind": "door",
+   "x_mm": 48000,
+   "y_mm": 30400,
+   "width_mm": 2000,
+   "along": "x"
+  },
+  {
+   "kind": "door",
+   "x_mm": 64000,
+   "y_mm": 20000,
+   "width_mm": 2400,
+   "along": "x"
+  },
+  {
+   "kind": "window",
+   "x_mm": 29200,
+   "y_mm": 30400,
+   "width_mm": 3200,
+   "along": "x",
+   "label": "ISSUE WINDOW"
+  }
+ ],
+ "columns": [
+  {
+   "x_mm": 0,
+   "y_mm": 0,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 0,
+   "y_mm": 30400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 6000,
+   "y_mm": 0,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 6000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 6000,
+   "y_mm": 30400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 12000,
+   "y_mm": 0,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 12000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 12000,
+   "y_mm": 30400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 18000,
+   "y_mm": 0,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 18000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 18000,
+   "y_mm": 30400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 24000,
+   "y_mm": 0,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 24000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 24000,
+   "y_mm": 30400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 30000,
+   "y_mm": 0,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 30000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 36000,
+   "y_mm": 0,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 36000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 42000,
+   "y_mm": 0,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 42000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 48000,
+   "y_mm": 0,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 48000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 54000,
+   "y_mm": 4800,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 54000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 60000,
+   "y_mm": 4800,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 60000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 66000,
+   "y_mm": 4800,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 66000,
+   "y_mm": 12400,
+   "size_mm": 400
+  },
+  {
+   "x_mm": 72000,
+   "y_mm": 4800,
+   "size_mm": 400
+  }
+ ],
+ "walkways": [
+  {
+   "x_mm": 800,
+   "y_mm": 12800,
+   "width_mm": 70800,
+   "height_mm": 2400,
+   "label": "MAIN WALKWAY 2.4 m"
+  },
+  {
+   "x_mm": 38400,
+   "y_mm": 15200,
+   "width_mm": 2400,
+   "height_mm": 15200,
+   "label": "WALKWAY TO OFFICES"
+  }
+ ],
+ "zones": [
+  {
+   "x_mm": 61600,
+   "y_mm": 8000,
+   "width_mm": 8800,
+   "height_mm": 2240,
+   "label": "GOODS-IN BAY"
+  }
+ ],
+ "storage": [
+  {
+   "x_mm": 27040,
+   "y_mm": 31600,
+   "width_mm": 720,
+   "height_mm": 6000
+  },
+  {
+   "x_mm": 28800,
+   "y_mm": 32400,
+   "width_mm": 6800,
+   "height_mm": 640
+  },
+  {
+   "x_mm": 28800,
+   "y_mm": 34800,
+   "width_mm": 6800,
+   "height_mm": 640
+  },
+  {
+   "x_mm": 60000,
+   "y_mm": 21200,
+   "width_mm": 3200,
+   "height_mm": 800
+  },
+  {
+   "x_mm": 60000,
+   "y_mm": 23200,
+   "width_mm": 11200,
+   "height_mm": 880
+  },
+  {
+   "x_mm": 60000,
+   "y_mm": 25200,
+   "width_mm": 11200,
+   "height_mm": 880
+  },
+  {
+   "x_mm": 67200,
+   "y_mm": 21200,
+   "width_mm": 4000,
+   "height_mm": 800
+  },
+  {
+   "x_mm": 60800,
+   "y_mm": 5600,
+   "width_mm": 10400,
+   "height_mm": 880,
+   "label": "BAR STOCK RACKS"
+  },
+  {
+   "x_mm": 60800,
+   "y_mm": 10800,
+   "width_mm": 10400,
+   "height_mm": 880
+  },
+  {
+   "x_mm": 28800,
+   "y_mm": 28000,
+   "width_mm": 1600,
+   "height_mm": 1200,
+   "label": "CHIP SKIPS"
+  },
+  {
+   "x_mm": 30800,
+   "y_mm": 28000,
+   "width_mm": 1600,
+   "height_mm": 1200
+  }
+ ],
+ "fixtures": [
+  {
+   "x_mm": 20800,
+   "y_mm": 25600,
+   "width_mm": 5600,
+   "height_mm": 1360,
+   "label": "DEBURR BENCH"
+  },
+  {
+   "x_mm": 51200,
+   "y_mm": 25200,
+   "width_mm": 4400,
+   "height_mm": 1840,
+   "label": "PARTS WASHER"
+  },
+  {
+   "x_mm": 48800,
+   "y_mm": 32800,
+   "width_mm": 2400,
+   "height_mm": 1200
+  },
+  {
+   "x_mm": 52000,
+   "y_mm": 32800,
+   "width_mm": 2400,
+   "height_mm": 1200
+  },
+  {
+   "x_mm": 55200,
+   "y_mm": 32800,
+   "width_mm": 2400,
+   "height_mm": 1200
+  },
+  {
+   "x_mm": 50400,
+   "y_mm": 29200,
+   "width_mm": 4400,
+   "height_mm": 1600,
+   "label": "MEETING"
+  }
+ ],
+ "labels": [
+  {
+   "x_mm": 1600,
+   "y_mm": 1440,
+   "text": "TURNING BAY"
+  },
+  {
+   "x_mm": 1600,
+   "y_mm": 29600,
+   "text": "MILLING & PREP"
+  },
+  {
+   "x_mm": 51200,
+   "y_mm": 6240,
+   "text": "GOODS IN · SAWING"
+  },
+  {
+   "x_mm": 60000,
+   "y_mm": 27200,
+   "text": "STORE"
+  },
+  {
+   "x_mm": 29600,
+   "y_mm": 38400,
+   "text": "TOOL CRIB"
+  },
+  {
+   "x_mm": 39200,
+   "y_mm": 38400,
+   "text": "QC ROOM · 20 °C"
+  },
+  {
+   "x_mm": 48800,
+   "y_mm": 37600,
+   "text": "OFFICE"
+  }
+ ]
+}

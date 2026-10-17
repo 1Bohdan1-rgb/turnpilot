@@ -1605,3 +1605,29 @@ def shop_machine_action(machine_id, action):
     if request.headers.get("X-Requested-With") == "fetch":
         return {"ok": True}
     return redirect(_local(request.form.get("back")) or url_for("main.shop"))
+
+
+@bp.route("/shop/plan", methods=["GET", "POST"])
+def shop_plan_page():
+    """The shop's plan: upload a JSON file (walls, doors, columns, walkways, zones in mm); every upload is kept."""
+    from . import shop_plan
+    from .models import ShopPlan
+
+    if request.method == "POST":
+        upload = request.files.get("plan")
+        if upload is None or not upload.filename:
+            flash("Choose the plan's JSON file.", "error")
+            return redirect(url_for("main.shop_plan_page"))
+        try:
+            text = upload.read().decode("utf-8")
+            record = services.store_shop_plan(text, upload.filename, request.form.get("uploaded_by"))
+        except UnicodeDecodeError:
+            flash("The plan file is not UTF-8 text.", "error")
+            return redirect(url_for("main.shop_plan_page"))
+        except (shop_plan.PlanError, services.OrderError) as e:
+            flash(f"The plan was not saved: {e}", "error")
+            return redirect(url_for("main.shop_plan_page"))
+        flash(f"Plan '{record.name}' ({record.width_mm:g} × {record.height_mm:g} mm) uploaded.")
+        return redirect(url_for("main.shop"))
+    plans = db.session.execute(db.select(ShopPlan).order_by(ShopPlan.id.desc())).scalars().all()
+    return render_template("shop_plan.html", plans=plans)

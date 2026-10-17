@@ -50,9 +50,14 @@ class Machine(db.Model):
     live_tooling = db.Column(db.Boolean)
     c_axis = db.Column(db.Boolean)
     control = db.Column(db.String(100))
-    # the shop page: the machine's cell on the plan's grid (empty: not placed yet)
+    # the shop page of stage 7.1: the machine's cell on a grid (not shown since the plan of 7.2; kept, not converted)
     shop_row = db.Column(db.Integer)
     shop_col = db.Column(db.Integer)
+    # the plan (7.2): the machine's type, chosen by the operator (its shape on the plan; empty: not known), and its
+    # footprint (passport or operator, Machine page): length along its spindle × width, mm; empty: not drawn to scale
+    machine_kind = db.Column(db.String(20))
+    footprint_length_mm = db.Column(db.Float)
+    footprint_width_mm = db.Column(db.Float)
     # the cycle time estimate: rapid traverse per axis and the tool change (tool to tool); empty: not known
     rapid_x_m_min = db.Column(db.Float)
     rapid_z_m_min = db.Column(db.Float)
@@ -75,6 +80,12 @@ class Machine(db.Model):
     )
     sources = db.relationship("MachineSpecSource", back_populates="machine", cascade="all, delete-orphan")
     statuses = db.relationship("MachineStatus", order_by="MachineStatus.id")
+    placements = db.relationship("MachinePlacement", order_by="MachinePlacement.id")
+
+    @property
+    def placement(self):
+        """The machine's place on the plan: the last record (None: not placed)."""
+        return self.placements[-1] if self.placements else None
 
     @property
     def status(self):
@@ -665,3 +676,35 @@ class MachineStatus(db.Model):
     note = db.Column(db.String(200))
     decided_by = db.Column(db.String(100), nullable=False)
     decided_at = db.Column(db.DateTime, nullable=False, default=_now)
+
+
+MACHINE_KINDS = {"cnc_lathe": "CNC lathe", "manual_lathe": "Manual lathe", "mill": "Machining centre", "saw": "Saw",
+                 "cmm": "CMM"}
+
+
+class ShopPlan(db.Model):
+    """The shop's plan as uploaded (walls, openings, columns, walkways, zones... in mm; shop_plan.Plan as JSON). Every
+    upload is a new row; the newest is the one shown. Never changed or deleted."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    width_mm = db.Column(db.Float, nullable=False)
+    height_mm = db.Column(db.Float, nullable=False)
+    data = db.Column(db.Text, nullable=False)
+    filename = db.Column(db.String(255))
+    uploaded_by = db.Column(db.String(100), nullable=False)
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=_now)
+
+
+class MachinePlacement(db.Model):
+    """Where the operator put a machine on the plan: its centre (mm), its rotation (0 / 90 / 180 / 270), who and when.
+    The last row is the machine's place; never changed or deleted."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_machine_placement_machine_id"),
+                           nullable=False)
+    x_mm = db.Column(db.Float, nullable=False)
+    y_mm = db.Column(db.Float, nullable=False)
+    rotation = db.Column(db.Integer, nullable=False)
+    placed_by = db.Column(db.String(100), nullable=False)
+    placed_at = db.Column(db.DateTime, nullable=False, default=_now)

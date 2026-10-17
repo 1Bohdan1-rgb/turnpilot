@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Shop plan{% endblock %}
+{% block content %}
+<h1>Shop plan</h1>
+<p class="muted small"><a href="{{ url_for('main.shop') }}">back to the shop</a> · The plan is a JSON file in mm:
+  walls, openings (doors, roller doors, exits, windows), columns, walkways, zones, storage, fixtures and labels;
+  X to the right, Y down from the top left corner. An example: <code>docs/shop_plan_example.json</code> (an invented
+  shop). Every upload is kept; the newest is shown.</p>
+<form method="post" enctype="multipart/form-data" class="card upload-form">
+  <label>Plan file (.json) <input type="file" name="plan" accept=".json,application/json" required></label>
+  <label>Operator <input name="uploaded_by" maxlength="100" required aria-label="Operator's name"></label>
+  <button type="submit">Upload the plan</button>
+</form>
+{% if plans %}
+<h2>Uploaded</h2>
+<div class="card"><table>
+  <thead><tr><th>Plan</th><th>Size, mm</th><th>File</th><th>By</th><th>When</th></tr></thead>
+  <tbody>{% for p in plans %}<tr><td>{{ p.name }}{% if loop.first %} <strong>(shown)</strong>{% endif %}</td>
+    <td>{{ "%g"|format(p.width_mm) }} × {{ "%g"|format(p.height_mm) }}</td><td>{{ p.filename or "" }}</td>
+    <td>{{ p.uploaded_by }}</td><td>{{ p.uploaded_at.strftime("%Y-%m-%d %H:%M") }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+{% endblock %}

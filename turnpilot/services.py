@@ -1860,3 +1860,29 @@ def shop_plan():
     return {"cards": cards, "placed": {(c["machine"].shop_row, c["machine"].shop_col): c for c in placed},
             "unplaced": [c for c in cards if c not in placed], "rows": min(rows, SHOP_MAX_ROWS),
             "cols": min(cols, SHOP_MAX_COLS)}
+
+
+# --- the shop's plan (7.2) ---------------------------------------------------------------------------------------
+
+
+def current_shop_plan():
+    """The newest uploaded plan (None: none yet) and its parsed elements."""
+    from . import shop_plan
+    from .models import ShopPlan
+
+    record = db.session.execute(db.select(ShopPlan).order_by(ShopPlan.id.desc())).scalars().first()
+    return (record, shop_plan.Plan.model_validate_json(record.data)) if record else (None, None)
+
+
+def store_shop_plan(text, filename, name):
+    """A new plan from the uploaded file's text; raises shop_plan.PlanError (what is wrong) or OrderError (no name)."""
+    from . import shop_plan
+    from .models import ShopPlan
+
+    name = _name(name)
+    plan = shop_plan.parse(text)
+    record = ShopPlan(name=plan.name, width_mm=plan.width_mm, height_mm=plan.height_mm,
+                      data=plan.model_dump_json(), filename=(filename or "")[:255] or None, uploaded_by=name)
+    db.session.add(record)
+    db.session.commit()
+    return record

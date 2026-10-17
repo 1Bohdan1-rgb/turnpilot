@@ -1,0 +1,352 @@
+<title>TurnPilot Shop Floor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: drawing-sheet plan (top view, 1:200) on the left, machine card on the right; stacks on phones */
+:root{
+  --paper:#E9EEF0; --sheet:#F6F8F9; --ink:#1F2B33; --ink2:#5B6B75; --hair:#C3CED4;
+  --wall:#2A3740; --mach:#D5DDE2; --mach2:#BAC6CD; --glass:#DCEAF1; --stone:#C9C4BC;
+  --aisle:#D9A900; --accent:#1F6F8B;
+  --run:#2E9E5B; --setup:#3B78C9; --stop:#D0453B; --free:#8A979F;
+  --f-display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0F161A; --sheet:#141D22; --ink:#D3DDE2; --ink2:#8C9CA5; --hair:#2B3A42;
+  --wall:#B9C7CE; --mach:#26343C; --mach2:#33444D; --glass:#1C3340; --stone:#3A3833;
+  --aisle:#E3B520; --accent:#5DB3D0; --run:#3FBF74; --setup:#5B95E0; --stop:#E8655B; --free:#6E7D86;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0F161A; --sheet:#141D22; --ink:#D3DDE2; --ink2:#8C9CA5; --hair:#2B3A42;
+  --wall:#B9C7CE; --mach:#26343C; --mach2:#33444D; --glass:#1C3340; --stone:#3A3833;
+  --aisle:#E3B520; --accent:#5DB3D0; --run:#3FBF74; --setup:#5B95E0; --stop:#E8655B; --free:#6E7D86;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 32px}
+header{display:flex;flex-wrap:wrap;align-items:end;gap:12px 24px;margin-bottom:14px}
+h1{font-family:var(--f-display);font-weight:700;font-size:30px;letter-spacing:.02em;margin:0;text-wrap:balance}
+.sub{color:var(--ink2);font-size:13px;margin:2px 0 0}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-left:auto}
+#q{font:inherit;font-size:14px;padding:8px 12px;border:1px solid var(--hair);background:var(--sheet);color:var(--ink);border-radius:6px;width:220px;max-width:100%}
+#q:focus-visible,.chip:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chip{font:500 12px var(--f-body);letter-spacing:.04em;text-transform:uppercase;padding:6px 10px;border-radius:99px;border:1px solid var(--hair);background:var(--sheet);color:var(--ink);cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.chip[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.planbox{background:var(--sheet);border:1px solid var(--hair);border-radius:4px;overflow-x:auto;min-width:0}
+svg.plan{display:block;width:100%;min-width:1000px;height:auto}
+.plan text{font-family:var(--f-mono);fill:var(--ink2)}
+.m{cursor:pointer;transition:opacity .2s}
+.m.dim{opacity:.18}
+.m:hover .body,.m.sel .body{stroke:var(--accent);stroke-width:2.2}
+.m.sel .halo{stroke-width:5}
+.m:focus{outline:none}.m:focus-visible .body{stroke:var(--accent);stroke-width:2.5}
+.halo{fill:none;stroke-width:3.5;opacity:.85}
+.m.running .halo{animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.m.running .halo{animation:none}}
+aside{background:var(--sheet);border:1px solid var(--hair);border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+aside h2{font-family:var(--f-display);font-size:26px;margin:0;line-height:1}
+.kind{font:12px var(--f-mono);color:var(--ink2);text-transform:uppercase;letter-spacing:.06em}
+.pill{align-self:start;font:600 12px var(--f-body);letter-spacing:.05em;text-transform:uppercase;padding:4px 10px;border-radius:99px;color:#fff}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;font-size:13px}
+dt{color:var(--ink2)}dd{margin:0;font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
+.bar{height:8px;background:var(--hair);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--run)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:500 13px var(--f-body);padding:8px 12px;border-radius:6px;border:1px solid var(--ink);background:var(--ink);color:var(--sheet);cursor:pointer}
+button.ghost{background:transparent;color:var(--ink)}
+.note{font-size:12px;color:var(--ink2);margin:0}
+.count{font:12px var(--f-mono);color:var(--ink2)}
+</style>
+
+<header>
+  <div>
+    <h1>Shop floor · plan view</h1>
+    <p class="sub">Invented shop, 72 × 39 m, drawn to scale 1:200. Example data, apart from Lathe 1 (order 1, from the test).</p>
+  </div>
+  <div class="tools">
+    <input id="q" type="search" placeholder="Find a machine: lathe, mill, 0i-T…" aria-label="Find a machine">
+    <button class="chip" id="f-running" data-s="running" aria-pressed="false"><span class="dot" style="background:var(--run)"></span>Running</button>
+    <button class="chip" id="f-setup" data-s="setup" aria-pressed="false"><span class="dot" style="background:var(--setup)"></span>Setup</button>
+    <button class="chip" id="f-stopped" data-s="stopped" aria-pressed="false"><span class="dot" style="background:var(--stop)"></span>Stopped</button>
+    <button class="chip" id="f-free" data-s="free" aria-pressed="false"><span class="dot" style="background:var(--free)"></span>Free</button>
+    <span class="count" id="count"></span>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="planbox">
+<svg class="plan" viewBox="0 0 1900 1100" role="img" aria-label="Top view of the shop floor with machines">
+  <defs>
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M25 0H0V25" fill="none" stroke="var(--hair)" stroke-width=".5"/></pattern>
+    <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--ink2)" stroke-width="1"/></pattern>
+    <marker id="tick" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M2 8L8 2" stroke="var(--ink2)" stroke-width="1.4"/></marker>
+  </defs>
+  <rect width="1900" height="1100" fill="url(#grid)"/>
+  <path id="shell" d="M40 60H1300V180H1840V760H1500V1040H700V820H40Z" fill="var(--sheet)" opacity=".8"/>
+
+  <!-- walkways -->
+  <g fill="var(--aisle)" opacity=".12"><rect x="60" y="380" width="1770" height="60"/><rect x="1000" y="440" width="60" height="380"/></g>
+  <g stroke="var(--aisle)" stroke-width="3" fill="none">
+    <path d="M60 380H1830M60 440H1000M1060 440H1830"/>
+    <path d="M1000 440V820M1060 440V820"/>
+  </g>
+  <text x="560" y="415" text-anchor="middle" font-size="12" letter-spacing="2">MAIN WALKWAY · 2.4 m</text>
+  <text x="1030" y="640" text-anchor="middle" font-size="11" letter-spacing="2" transform="rotate(-90 1030 640)">WALKWAY TO OFFICES</text>
+  <g fill="none" stroke="var(--aisle)" stroke-width="2"><path d="M1700 410h60m-10-6 10 6-10 6"/><path d="M220 410H160m10-6-10 6 10 6"/></g>
+
+  <!-- outer walls -->
+  <path d="M40 60H1300V180H1840V760H1500V1040H700V820H40Z" fill="none" stroke="var(--wall)" stroke-width="12" stroke-linejoin="miter"/>
+  <!-- inner walls -->
+  <g stroke="var(--wall)" stroke-width="6" fill="none">
+    <path d="M700 820H770M850 820H1060M1110 820H1240M1290 820H1300V760"/>
+    <path d="M960 820V1040M1230 820V1040"/>
+    <path d="M1520 560H1640M1700 560H1840M1520 560V760"/>
+  </g>
+  <!-- openings: roller door, exits, doors -->
+  <rect x="1832" y="390" width="16" height="140" fill="var(--sheet)"/>
+  <path d="M1840 390V530" stroke="var(--wall)" stroke-width="2" stroke-dasharray="8 5"/>
+  <text x="1822" y="460" font-size="11" text-anchor="middle" transform="rotate(-90 1822 460)">ROLLER DOOR 5.6 m</text>
+  <rect x="32" y="600" width="16" height="44" fill="var(--sheet)"/>
+  <rect x="1380" y="1032" width="44" height="16" fill="var(--sheet)"/>
+  <g fill="none" stroke="var(--ink2)" stroke-width="1.2">
+    <path d="M40 600H84"/><path d="M84 600A44 44 0 0 1 40 644"/>
+    <path d="M1380 1040V996"/><path d="M1380 996A44 44 0 0 1 1424 1040"/>
+    <path d="M1060 820V870"/><path d="M1060 870A50 50 0 0 0 1110 820" stroke-dasharray="3 3"/>
+    <path d="M1240 820V870"/><path d="M1240 870A50 50 0 0 0 1290 820" stroke-dasharray="3 3"/>
+    <path d="M1640 560V610"/><path d="M1640 610A60 60 0 0 0 1700 560" stroke-dasharray="3 3"/>
+  </g>
+  <text x="62" y="594" font-size="10">FIRE EXIT</text>
+  <text x="1402" y="1062" font-size="10" text-anchor="middle">STAFF ENTRANCE</text>
+  <rect x="770" y="814" width="80" height="12" fill="var(--mach2)" stroke="var(--ink2)"/>
+  <text x="810" y="808" font-size="9" text-anchor="middle">ISSUE WINDOW</text>
+
+  <!-- columns + grid -->
+  <g id="cols" fill="var(--wall)"></g>
+  <g id="axes" font-size="12"></g>
+
+  <!-- zone labels -->
+  <g font-size="13" letter-spacing="2">
+    <text x="80" y="96">TURNING BAY</text>
+    <text x="80" y="800">MILLING &amp; PREP</text>
+    <text x="1320" y="216">GOODS IN · SAWING</text>
+    <text x="1540" y="740">STORE</text>
+  </g>
+  <g font-size="13" letter-spacing="1.5" text-anchor="middle">
+    <text x="830" y="1020">TOOL CRIB</text><text x="1095" y="1020">QC ROOM · 20 °C</text><text x="1300" y="1000">OFFICE</text>
+  </g>
+
+  <!-- tool crib shelving -->
+  <g fill="url(#hatch)" stroke="var(--ink2)">
+    <rect x="716" y="850" width="18" height="150"/><rect x="760" y="870" width="170" height="16"/><rect x="760" y="930" width="170" height="16"/>
+  </g>
+  <!-- office -->
+  <g fill="var(--mach)" stroke="var(--ink2)">
+    <rect x="1260" y="880" width="60" height="30" rx="2"/><rect x="1340" y="880" width="60" height="30" rx="2"/><rect x="1420" y="880" width="60" height="30" rx="2"/>
+    <rect x="1300" y="790" width="110" height="40" rx="18"/>
+  </g>
+  <g fill="none" stroke="var(--ink2)"><circle cx="1290" cy="924" r="8"/><circle cx="1370" cy="924" r="8"/><circle cx="1450" cy="924" r="8"/></g>
+  <text x="1355" y="814" font-size="9" text-anchor="middle">MEETING</text>
+
+  <!-- store: pallet racking -->
+  <g fill="url(#hatch)" stroke="var(--ink2)">
+    <rect x="1540" y="590" width="80" height="20"/><rect x="1540" y="640" width="280" height="22"/><rect x="1540" y="690" width="280" height="22"/><rect x="1720" y="590" width="100" height="20"/>
+  </g>
+  <!-- bar stock + goods-in bay -->
+  <g fill="url(#hatch)" stroke="var(--ink2)"><rect x="1560" y="200" width="260" height="22"/><rect x="1560" y="330" width="260" height="22"/></g>
+  <text x="1690" y="246" text-anchor="middle" font-size="10">BAR STOCK RACKS</text>
+  <rect x="1580" y="260" width="220" height="56" fill="none" stroke="var(--aisle)" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="1690" y="293" text-anchor="middle" font-size="10">GOODS-IN BAY</text>
+  <!-- prep -->
+  <rect x="560" y="700" width="140" height="34" fill="var(--mach)" stroke="var(--ink2)"/>
+  <text x="630" y="721" text-anchor="middle" font-size="10">DEBURR BENCH</text>
+  <g fill="url(#hatch)" stroke="var(--ink2)"><rect x="760" y="760" width="40" height="30"/><rect x="810" y="760" width="40" height="30"/></g>
+  <text x="805" y="752" text-anchor="middle" font-size="9">CHIP SKIPS</text>
+  <rect x="1320" y="690" width="110" height="46" rx="3" fill="var(--mach)" stroke="var(--ink2)"/>
+  <circle cx="1375" cy="713" r="14" fill="var(--glass)" stroke="var(--ink2)"/>
+  <text x="1375" y="684" text-anchor="middle" font-size="9">PARTS WASHER</text>
+
+  <g id="machines"></g>
+
+  <!-- dimensions -->
+  <g stroke="var(--ink2)" stroke-width="1" fill="none">
+    <path d="M40 30H1840" marker-start="url(#tick)" marker-end="url(#tick)"/><path d="M40 22V50M1840 22V170"/>
+    <path d="M1870 60V1040" marker-start="url(#tick)" marker-end="url(#tick)"/><path d="M1300 60H1880M1510 1040H1880"/>
+    <path d="M40 1070H700" marker-start="url(#tick)" marker-end="url(#tick)"/><path d="M40 830V1078M700 1048V1078"/>
+  </g>
+  <rect x="900" y="21" width="80" height="18" fill="var(--paper)"/><text x="940" y="34" text-anchor="middle" font-size="12">72 000</text>
+  <rect x="1861" y="510" width="18" height="80" fill="var(--paper)"/><text x="1874" y="550" text-anchor="middle" font-size="12" transform="rotate(-90 1874 550)">39 200</text>
+  <rect x="330" y="1061" width="80" height="18" fill="var(--paper)"/><text x="370" y="1074" text-anchor="middle" font-size="12">26 400</text>
+
+  <!-- legend -->
+  <g transform="translate(60 860)">
+    <text x="0" y="0" font-size="12" letter-spacing="1.5">LEGEND</text>
+    <g font-size="11">
+      <rect x="0" y="14" width="24" height="4" fill="var(--aisle)"/><text x="34" y="20">walkway marking</text>
+      <rect x="0" y="32" width="24" height="12" fill="url(#hatch)" stroke="var(--ink2)"/><text x="34" y="42">racking / storage</text>
+      <rect x="4" y="52" width="12" height="12" fill="var(--wall)"/><text x="34" y="62">column 400 × 400, grid 6 m</text>
+      <rect x="0" y="72" width="24" height="14" fill="none" stroke="var(--ink2)" stroke-dasharray="3 3"/><text x="34" y="83">operator zone</text>
+    </g>
+    <g transform="translate(0 130)">
+      <text x="0" y="-8" font-size="11">0</text><text x="125" y="-8" font-size="11" text-anchor="middle">5 m</text><text x="250" y="-8" font-size="11" text-anchor="end">10 m</text>
+      <rect x="0" y="0" width="125" height="6" fill="var(--ink)"/><rect x="125" y="0" width="125" height="6" fill="none" stroke="var(--ink)"/>
+    </g>
+    <g transform="translate(290 40)"><circle r="18" fill="none" stroke="var(--ink2)"/><path d="M0-16 7 9 0 4-7 9Z" fill="var(--ink)"/><text y="-24" font-size="11" text-anchor="middle">N</text></g>
+  </g>
+  <!-- title block -->
+  <g transform="translate(1520 880)" font-size="11">
+    <rect width="320" height="160" fill="var(--sheet)" stroke="var(--ink)" stroke-width="1.5"/>
+    <path d="M0 54H320M0 90H320M0 125H320M160 90V160" stroke="var(--ink)" fill="none"/>
+    <text x="14" y="24" font-size="17" style="fill:var(--ink);font-family:var(--f-display);font-weight:700;letter-spacing:1px">TURNPILOT · SHOP FLOOR</text>
+    <text x="14" y="44">Plan view, level 0 · machine layout</text>
+    <text x="14" y="77">Scale 1:200 · dimensions in mm</text>
+    <text x="14" y="112">Drawn: Bohdan</text><text x="174" y="112">Sheet 1 / 1</text>
+    <text x="14" y="147">Status set by operator</text><text x="174" y="147">Rev. B</text>
+  </g>
+</svg>
+</div>
+
+<aside id="card" aria-live="polite"></aside>
+</div>
+
+<script>
+const M = [
+ {id:"L1",name:"Lathe 1",type:"lathe",kind:"CNC lathe · 2-axis",ctrl:"Fanuc 0i-T",cap:"Ø max 250 · bar Ø52",x:150,y:230,r:0,s:"running",op:"Bohdan",order:"Order 1 · 03057789-2-01",done:1,qty:50,left:"0:09:53",part:"12.1 s"},
+ {id:"L2",name:"Lathe 2",type:"lathe",kind:"CNC lathe · 2-axis",ctrl:"Fanuc 0i-T",cap:"Ø max 250 · bar Ø52",x:300,y:230,r:0,s:"running",op:"Example",order:"ND 012 bushing",done:18,qty:40,left:"0:35:54",part:"97.9 s"},
+ {id:"L3",name:"Lathe 3",type:"lathe",kind:"CNC lathe · 2-axis",ctrl:"Fanuc 0i-T",cap:"Ø max 300 · bar Ø65",x:450,y:230,r:0,s:"setup",op:"Example",order:"Hinge 36, part 1",done:0,qty:120,left:"setting tools",part:"33.6 s"},
+ {id:"L4",name:"Lathe 4",type:"lathe",kind:"CNC lathe · 2-axis",ctrl:"Fanuc 0i-T",cap:"Ø max 300 · bar Ø65",x:600,y:230,r:0,s:"free"},
+ {id:"L5",name:"Lathe 5",type:"lathe",kind:"CNC lathe · Y-axis + live tools",ctrl:"Fanuc 31i-B",cap:"Ø max 350 · bar Ø65",x:750,y:230,r:0,s:"stopped",op:"Example",order:"Part 1",done:7,qty:25,left:"paused",part:"38.2 s",note:"Insert change, T04"},
+ {id:"L6",name:"Lathe 6",type:"lathe",kind:"CNC lathe · sub-spindle",ctrl:"Fanuc 0i-T",cap:"Ø max 250 · bar Ø42",x:900,y:230,r:0,s:"running",op:"Example",order:"Hinge 36, part 2",done:64,qty:120,left:"0:45:22",part:"48.6 s"},
+ {id:"ML1",name:"Manual lathe 1",type:"manual",kind:"Manual centre lathe",ctrl:"none",cap:"Ø max 400 · 1500 between centres",x:1060,y:230,r:0,s:"free"},
+ {id:"ML2",name:"Manual lathe 2",type:"manual",kind:"Manual centre lathe",ctrl:"none",cap:"Ø max 320 · 1000 between centres",x:1210,y:230,r:0,s:"running",op:"Example",order:"Repair shaft",done:0,qty:1,left:"0:40:00",part:"40 min"},
+ {id:"V1",name:"Mill 1",type:"mill",kind:"Vertical machining centre",ctrl:"Fanuc 0i-M",cap:"X800 Y500 Z500 · 20 tools",x:160,y:560,r:180,s:"running",op:"Example",order:"Bracket plate",done:9,qty:30,left:"1:12:00",part:"4:48"},
+ {id:"V2",name:"Mill 2",type:"mill",kind:"Vertical machining centre",ctrl:"Fanuc 0i-M",cap:"X600 Y400 Z450 · 16 tools",x:320,y:560,r:180,s:"free"},
+ {id:"V3",name:"Mill 3",type:"mill",kind:"Vertical machining centre · 4th axis",ctrl:"Fanuc 0i-M",cap:"X1000 Y550 Z550 · 24 tools",x:480,y:560,r:180,s:"setup",op:"Example",order:"Flange, 4 holes",done:0,qty:16,left:"setting tools",part:"6:10"},
+ {id:"L7",name:"Lathe 7",type:"lathe",kind:"CNC lathe · 2-axis",ctrl:"Fanuc 0i-T",cap:"Ø max 250 · bar Ø52",x:780,y:540,r:180,s:"free"},
+ {id:"L8",name:"Lathe 8",type:"lathe",kind:"CNC lathe · 2-axis",ctrl:"Fanuc 0i-T",cap:"Ø max 250 · bar Ø52",x:1180,y:540,r:180,s:"setup",op:"Example",order:"Stud M20",done:0,qty:200,left:"setting tools",part:"12.1 s"},
+ {id:"L9",name:"Lathe 9",type:"lathe",kind:"CNC lathe · sub-spindle",ctrl:"Fanuc 0i-T",cap:"Ø max 250 · bar Ø42",x:1400,y:540,r:180,s:"running",op:"Example",order:"Pin Ø12",done:310,qty:500,left:"1:58:00",part:"37 s"},
+ {id:"S1",name:"Saw 1",type:"saw",kind:"Band saw · bar cut-off",ctrl:"none",cap:"Ø max 260",x:1400,y:290,r:0,s:"running",op:"Example",order:"Bar cut Ø55 × 300",done:42,qty:60,left:"0:18:00",part:"60 s"},
+ {id:"Q1",name:"CMM 1",type:"cmm",kind:"Coordinate measuring machine",ctrl:"PC",cap:"700 × 1000 × 600",x:1095,y:930,r:0,s:"free"}
+];
+const LABEL={running:"Running",setup:"Setup",stopped:"Stopped",free:"Free"};
+const COL={running:"var(--run)",setup:"var(--setup)",stopped:"var(--stop)",free:"var(--free)"};
+const ns="http://www.w3.org/2000/svg";
+
+function turret(cx,cy,r,n){let s=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="var(--mach2)" stroke="var(--ink)" stroke-width=".8"/>`;
+  for(let i=0;i<n;i++){const a=i*2*Math.PI/n,x=cx+Math.cos(a)*(r+2.5),y=cy+Math.sin(a)*(r+2.5);
+    s+=`<rect x="${(x-2).toFixed(1)}" y="${(y-2).toFixed(1)}" width="4" height="4" fill="var(--ink2)" transform="rotate(${i*360/n} ${x.toFixed(1)} ${y.toFixed(1)})"/>`}
+  return s+`<circle cx="${cx}" cy="${cy}" r="3" fill="var(--ink)"/>`}
+function pockets(cx,cy,r,n){let s=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="var(--mach2)" stroke="var(--ink)" stroke-width=".8"/>`;
+  for(let i=0;i<n;i++){const a=i*2*Math.PI/n;s+=`<circle cx="${(cx+Math.cos(a)*(r-4)).toFixed(1)}" cy="${(cy+Math.sin(a)*(r-4)).toFixed(1)}" r="2" fill="var(--ink2)"/>`}return s}
+
+const SHAPE={
+ lathe:()=>`
+  <rect class="halo" x="-62" y="-50" width="124" height="86" rx="8"/>
+  <rect x="34" y="-46" width="24" height="18" fill="var(--mach2)" stroke="var(--ink2)"/>
+  <path d="M38-44v14M43-44v14M48-44v14M53-44v14" stroke="var(--ink2)" stroke-width=".7"/>
+  <rect class="body" x="-55" y="-28" width="110" height="54" rx="4" fill="var(--mach)" stroke="var(--ink)" stroke-width="1.2"/>
+  <rect x="-55" y="-28" width="28" height="54" rx="4" fill="var(--mach2)" stroke="var(--ink)" stroke-width="1"/>
+  <rect x="-22" y="-20" width="60" height="34" rx="2" fill="var(--glass)" stroke="var(--ink2)"/>
+  <circle cx="-17" cy="-3" r="11" fill="var(--mach2)" stroke="var(--ink)"/>
+  <path d="M-17-13v6M-25.7 2l5-3M-8.3 2l-5-3" stroke="var(--ink)" stroke-width="1.6"/>
+  <circle cx="-17" cy="-3" r="3" fill="var(--ink)"/>
+  ${turret(12,0,8,8)}
+  <rect x="27" y="-9" width="9" height="12" fill="var(--mach2)" stroke="var(--ink)"/>
+  <rect x="41" y="12" width="13" height="18" rx="1.5" fill="var(--ink)"/><rect x="43" y="14" width="9" height="6" fill="var(--accent)" opacity=".7"/>
+  <rect x="-40" y="30" width="80" height="22" fill="none" stroke="var(--ink2)" stroke-dasharray="3 3"/>
+  <circle class="lamp" cx="-45" cy="-36" r="5" stroke="var(--ink)" stroke-width=".8"/>`,
+ manual:()=>`
+  <rect class="halo" x="-66" y="-30" width="132" height="66" rx="8"/>
+  <rect class="body" x="-60" y="-14" width="120" height="30" rx="2" fill="var(--mach)" stroke="var(--ink)" stroke-width="1.2"/>
+  <path d="M-34-8H58M-34 10H58" stroke="var(--ink2)"/>
+  <rect x="-60" y="-24" width="28" height="48" rx="2" fill="var(--mach2)" stroke="var(--ink)"/>
+  <circle cx="-26" cy="0" r="9" fill="var(--mach2)" stroke="var(--ink)"/><circle cx="-26" cy="0" r="2.5" fill="var(--ink)"/>
+  <rect x="0" y="-12" width="16" height="28" fill="var(--mach2)" stroke="var(--ink)"/><rect x="4" y="-6" width="8" height="8" fill="var(--ink2)"/>
+  <rect x="42" y="-9" width="14" height="18" fill="var(--mach2)" stroke="var(--ink)"/>
+  <rect x="-30" y="22" width="60" height="16" fill="none" stroke="var(--ink2)" stroke-dasharray="3 3"/>
+  <circle class="lamp" cx="-48" cy="-30" r="4.5" stroke="var(--ink)" stroke-width=".8"/>`,
+ mill:()=>`
+  <rect class="halo" x="-62" y="-52" width="118" height="102" rx="8"/>
+  <rect x="-10" y="-50" width="26" height="16" fill="var(--mach2)" stroke="var(--ink2)"/>
+  <rect class="body" x="-42" y="-36" width="84" height="64" rx="4" fill="var(--mach)" stroke="var(--ink)" stroke-width="1.2"/>
+  ${pockets(-46,-18,15,16)}
+  <rect x="-30" y="-6" width="60" height="26" rx="1" fill="var(--glass)" stroke="var(--ink2)"/>
+  <path d="M-26 0H26M-26 7H26M-26 14H26" stroke="var(--ink2)" stroke-width=".8"/>
+  <rect x="-10" y="-1" width="18" height="12" fill="var(--mach2)" stroke="var(--ink)"/>
+  <circle cx="0" cy="-20" r="8" fill="var(--mach2)" stroke="var(--ink)"/><circle cx="0" cy="-20" r="3" fill="var(--ink)"/>
+  <rect x="44" y="0" width="10" height="20" rx="1.5" fill="var(--ink)"/><rect x="45.5" y="3" width="7" height="6" fill="var(--accent)" opacity=".7"/>
+  <rect x="-34" y="30" width="68" height="18" fill="none" stroke="var(--ink2)" stroke-dasharray="3 3"/>
+  <circle class="lamp" cx="34" cy="-42" r="5" stroke="var(--ink)" stroke-width=".8"/>`,
+ saw:()=>`
+  <rect class="halo" x="-34" y="-30" width="140" height="60" rx="8"/>
+  <rect class="body" x="-28" y="-20" width="56" height="40" rx="3" fill="var(--mach)" stroke="var(--ink)" stroke-width="1.2"/>
+  <ellipse cx="0" cy="0" rx="20" ry="7" fill="none" stroke="var(--ink2)"/><path d="M-20 0H20" stroke="var(--stop)" stroke-width="1.4"/>
+  <rect x="28" y="-6" width="74" height="12" fill="var(--mach2)" stroke="var(--ink2)"/>
+  <path d="M36-6v12M46-6v12M56-6v12M66-6v12M76-6v12M86-6v12M96-6v12" stroke="var(--ink2)" stroke-width=".8"/>
+  <circle class="lamp" cx="-20" cy="-26" r="4.5" stroke="var(--ink)" stroke-width=".8"/>`,
+ cmm:()=>`
+  <rect class="halo" x="-40" y="-34" width="80" height="68" rx="8"/>
+  <rect class="body" x="-32" y="-26" width="64" height="52" fill="var(--stone)" stroke="var(--ink)" stroke-width="1.2"/>
+  <rect x="-36" y="-6" width="72" height="10" fill="var(--mach2)" stroke="var(--ink)"/>
+  <circle cx="6" cy="-1" r="4" fill="var(--ink)"/>
+  <circle class="lamp" cx="26" cy="-20" r="4" stroke="var(--ink)" stroke-width=".8"/>`
+};
+
+const g=document.getElementById("machines");
+M.forEach(m=>{
+  const el=document.createElementNS(ns,"g");
+  el.setAttribute("class","m "+m.s);el.setAttribute("tabindex","0");el.setAttribute("role","button");
+  el.setAttribute("aria-label",`${m.name}, ${LABEL[m.s]}`);el.dataset.id=m.id;
+  el.setAttribute("transform",`translate(${m.x} ${m.y}) rotate(${m.r}) scale(.78)`);
+  const flip=m.r===180?` transform="rotate(180)"`:"";
+  const ly={lathe:66,manual:50,mill:64,saw:44,cmm:48}[m.type];
+  el.innerHTML=SHAPE[m.type]()+`<g${flip}><text y="${m.r===180?-ly+10:ly}" text-anchor="middle" font-size="16" style="fill:var(--ink);font-family:var(--f-display);font-weight:600;letter-spacing:.5px">${m.name.toUpperCase()}</text></g>`;
+  el.querySelector(".halo").style.stroke=COL[m.s];el.querySelector(".lamp").style.fill=COL[m.s];
+  el.addEventListener("click",()=>select(m.id));
+  el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();select(m.id)}});
+  g.appendChild(el);
+});
+
+// columns on a 6 m grid (150 units = 6 000 mm), interior row above the walkway
+const cols=document.getElementById("cols"),axes=document.getElementById("axes");
+const put=(x,y)=>cols.insertAdjacentHTML("beforeend",`<rect x="${x-6}" y="${y-6}" width="12" height="12"/>`);
+for(let i=0;i<=12;i++){const x=40+i*150;
+  if(x<=1300)put(x,60); if(x>=1300)put(x,180);
+  if(i>0&&i<12)put(x,370);
+  if(x<=700)put(x,820);
+  if(i>0&&i<12)axes.insertAdjacentHTML("beforeend",`<g transform="translate(${x} 356)"><circle r="9" fill="var(--sheet)" stroke="var(--ink2)"/><text y="4" text-anchor="middle" font-size="10">${i+1}</text></g>`);
+}
+let filterS=null,sel="L1";
+function apply(){
+  const q=document.getElementById("q").value.trim().toLowerCase();let n=0;
+  M.forEach(m=>{const hay=[m.name,m.kind,m.ctrl,m.type,LABEL[m.s],m.order||""].join(" ").toLowerCase();
+    const ok=(!q||hay.includes(q))&&(!filterS||m.s===filterS);if(ok)n++;
+    g.querySelector(`[data-id="${m.id}"]`).classList.toggle("dim",!ok)});
+  document.getElementById("count").textContent=`${n} of ${M.length} shown`;
+}
+document.getElementById("q").addEventListener("input",apply);
+document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{
+  filterS=filterS===c.dataset.s?null:c.dataset.s;
+  document.querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.s===filterS));apply()}));
+
+function select(id){
+  sel=id;const m=M.find(x=>x.id===id);
+  g.querySelectorAll(".m").forEach(e=>e.classList.toggle("sel",e.dataset.id===id));
+  const busy=m.order;const pct=busy?Math.round(m.done/m.qty*100):0;
+  document.getElementById("card").innerHTML=`
+    <div class="kind">${m.kind}</div>
+    <h2>${m.name}</h2>
+    <span class="pill" style="background:${COL[m.s]}">${LABEL[m.s]}</span>
+    <dl><dt>Control</dt><dd>${m.ctrl}</dd><dt>Capacity</dt><dd>${m.cap}</dd>
+    ${busy?`<dt>Order</dt><dd>${m.order}</dd><dt>Operator</dt><dd>${m.op}</dd><dt>Done</dt><dd>${m.done} of ${m.qty}</dd><dt>Per part</dt><dd>${m.part}</dd><dt>Left</dt><dd>${m.left}</dd>`:`<dt>Order</dt><dd>none running</dd>`}
+    ${m.note?`<dt>Note</dt><dd>${m.note}</dd>`:""}</dl>
+    ${busy?`<div class="bar" aria-label="${pct}% done"><i style="width:${pct}%;background:${COL[m.s]}"></i></div>`:""}
+    <div class="btns"><button id="b-draw">Upload drawing</button><button class="ghost" id="b-open">Open machine</button></div>
+    <p class="note">Mock-up: buttons are not wired. In TurnPilot, "Upload drawing" starts a new job on this machine.</p>`;
+}
+select("L1");apply();
+</script>
