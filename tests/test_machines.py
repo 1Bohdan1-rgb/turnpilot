@@ -72,3 +72,18 @@ def test_a_turret_change_belongs_to_its_machine(app, client):
     lathe2 = db.session.execute(db.select(Machine).filter_by(name="Lathe 2")).scalar_one()
     assert next(s for s in services.job_turret(job, lathe1) if s.position == empty).tool is tool
     assert all(s.change is None for s in services.job_turret(job, lathe2))
+
+
+def test_the_type_is_the_operators_choice_and_the_footprint_a_machine_value(app, client):
+    from turnpilot import passport_reader
+    import json
+
+    machine = services.get_machine()
+    assert machine.machine_kind is None and machine.footprint_length_mm is None  # nothing guessed
+    page = client.get("/machine").get_data(as_text=True)
+    assert "— not set —" in page and "Footprint length" in page
+    client.post("/machine", data={"action": "kind", "machine_kind": "cnc_lathe"})
+    assert machine.machine_kind == "cnc_lathe"
+    assert "Machine type:" in client.post("/machine", data={"action": "kind", "machine_kind": "laser"},
+                                          follow_redirects=True).get_data(as_text=True)
+    assert "footprint_length_mm" in json.dumps(passport_reader.RECORD_MACHINE_TOOL)

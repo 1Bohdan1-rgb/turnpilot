@@ -40,6 +40,7 @@ from .models import (
     Feature,
     Job,
     JobTurretChange,
+    MACHINE_KINDS,
     Machine,
     MachineDocument,
     Material,
@@ -145,6 +146,12 @@ def machine(machine_id=None):
                     if value != getattr(machine, field.name) or services.is_demo(machine, field.name):
                         services.set_machine_value(machine, field.name, value, SOURCE_OPERATOR)
                 flash("Programming values saved.")
+            elif request.form.get("action") == "kind":
+                kind = request.form.get("machine_kind") or None
+                if kind is not None and kind not in MACHINE_KINDS:
+                    raise FormError("Machine type: " + ", ".join(MACHINE_KINDS.values()))
+                machine.machine_kind = kind
+                flash("Machine type saved.")
             elif request.form.get("action") == "stock":
                 text = request.form.get("hex_bar_sizes", "").strip()
                 try:
@@ -182,6 +189,7 @@ def machine(machine_id=None):
     catalogue_status = services.tool_catalogue_status(tools, groups, services.confirmed_rows())
     return render_template(
         "machine.html", machine=machine, tools=tools, materials=materials, tool_types=TOOL_TYPES,
+        machine_kinds=MACHINE_KINDS,
         catalogue_status=catalogue_status,
         iso_groups=ISO_GROUPS, machine_fields=MACHINE_FIELDS, format_value=format_value,
         programming_fields=PROGRAMMING_FIELDS,
