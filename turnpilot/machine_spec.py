@@ -40,6 +40,10 @@ MACHINE_FIELDS = (
     MachineField("live_tooling", "Driven (live) tools", "", "bool", help="milling the flats of a hex"),
     MachineField("c_axis", "C axis", "", "bool", help="milling the flats of a hex"),
     MachineField("control", "CNC control", "", "text", help="shown on the process sheet"),
+    MachineField("rapid_x_m_min", "Rapid traverse X", "m/min", "float", help="cycle time: G00 moves in X"),
+    MachineField("rapid_z_m_min", "Rapid traverse Z", "m/min", "float", help="cycle time: G00 moves in Z"),
+    MachineField("tool_change_s", "Tool change time (tool to tool)", "s", "float",
+                 help="cycle time: each T word; the moves to and from the reference point are taken as part of it"),
 )
 
 # Values a G-code program needs that no catalogue or passport gives: the operator enters them (no default; a

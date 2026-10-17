@@ -50,6 +50,10 @@ class Machine(db.Model):
     live_tooling = db.Column(db.Boolean)
     c_axis = db.Column(db.Boolean)
     control = db.Column(db.String(100))
+    # the cycle time estimate: rapid traverse per axis and the tool change (tool to tool); empty: not known
+    rapid_x_m_min = db.Column(db.Float)
+    rapid_z_m_min = db.Column(db.Float)
+    tool_change_s = db.Column(db.Float)
     # G-code programming values (machine_spec.PROGRAMMING_FIELDS): entered by the operator, no default.
     spindle_right_hand = db.Column(db.String(3))  # "M03" / "M04"
     clearance_x = db.Column(db.Float)
