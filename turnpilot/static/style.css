@@ -208,3 +208,21 @@ tr.row-demo td { background: #fff4d6; }
 .nc .nc-error { background: var(--error-bg); }
 .nc .nc-warning { background: var(--warn-bg); }
 .nc-note { font-family: system-ui, sans-serif; color: var(--warn); margin-left: 12px; white-space: normal; }
+
+
+/* the shop page */
+.shop-scroll { overflow-x: auto; }
+.shop-grid { display: grid; gap: 8px; min-width: min-content; }
+.shop-cell { min-height: 96px; border: 1px dashed var(--border); border-radius: 8px; padding: 4px; }
+.shop-cell.over { border-color: var(--accent); }
+.shop-unplaced { display: flex; flex-wrap: wrap; gap: 8px; }
+.shop-machine { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  background: var(--card); border: 1px solid var(--border); border-left: 6px solid var(--muted); min-width: 140px; }
+.shop-machine .shop-status { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+.shop-machine.status-running { border-left-color: var(--ok); }
+.shop-machine.status-setting-up { border-left-color: var(--accent); }
+.shop-machine.status-stopped { border-left-color: var(--edited); }
+.shop-machine.status-alarm { border-left-color: #c0392b; background: var(--error-bg); }
+.shop-panel { max-width: min(760px, calc(100vw - 32px)); width: 100%; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--card); color: var(--text); }
+.order-drawing { max-width: 100%; max-height: 320px; border: 1px solid var(--border); }

@@ -1793,3 +1793,60 @@ def order_progress(order):
             "left_s": (order.quantity - order.done) * time.total_s, "complete": time.complete,
             "estimate": cycle["estimate"], "demo": cycle["demo"], "missing": missing,
             "stale": gcode_stale(order.program, order.machine)}
+
+
+# --- the shop page -----------------------------------------------------------------------------------------------
+
+SHOP_MAX_ROWS, SHOP_MAX_COLS = 20, 12
+
+
+def place_machine(machine, row, col):
+    """The machine's cell on the shop plan (1-based); a cell holding another machine swaps the two."""
+    if row is None or col is None or not (1 <= row <= SHOP_MAX_ROWS and 1 <= col <= SHOP_MAX_COLS):
+        raise OrderError(f"A place on the plan: row 1 to {SHOP_MAX_ROWS}, column 1 to {SHOP_MAX_COLS}")
+    other = db.session.execute(db.select(Machine).filter_by(shop_row=row, shop_col=col)).scalar()
+    if other is not None and other is not machine:
+        other.shop_row, other.shop_col = machine.shop_row, machine.shop_col
+    machine.shop_row, machine.shop_col = row, col
+    db.session.commit()
+
+
+def set_machine_status(machine, status, name, note=None):
+    from .models import MACHINE_STATUSES, MachineStatus
+
+    name = _name(name)
+    if status not in MACHINE_STATUSES:
+        raise OrderError("Status: " + ", ".join(MACHINE_STATUSES))
+    db.session.add(MachineStatus(machine_id=machine.id, status=status, note=(note or "").strip()[:200] or None,
+                                 decided_by=name))
+    db.session.commit()
+    db.session.refresh(machine)
+
+
+def current_order(machine):
+    from .models import Order
+
+    return db.session.execute(db.select(Order).filter_by(machine_id=machine.id, is_current=True, status="open")).scalar()
+
+
+def machine_orders(machine):
+    from .models import Order
+
+    return db.session.execute(db.select(Order).filter_by(machine_id=machine.id, status="open")
+                              .order_by(Order.id)).scalars().all()
+
+
+def shop_plan():
+    """The machines on the plan's grid (row, col) and the ones not placed yet, each with its status, current order
+    and that order's progress."""
+    cards = []
+    for m in machines():
+        order = current_order(m)
+        cards.append({"machine": m, "status": m.status.status if m.status else "free", "order": order,
+                      "progress": order_progress(order) if order else None})
+    placed = [c for c in cards if c["machine"].shop_row and c["machine"].shop_col]
+    rows = max([c["machine"].shop_row for c in placed] + [2]) + 1
+    cols = max([c["machine"].shop_col for c in placed] + [4]) + 1
+    return {"cards": cards, "placed": {(c["machine"].shop_row, c["machine"].shop_col): c for c in placed},
+            "unplaced": [c for c in cards if c not in placed], "rows": min(rows, SHOP_MAX_ROWS),
+            "cols": min(cols, SHOP_MAX_COLS)}

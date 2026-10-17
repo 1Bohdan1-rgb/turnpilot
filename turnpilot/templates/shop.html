@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Shop{% endblock %}
+{% block content %}
+<h1>Shop</h1>
+<p class="muted small">The plan of the machines. Drag a machine to another cell (or give its row and column in its
+  panel). The status, the order running and the progress are set by the operator by hand: nothing is sent to or read
+  from the machines.</p>
+{% macro card(c) %}
+  {% set m = c.machine %}
+  <div class="shop-machine status-{{ c.status|replace(' ', '-') }}" draggable="true" data-machine="{{ m.id }}"
+       data-panel="{{ url_for('main.shop_machine', machine_id=m.id, fragment=1) }}" tabindex="0" role="button"
+       aria-label="{{ m.name }}: {{ c.status }}">
+    <strong>{{ m.name }}</strong>
+    <span class="shop-status">{{ c.status }}</span>
+    {% if c.order %}<span class="small">{{ c.order.job.name }} · {{ c.order.done }}/{{ c.order.quantity }}</span>
+      {% if c.progress and c.progress.left_s is not none %}<span class="small muted">left
+        {{ "%d:%02d"|format((c.progress.left_s // 3600)|int, ((c.progress.left_s % 3600) // 60)|int) }} h{% if not c.progress.complete %} (incomplete){% endif %}</span>{% endif %}
+    {% else %}<span class="small muted">no order running</span>{% endif %}
+  </div>
+{% endmacro %}
+<div class="shop-scroll">
+  <div class="shop-grid" style="grid-template-columns: repeat({{ plan.cols }}, minmax(150px, 1fr));">
+    {% for r in range(1, plan.rows + 1) %}{% for col in range(1, plan.cols + 1) %}
+      <div class="shop-cell" data-row="{{ r }}" data-col="{{ col }}">
+        {% set c = plan.placed.get((r, col)) %}{% if c %}{{ card(c) }}{% endif %}
+      </div>
+    {% endfor %}{% endfor %}
+  </div>
+</div>
+{% if plan.unplaced %}
+<h2>Not placed yet</h2>
+<div class="shop-unplaced">{% for c in plan.unplaced %}{{ card(c) }}{% endfor %}</div>
+{% endif %}
+
+<dialog id="shop-panel" class="shop-panel">
+  <form method="dialog"><button class="small" aria-label="Close">Close</button></form>
+  <div id="shop-panel-body"></div>
+</dialog>
+
+<script>
+(function () {
+  const panel = document.getElementById("shop-panel");
+  const body = document.getElementById("shop-panel-body");
+  function open(card) {
+    fetch(card.dataset.panel).then(r => r.text()).then(html => { body.innerHTML = html; panel.showModal(); });
+  }
+  document.querySelectorAll(".shop-machine").forEach(card => {
+    card.addEventListener("click", () => open(card));
+    card.addEventListener("keydown", e => { if (e.key === "Enter") open(card); });
+    card.addEventListener("dragstart", e => e.dataTransfer.setData("text/plain", card.dataset.machine));
+  });
+  document.querySelectorAll(".shop-cell").forEach(cell => {
+    cell.addEventListener("dragover", e => { e.preventDefault(); cell.classList.add("over"); });
+    cell.addEventListener("dragleave", () => cell.classList.remove("over"));
+    cell.addEventListener("drop", e => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData("text/plain");
+      const data = new URLSearchParams({row: cell.dataset.row, col: cell.dataset.col});
+      fetch(`/shop/machines/${id}/place`, {method: "POST", body: data, headers: {"X-Requested-With": "fetch"}})
+        .then(() => location.reload());
+    });
+  });
+})();
+</script>
+{% endblock %}

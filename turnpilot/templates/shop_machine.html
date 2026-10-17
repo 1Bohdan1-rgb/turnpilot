@@ -1,0 +1,32 @@
+{% if not fragment %}{% extends "base.html" %}{% endif %}
+{% block content %}
+<h2>{{ machine.name }}</h2>
+<p class="small">Status: <strong>{{ machine.status.status if machine.status else "free" }}</strong>{% if machine.status %}
+  ({{ machine.status.decided_by }}, {{ machine.status.decided_at.strftime("%Y-%m-%d %H:%M") }}{% if machine.status.note %}: {{ machine.status.note }}{% endif %}){% endif %}
+  · <a href="{{ url_for('main.machine', machine_id=machine.id) }}">machine page</a></p>
+<form method="post" action="{{ url_for('main.shop_machine_action', machine_id=machine.id, action='status') }}" class="inline-form">
+  <select name="status" aria-label="Status">{% for s in statuses %}<option value="{{ s }}" {% if machine.status and machine.status.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+  <input name="note" maxlength="200" placeholder="note (optional)" aria-label="Note">
+  <input name="decided_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
+  <button class="small">Set the status</button>
+</form>
+{% if order %}
+  {% set back = url_for("main.shop") %}
+  {% include "_order_panel.html" %}
+{% else %}
+  <p class="muted">No order running on this machine.</p>
+{% endif %}
+{% set others = orders|rejectattr("is_current")|list %}
+{% if others %}<h3>Other open orders here</h3>
+<ul>{% for o in others %}<li><a href="{{ url_for('main.order_detail', order_id=o.id) }}">Order {{ o.id }}</a>: {{ o.job.name }},
+  {{ o.done }} of {{ o.quantity }}
+  <form method="post" action="{{ url_for('main.order_action', order_id=o.id, action='current') }}" class="inline-form">
+    <input type="hidden" name="back" value="{{ url_for('main.shop') }}">
+    <input name="decided_by" maxlength="100" placeholder="name" aria-label="Operator's name" required size="8">
+    <button class="small">Running now</button></form></li>{% endfor %}</ul>{% endif %}
+<form method="post" action="{{ url_for('main.shop_machine_action', machine_id=machine.id, action='place') }}" class="inline-form">
+  <label class="small">Row <input name="row" type="number" min="1" max="20" step="1" value="{{ machine.shop_row or '' }}" required></label>
+  <label class="small">Column <input name="col" type="number" min="1" max="12" step="1" value="{{ machine.shop_col or '' }}" required></label>
+  <button class="small">Place on the plan</button>
+</form>
+{% endblock %}

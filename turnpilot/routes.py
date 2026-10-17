@@ -1558,3 +1558,46 @@ def order_action(order_id, action):
         flash(str(e), "error")
     back = request.form.get("back")
     return redirect(back if back and back.startswith("/") else url_for("main.order_detail", order_id=order.id))
+
+
+# --- the shop page (stage 7.1: by hand, nothing connected to the machines) --------------------------------------
+
+
+@bp.route("/shop")
+def shop():
+    from .models import MACHINE_STATUSES
+
+    return render_template("shop.html", plan=services.shop_plan(), statuses=MACHINE_STATUSES)
+
+
+@bp.route("/shop/machines/<int:machine_id>")
+def shop_machine(machine_id):
+    """The panel of a machine on the shop page: its status, the order running and the other open orders."""
+    from .models import MACHINE_STATUSES
+
+    machine = db.get_or_404(Machine, machine_id)
+    order = services.current_order(machine)
+    return render_template("shop_machine.html", machine=machine, order=order, statuses=MACHINE_STATUSES,
+                           progress=services.order_progress(order) if order else None,
+                           orders=services.machine_orders(machine), fragment=bool(request.args.get("fragment")))
+
+
+@bp.route("/shop/machines/<int:machine_id>/<action>", methods=["POST"])
+def shop_machine_action(machine_id, action):
+    machine = db.get_or_404(Machine, machine_id)
+    try:
+        if action == "place":
+            services.place_machine(machine, _number(request.form, "row", int), _number(request.form, "col", int))
+        elif action == "status":
+            services.set_machine_status(machine, request.form.get("status"), request.form.get("decided_by"),
+                                        request.form.get("note"))
+        else:
+            abort(404)
+    except (FormError, services.OrderError) as e:
+        db.session.rollback()
+        if request.headers.get("X-Requested-With") == "fetch":
+            return {"error": str(e)}, 400
+        flash(str(e), "error")
+    if request.headers.get("X-Requested-With") == "fetch":
+        return {"ok": True}
+    return redirect(url_for("main.shop"))
