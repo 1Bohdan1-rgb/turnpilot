@@ -123,7 +123,10 @@
 
   // the machines on the plan
   function draw() {
-    if (!layer) return;
+    if (layer) drawMachines();
+    listUnplaced();
+  }
+  function drawMachines() {
     layer.innerHTML = "";
     const marker = T * 3;  // a machine with no footprint or type: a marker of a fixed size on screen, not to scale
     M.filter(m => m.x !== null).forEach(m => {
@@ -152,6 +155,8 @@
       dragOnPlan(g, m);
       layer.appendChild(g);
     });
+  }
+  function listUnplaced() {
     const un = document.getElementById("sf-unplaced");
     const rest = M.filter(m => m.x === null);
     un.innerHTML = rest.length ? `<span class="sf-note">Not on the plan yet:</span> ` + rest.map(m =>
