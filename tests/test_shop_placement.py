@@ -114,3 +114,16 @@ def test_the_page_offers_dragging_from_the_list_and_x_y_in_the_card(app, client)
     assert 'id="sf-place"' in page and "Place on the plan" in page and "give X / Y in its card" in page
     css = (Path(__file__).resolve().parent.parent / "turnpilot" / "static" / "style.css").read_text(encoding="utf-8")
     assert ".shop-floor a.sf-button.ghost { color:var(--sf-ink); }" in css
+
+
+def test_the_plan_has_a_scale_fits_the_window_and_fades_covered_labels(app, client):
+    """+ / − / Fit (the whole shop on opening), Ctrl + wheel to the cursor, the background dragged pans; the plan and the
+    card fit the window's height; a label under a machine fades; a drop outside the plan is cancelled."""
+    ready_machine()
+    upload_plan(client)
+    page = client.get("/shop").get_data(as_text=True)
+    for piece in ('id="sf-zoom-in"', 'id="sf-zoom-out"', 'id="sf-fit"', "if (!e.ctrlKey) return;",
+                  "function fitHeight()", "function dimCoveredLabels()", "Dropped outside the plan"):
+        assert piece in page, piece
+    css = (Path(__file__).resolve().parent.parent / "turnpilot" / "static" / "style.css").read_text(encoding="utf-8")
+    assert "main:has(.shop-floor) { max-width:none; }" in css and ".p-zone-label.covered { opacity:.2; }" in css

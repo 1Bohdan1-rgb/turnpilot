@@ -24,8 +24,13 @@
 
 <div class="sf-wrap">
   <div>
-    <div class="sf-planbox">
+    <div class="sf-planbox" id="sf-planbox">
     {% if plan %}
+      <div class="sf-zoom" role="group" aria-label="Plan scale">
+        <button type="button" class="sf-chip" id="sf-zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="sf-chip" id="sf-zoom-out" aria-label="Zoom out">−</button>
+        <button type="button" class="sf-chip" id="sf-fit">Fit</button>
+      </div>
       <svg class="sf-plan" id="sf-plan" viewBox="{{ view_box }}" role="img" aria-label="Top view of the shop with its machines"
            data-width="{{ plan.width_mm }}" data-height="{{ plan.height_mm }}" data-text="{{ text_size }}">
         <defs><pattern id="sf-hatch" width="300" height="300" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -155,6 +160,7 @@
       dragOnPlan(g, m);
       layer.appendChild(g);
     });
+    dimCoveredLabels();
   }
   function listUnplaced() {
     const un = document.getElementById("sf-unplaced");
@@ -271,6 +277,11 @@
       const moved = g.classList.contains("moving");
       start = null; g.classList.remove("moving");
       if (!moved) { select(m.id); return; }
+      const r = svg.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
+        msg.textContent = "Dropped outside the plan: the machine stays where it was.";
+        draw(); return;
+      }
       const [x, y] = toPlan(e);
       if (x !== m.x || y !== m.y) place(m.id, x, y, m.rotation);
     });
@@ -301,7 +312,79 @@
     });
   }
 
-  draw(); apply();
+  // the plan's scale: + / − / Fit (the whole shop, on opening), Ctrl + wheel to the cursor, dragging the background
+  // pans; a machine dragged at any scale still lands on mm (toPlan inverts the screen transform)
+  const box = document.getElementById("sf-planbox"), card = document.getElementById("sf-card");
+  let full = null, vb = null;
+  if (svg) {
+    const b = svg.viewBox.baseVal;
+    full = {x: b.x, y: b.y, w: b.width, h: b.height};
+    vb = {...full};
+  }
+  function setView() {
+    svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    dimCoveredLabels();
+  }
+  function zoom(factor, cx, cy) {
+    const w = Math.min(full.w * 1.5, Math.max(full.w / 40, vb.w * factor)), k = w / vb.w;
+    vb = {x: cx - (cx - vb.x) * k, y: cy - (cy - vb.y) * k, w: w, h: vb.h * k};
+    setView();
+  }
+  function centre() { return [vb.x + vb.w / 2, vb.y + vb.h / 2]; }
+  function rawPoint(evt) {
+    const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  // labels a machine stands on: faded, so the machine reads (and the label is still there)
+  function dimCoveredLabels() {
+    if (!svg) return;
+    const boxes = [...document.querySelectorAll("#sf-machines .m")].map(g => g.getBoundingClientRect());
+    svg.querySelectorAll("text.p-zone-label, text.p-label").forEach(t => {
+      const r = t.getBoundingClientRect();
+      t.classList.toggle("covered", boxes.some(b => r.left < b.right && b.left < r.right && r.top < b.bottom && b.top < r.bottom));
+    });
+  }
+  // the plan and the card fit the window's height (the page does not scroll on a laptop screen)
+  function fitHeight() {
+    if (!svg) return;
+    const stacked = matchMedia("(max-width: 900px)").matches;
+    const below = document.getElementById("sf-unplaced").offsetHeight + document.getElementById("sf-msg").offsetHeight + 24;
+    const top = box.getBoundingClientRect().top + window.scrollY;
+    const h = stacked ? Math.max(300, Math.round(innerHeight * .6)) : Math.max(320, innerHeight - top - below);
+    box.style.height = `${h}px`;
+    if (!stacked) {
+      const over = document.documentElement.scrollHeight - innerHeight;  // paddings below: take them off too
+      if (over > 0) box.style.height = `${Math.max(320, h - over)}px`;
+      card.style.maxHeight = `${box.offsetHeight + below - 24}px`;
+    }
+  }
+  if (svg) {
+    document.getElementById("sf-zoom-in").addEventListener("click", () => zoom(1 / 1.4, ...centre()));
+    document.getElementById("sf-zoom-out").addEventListener("click", () => zoom(1.4, ...centre()));
+    document.getElementById("sf-fit").addEventListener("click", () => { vb = {...full}; setView(); });
+    svg.addEventListener("wheel", e => {
+      if (!e.ctrlKey) return;  // the plain wheel scrolls the page
+      e.preventDefault();
+      const p = rawPoint(e);
+      zoom(e.deltaY > 0 ? 1.25 : 1 / 1.25, p.x, p.y);
+    }, {passive: false});
+    let pan = null;
+    svg.addEventListener("pointerdown", e => {
+      if (e.target.closest(".m")) return;  // a machine: its own drag
+      pan = {x: e.clientX, y: e.clientY, vb: {...vb}, k: 1 / svg.getScreenCTM().a};
+      svg.setPointerCapture(e.pointerId); svg.classList.add("panning");
+    });
+    svg.addEventListener("pointermove", e => {
+      if (!pan) return;
+      vb = {...pan.vb, x: pan.vb.x - (e.clientX - pan.x) * pan.k, y: pan.vb.y - (e.clientY - pan.y) * pan.k};
+      setView();
+    });
+    const endPan = () => { pan = null; svg.classList.remove("panning"); };
+    svg.addEventListener("pointerup", endPan); svg.addEventListener("pointercancel", endPan);
+    addEventListener("resize", () => { fitHeight(); dimCoveredLabels(); });
+  }
+
+  draw(); apply(); fitHeight(); dimCoveredLabels();
   const again = new URLSearchParams(location.search).get("open");  // back from the panel's form: open it again
   const picked = Number(new URLSearchParams(location.search).get("select"));
   if (again && M.some(m => m.id === Number(again))) { select(Number(again)); openPanel(Number(again)); }
