@@ -68,7 +68,8 @@ Stages, in this order:
    profile first, one control, simulation required.
    **Built 2026-10-09** (see "Stage 6: G-code"): the operator checked the Zavisa 36 pin program as a turner; ready
    to run waits for the machine's real values (passport, the operator's programming values).
-7. Probing the blank and sending the program to the machine. **Planned 2026-10-10, not started**: it starts only
+7. Probing the blank and sending the program to the machine. **7.1 (machines, orders, the shop page by hand) built
+   2026-10-17** (see "Stage 7.1"); the rest **planned 2026-10-10, not started**: it starts only
    once the machine's passport shows a probe and the custom macro option (Fanuc Custom Macro B).
    - At the program's start a probing block (Custom Macro B) measures the blank's real Ø and stick-out and sets
      Z0 on the face.
@@ -928,6 +929,29 @@ Migration b8d4f0a2c6e1 (DB backup `instance/turnpilot.db.bak-2026-10-17-before-c
   program 7 12.1 s, jobs/7 program 5 94.7 s. A temporary copy with DEMO values (rapid X 20, Z 24 m/min, change 1.5 s;
   not this machine's): jobs/8 22.5 s, jobs/7 121.4 s. Not compared with a real run.
 
+## Stage 7.1: machines, orders, the shop page (built 2026-10-17, by hand, no connection)
+Plan 1–5 agreed with the user, the five defaults taken (operations / time from the machine's program; library,
+materials, cutting data shared; DXF jobs show the program's profile; one running order per machine; names required).
+Commits 8a3df08 (machines), 30dc433 (job → machine), 7a320fc (orders), edea248 (shop) and the docs commit.
+Migrations c9e5a1b3d7f2 (Job.machine_id / calculated_machine_id, GcodeProgram.machine_id, JobTurretChange.machine_id;
+existing rows → Lathe 1) and d1f6b2c4e8a3 (Order, OrderEvent, OrderOperationMark, MachineStatus, Machine.shop_row /
+shop_col). DB backups `instance/turnpilot.db.bak-2026-10-17-before-job-machine`, `…-before-orders` (taken before the
+migration files).
+- `services.job_machine(job)` replaces the first machine everywhere a job is concerned; the program page, ready and
+  download take the program's own machine. A calculation made for another machine blocks the G-code ("calculate the
+  job for …"); a program made for another machine is out of date.
+- Byte check of commit 2 (asked by the user): jobs 7 and 8 regenerated from a copy of the user's DB, and the 4 real
+  parts by `tools/gcode_real.py` (Zavisa 36 parts 1 / 2 --blank 38x120, НД 012 --blank 55x110, деталь 1 --blank 32x60;
+  plain and --tip-direction 4=3: 8 files), before and after: 10 / 10 the same, byte for byte. `gcode_real.py` needs
+  --blank now (the review form has no blank for these sheets).
+- Orders take the job's newest program for their machine (re-taken by a button); blocks N and the time from
+  `cycle_time`; time left = (quantity − done) × the part's time, "incomplete" while rapids / tool change are not set.
+- Shop: a CSS grid (max 20 × 12 cells; a taken cell swaps the two machines), drag and drop by fetch, a row / column
+  form as the fallback; the panel is a fragment in a <dialog>.
+- Check in a temporary copy (scratchpad `shop_check.py`, Lathe 2 with DEMO values): jobs/8 on Lathe 1 program 7,
+  12.1 s a part (incomplete), 200 − 35 → 2000 s left; jobs/8 on Lathe 2: no program; jobs/7 on Lathe 1 program 5,
+  94.7 s, out of date (the peck depth changed since). The user's DB: no order, no second machine, nothing placed.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -937,7 +961,7 @@ Migration b8d4f0a2c6e1 (DB backup `instance/turnpilot.db.bak-2026-10-17-before-c
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1097 tests pass (2026-10-17). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1104 tests pass (2026-10-17). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

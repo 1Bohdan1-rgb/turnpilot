@@ -442,6 +442,25 @@ reference point (taken as part of the tool change). The rapid traverse X / Z and
 passport or the operator (Machine page), with no default: without them their part is left out of the total and shown
 as not set; unless all three are from the passport the time is marked "without the passport — an estimate".
 
+## Machines, orders and the shop page (stage 7.1, by hand)
+
+- Several machines: "Machines" lists them; a new one gets its name and the four required values typed by the operator
+  (max rpm, power S1, max Ø, turret positions), no default; its turret, programming values and passport start empty.
+  The tool library, the materials and the cutting data are shared; each machine has its page, turret, programming
+  values, passport and bar stock.
+- A job is planned for a machine (its page): the calculation, the turret set-up, the G-code and the cycle time take
+  that machine. Moved to another one, the job keeps its calculation and programs, marked as made for the other
+  machine (no program until it is calculated again). Programs and turret changes record their machine.
+- An order is a job, a quantity and a machine; one job may have orders on several machines. Its operations and time
+  come from the job's newest program for that machine (none: no operation list, no time). The operator records the
+  parts done and marks the operations done, with a name; every record is kept.
+- Shop: the machines on a plan (drag a card to a cell, or a row and column in its panel), each with the status the
+  operator sets (free / setting up / running / stopped / alarm, with a name; the history is kept) and the order
+  running (one per machine). A click opens the panel: the drawing (a PDF or picture; a DXF job links to its program's
+  profile), the operations with the marks, the part's time, done / all and the time left = (all − done) × the
+  part's time, marked incomplete without the passport's values. Nothing is sent to or read from the machines (that is
+  stage 7.4).
+
 ## Skipping an operation
 
 The operator may leave any operation out (e.g. no centring before the self-centring 860-GM drill, 140° point): "Skip"
