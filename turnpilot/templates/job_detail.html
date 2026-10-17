@@ -18,6 +18,20 @@
   {{ job_machine.name }} (its turret and limits).</div>{% endif %}
 {% for w in machine_warnings %}<div class="flash flash-error machine-warning">⚠ {{ w }}</div>{% endfor %}
 
+<h2>Orders</h2>
+<div class="card">
+  {% set orders = job_orders %}
+  {% if orders %}<ul>{% for o in orders %}<li><a href="{{ url_for('main.order_detail', order_id=o.id) }}">Order {{ o.id }}</a>:
+    {{ o.done }} of {{ o.quantity }} on {{ o.machine.name }}{% if o.status == "closed" %} (closed){% elif o.is_current %} (running){% endif %}</li>{% endfor %}</ul>{% endif %}
+  <form method="post" action="{{ url_for('main.create_order', job_id=job.id) }}" class="inline-form">
+    <select name="machine_id" aria-label="Machine">{% for m in machines %}<option value="{{ m.id }}" {% if m.id == job_machine.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select>
+    <input name="quantity" type="number" min="1" step="1" placeholder="quantity" aria-label="Quantity" required>
+    <input name="created_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
+    <button class="small">New order</button>
+  </form>
+  <p class="muted small">An order takes the job's newest program made for its machine (operations and time).</p>
+</div>
+
 <h2>Features</h2>
 {% if job.active_features %}
 <table class="card">

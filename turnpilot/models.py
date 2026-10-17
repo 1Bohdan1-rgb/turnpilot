@@ -50,6 +50,9 @@ class Machine(db.Model):
     live_tooling = db.Column(db.Boolean)
     c_axis = db.Column(db.Boolean)
     control = db.Column(db.String(100))
+    # the shop page: the machine's cell on the plan's grid (empty: not placed yet)
+    shop_row = db.Column(db.Integer)
+    shop_col = db.Column(db.Integer)
     # the cycle time estimate: rapid traverse per axis and the tool change (tool to tool); empty: not known
     rapid_x_m_min = db.Column(db.Float)
     rapid_z_m_min = db.Column(db.Float)
@@ -71,6 +74,12 @@ class Machine(db.Model):
         "TurretSlot", back_populates="machine", order_by="TurretSlot.position", cascade="all, delete-orphan"
     )
     sources = db.relationship("MachineSpecSource", back_populates="machine", cascade="all, delete-orphan")
+    statuses = db.relationship("MachineStatus", order_by="MachineStatus.id")
+
+    @property
+    def status(self):
+        """The operator's last status row (None: never set, shown as "free")."""
+        return self.statuses[-1] if self.statuses else None
 
     def source_of(self, field):
         return next((s for s in self.sources if s.field == field), None)
@@ -577,3 +586,80 @@ class GcodeProgram(db.Model):
 
     job = db.relationship("Job")
     machine = db.relationship("Machine")
+
+
+ORDER_STATUSES = ("open", "closed")
+MACHINE_STATUSES = ("free", "setting up", "running", "stopped", "alarm")
+
+
+class Order(db.Model):
+    """A part (job) to make in a quantity on a machine. The same job may have orders on several machines. Its
+    operations and time come from the job's program made for that machine (program_id; empty: none yet). Nothing is
+    sent to or read from the machine: the operator records the progress by hand."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey("job.id", name="fk_order_job_id"), nullable=False)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_order_machine_id"), nullable=False)
+    program_id = db.Column(db.Integer, db.ForeignKey("gcode_program.id", name="fk_order_program_id"))
+    quantity = db.Column(db.Integer, nullable=False)
+    done = db.Column(db.Integer, nullable=False, default=0, server_default="0")  # parts made, typed by the operator
+    status = db.Column(db.String(10), nullable=False, default="open", server_default="open")
+    is_current = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())  # running now
+    created_by = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=_now)
+
+    job = db.relationship("Job")
+    machine = db.relationship("Machine")
+    program = db.relationship("GcodeProgram")
+    events = db.relationship("OrderEvent", back_populates="order", order_by="OrderEvent.id")
+    marks = db.relationship("OrderOperationMark", back_populates="order", order_by="OrderOperationMark.id")
+
+    @property
+    def done_blocks(self):
+        """The program blocks (N) the operator marked done (the last mark of a block counts)."""
+        state = {}
+        for m in self.marks:
+            state[m.block] = m.done
+        return {block for block, done in state.items() if done}
+
+
+class OrderEvent(db.Model):
+    """What the operator recorded on an order (parts done, made current, closed), with the name and the time. Never
+    changed or deleted."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("order.id", name="fk_order_event_order_id"), nullable=False)
+    kind = db.Column(db.String(20), nullable=False)  # "created", "done", "current", "closed", "program"
+    value = db.Column(db.String(100))
+    decided_by = db.Column(db.String(100), nullable=False)
+    decided_at = db.Column(db.DateTime, nullable=False, default=_now)
+
+    order = db.relationship("Order", back_populates="events")
+
+
+class OrderOperationMark(db.Model):
+    """The operator marks a program block (an operation, by its N) of an order done or not done. Kept as a history."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("order.id", name="fk_order_operation_mark_order_id"),
+                         nullable=False)
+    block = db.Column(db.Integer, nullable=False)
+    title = db.Column(db.String(200))
+    done = db.Column(db.Boolean, nullable=False)
+    decided_by = db.Column(db.String(100), nullable=False)
+    decided_at = db.Column(db.DateTime, nullable=False, default=_now)
+
+    order = db.relationship("Order", back_populates="marks")
+
+
+class MachineStatus(db.Model):
+    """The machine's status as the operator sets it on the shop page (free / setting up / running / stopped / alarm);
+    the last row is the current one. Never changed or deleted."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_machine_status_machine_id"),
+                           nullable=False)
+    status = db.Column(db.String(20), nullable=False)
+    note = db.Column(db.String(200))
+    decided_by = db.Column(db.String(100), nullable=False)
+    decided_at = db.Column(db.DateTime, nullable=False, default=_now)

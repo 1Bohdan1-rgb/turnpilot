@@ -44,6 +44,7 @@ from .models import (
     MachineDocument,
     Material,
     Operation,
+    Order,
     Tool,
     TurretSlot,
     db,
@@ -786,6 +787,8 @@ def job_detail(job_id):
                            turret=services.job_turret(job, services.job_machine(job)),
                            suggestions=services.turret_suggestions(job, services.job_machine(job)),
                            job_machine=services.job_machine(job), machines=services.machines(),
+                           job_orders=db.session.execute(db.select(Order).filter_by(job_id=job.id)
+                                                         .order_by(Order.id)).scalars().all(),
                            depth_hints=services.bore_depth_hints(job),
                            arc_tops=services.arc_top_warnings(job) if job.axial_order_known else {},
                            depth_modes=services.BORE_DEPTH_MODES,
@@ -1505,3 +1508,53 @@ def extraction_file(extraction_id, which):
     if not filename:
         abort(404)
     return send_from_directory(services.drawings_dir(current_app.instance_path), filename)
+
+
+# --- orders ------------------------------------------------------------------------------------------------------
+
+
+@bp.route("/jobs/<int:job_id>/orders", methods=["POST"])
+def create_order(job_id):
+    job = db.get_or_404(Job, job_id)
+    machine = db.get_or_404(Machine, _number(request.form, "machine_id", int, required=True))
+    try:
+        order = services.create_order(job, machine, _number(request.form, "quantity", int),
+                                      request.form.get("created_by"))
+    except (FormError, services.OrderError) as e:
+        flash(str(e), "error")
+        return redirect(url_for("main.job_detail", job_id=job.id))
+    flash(f"Order {order.id}: {order.quantity} × {job.name} on {machine.name}"
+          + ("" if order.program else f" (no program made for {machine.name} yet: no time, no operation list)."))
+    return redirect(url_for("main.order_detail", order_id=order.id))
+
+
+@bp.route("/orders/<int:order_id>")
+def order_detail(order_id):
+    order = db.get_or_404(Order, order_id)
+    return render_template("order.html", order=order, progress=services.order_progress(order),
+                           fragment=bool(request.args.get("fragment")))
+
+
+@bp.route("/orders/<int:order_id>/<action>", methods=["POST"])
+def order_action(order_id, action):
+    order = db.get_or_404(Order, order_id)
+    name = request.form.get("decided_by")
+    try:
+        if action == "done":
+            services.set_order_done(order, _number(request.form, "done", int), name)
+        elif action == "mark":
+            services.mark_order_block(order, _number(request.form, "block", int, required=True),
+                                      request.form.get("title"), request.form.get("done") == "1", name)
+        elif action == "current":
+            services.make_order_current(order, name)
+        elif action == "close":
+            services.close_order(order, name)
+        elif action == "program":
+            services.take_latest_program(order, name)
+        else:
+            abort(404)
+    except (FormError, services.OrderError) as e:
+        db.session.rollback()
+        flash(str(e), "error")
+    back = request.form.get("back")
+    return redirect(back if back and back.startswith("/") else url_for("main.order_detail", order_id=order.id))

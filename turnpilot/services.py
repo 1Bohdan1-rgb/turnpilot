@@ -1686,3 +1686,110 @@ def read_again(extraction, instance_path, config, client=None):
 
 def extraction_data(extraction):
     return DrawingData.model_validate_json(extraction.parsed) if extraction.parsed else None
+
+
+# --- orders (stage 7.1: nothing is sent to or read from the machine; the operator records the progress) ---------
+
+
+class OrderError(ValueError):
+    pass
+
+
+def _name(name):
+    name = (name or "").strip()[:100]
+    if not name:
+        raise OrderError("The operator's name is required")
+    return name
+
+
+def latest_program(job, machine):
+    """The job's newest program made for this machine (None: none yet)."""
+    from .models import GcodeProgram
+
+    return db.session.execute(db.select(GcodeProgram).filter_by(job_id=job.id, machine_id=machine.id)
+                              .order_by(GcodeProgram.id.desc())).scalars().first()
+
+
+def create_order(job, machine, quantity, name):
+    from .models import Order, OrderEvent
+
+    name = _name(name)
+    if not quantity or quantity < 1:
+        raise OrderError("The quantity is a whole number of parts, at least 1")
+    order = Order(job=job, machine=machine, quantity=quantity, created_by=name,
+                  program=latest_program(job, machine))
+    order.events.append(OrderEvent(kind="created", value=f"{quantity} on {machine.name}", decided_by=name))
+    db.session.add(order)
+    db.session.commit()
+    return order
+
+
+def set_order_done(order, done, name):
+    from .models import OrderEvent
+
+    name = _name(name)
+    if done is None or not 0 <= done <= order.quantity:
+        raise OrderError(f"Parts done: 0 to {order.quantity}")
+    order.done = done
+    order.events.append(OrderEvent(kind="done", value=str(done), decided_by=name))
+    db.session.commit()
+
+
+def mark_order_block(order, block, title, done, name):
+    from .models import OrderOperationMark
+
+    order.marks.append(OrderOperationMark(block=block, title=(title or "")[:200], done=done, decided_by=_name(name)))
+    db.session.commit()
+
+
+def make_order_current(order, name):
+    """The order running on its machine now; the machine's other orders are not current any more."""
+    from .models import Order, OrderEvent
+
+    name = _name(name)
+    if order.status != "open":
+        raise OrderError("A closed order cannot run")
+    for other in db.session.execute(db.select(Order).filter_by(machine_id=order.machine_id, is_current=True)).scalars():
+        other.is_current = False
+    order.is_current = True
+    order.events.append(OrderEvent(kind="current", value=order.machine.name, decided_by=name))
+    db.session.commit()
+
+
+def close_order(order, name):
+    from .models import OrderEvent
+
+    name = _name(name)
+    order.status, order.is_current = "closed", False
+    order.events.append(OrderEvent(kind="closed", value=f"{order.done} of {order.quantity}", decided_by=name))
+    db.session.commit()
+
+
+def take_latest_program(order, name):
+    from .models import OrderEvent
+
+    name = _name(name)
+    program = latest_program(order.job, order.machine)
+    if program is None:
+        raise OrderError(f"The job has no program made for {order.machine.name}")
+    order.program = program
+    order.events.append(OrderEvent(kind="program", value=f"program {program.id}", decided_by=name))
+    db.session.commit()
+
+
+def order_progress(order):
+    """The order's operations (the program's blocks) with the operator's marks, the part's time, and the time left
+    = (quantity − done) × the part's time. Without a program: no operations, no time."""
+    if order.program is None:
+        return {"program": None, "blocks": [], "part_s": None, "left_s": None, "complete": False,
+                "estimate": True, "demo": False, "missing": []}
+    cycle = cycle_time(order.program, order.machine)
+    time = cycle["time"]
+    done = order.done_blocks
+    blocks = [{"number": op.number, "title": op.title, "seconds": op.total_s, "done": op.number in done}
+              for op in time.operations if op.number is not None]
+    missing = [label for label, (value, _) in cycle["sources"].items() if value is None]
+    return {"program": order.program, "blocks": blocks, "part_s": time.total_s,
+            "left_s": (order.quantity - order.done) * time.total_s, "complete": time.complete,
+            "estimate": cycle["estimate"], "demo": cycle["demo"], "missing": missing,
+            "stale": gcode_stale(order.program, order.machine)}

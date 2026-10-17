@@ -1,0 +1,60 @@
+{# One order: its operations (the program's blocks) with the operator's marks, parts done, time left. #}
+{% macro mmss(s) %}{{ "%d:%02d:%02d"|format((s // 3600)|int, ((s % 3600) // 60)|int, (s % 60)|int) }}{% endmacro %}
+{% set p = progress %}
+<div class="order-panel">
+  <h2>Order {{ order.id }}: {{ order.quantity }} × <a href="{{ url_for('main.job_detail', job_id=order.job_id) }}">{{ order.job.name }}</a>
+    on {{ order.machine.name }}{% if order.status == "closed" %} (closed){% elif order.is_current %} (running now){% endif %}</h2>
+  <p class="muted small">Nothing is sent to or read from the machine: the operator records the progress here.
+    Created by {{ order.created_by }} {{ order.created_at.strftime("%Y-%m-%d %H:%M") }}.</p>
+  {% set ex = order.job.extraction %}
+  {% if ex and ex.file_type != "dxf" and ex.sent_filename %}
+    <p><a href="{{ url_for('main.extraction_file', extraction_id=ex.id, which='original') }}" target="_blank">
+      <img src="{{ url_for('main.extraction_file', extraction_id=ex.id, which='sent') }}" alt="The drawing" class="order-drawing"></a></p>
+  {% elif p.program %}
+    <p class="small">The drawing is a DXF (no picture of it yet): the profile is on the
+      <a href="{{ url_for('main.gcode_program', program_id=p.program.id) }}">program's page</a> (simulation).</p>
+  {% endif %}
+  {% if not p.program %}
+    <p class="warning">No program made for {{ order.machine.name }}: no operation list, no time. Make one on the
+      job's <a href="{{ url_for('main.job_gcode', job_id=order.job_id) }}">G-code page</a>, then take it here.</p>
+  {% else %}
+    {% if p.stale %}<p class="warning small">Program {{ p.program.id }} is out of date: {{ p.stale|join("; ") }}.</p>{% endif %}
+    <table>
+      <thead><tr><th>N</th><th>Operation</th><th>Time</th><th>Done</th></tr></thead>
+      <tbody>
+      {% for b in p.blocks %}
+        <tr{% if b.done %} class="changed"{% endif %}><td>{{ b.number }}</td><td class="small">{{ b.title }}</td>
+          <td>{{ "%.1f"|format(b.seconds) }} s</td>
+          <td><form method="post" action="{{ url_for('main.order_action', order_id=order.id, action='mark') }}" class="inline-form">
+            <input type="hidden" name="block" value="{{ b.number }}"><input type="hidden" name="title" value="{{ b.title }}">
+            <input type="hidden" name="done" value="{{ '0' if b.done else '1' }}"><input type="hidden" name="back" value="{{ back }}">
+            <input name="decided_by" maxlength="100" placeholder="name" aria-label="Operator's name" required size="8">
+            <button class="small">{{ "Undo" if b.done else "Done" }}</button></form></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p>Part: <strong>{{ "%.1f"|format(p.part_s) }} s</strong> · done {{ order.done }} of {{ order.quantity }} ·
+      left: <strong>{{ mmss(p.left_s) }}</strong>
+      {% if p.demo %}<span class="warning small">DEMO machine values: not this machine's time</span>
+      {% elif not p.complete %}<span class="warning small">time incomplete: {{ p.missing|join(", ") }} not set (no
+        passport): rapids / tool changes are not in it</span>
+      {% elif p.estimate %}<span class="muted small">without the passport — an estimate</span>{% endif %}</p>
+  {% endif %}
+  {% if order.status == "open" %}
+  <form method="post" action="{{ url_for('main.order_action', order_id=order.id, action='done') }}" class="inline-form">
+    <label class="small">Parts done <input name="done" type="number" min="0" max="{{ order.quantity }}" step="1" value="{{ order.done }}"></label>
+    <input name="decided_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
+    <input type="hidden" name="back" value="{{ back }}"><button class="small">Save</button></form>
+  <form method="post" class="inline-form">
+    <input name="decided_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
+    <input type="hidden" name="back" value="{{ back }}">
+    {% if not order.is_current %}<button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='current') }}">Running now on {{ order.machine.name }}</button>{% endif %}
+    <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='program') }}">Take the latest program</button>
+    <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='close') }}">Close the order</button>
+  </form>
+  {% endif %}
+  {% if order.events %}<details class="small"><summary>History ({{ order.events|length + order.marks|length }})</summary><ul class="muted">
+    {% for e in order.events %}<li>{{ e.decided_at.strftime("%Y-%m-%d %H:%M") }} {{ e.decided_by }}: {{ e.kind }} {{ e.value or "" }}</li>{% endfor %}
+    {% for m in order.marks %}<li>{{ m.decided_at.strftime("%Y-%m-%d %H:%M") }} {{ m.decided_by }}: N{{ m.block }} {{ "done" if m.done else "not done" }}</li>{% endfor %}
+  </ul></details>{% endif %}
+</div>
