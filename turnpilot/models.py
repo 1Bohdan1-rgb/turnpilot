@@ -188,6 +188,8 @@ class JobTurretChange(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     job_id = db.Column(db.Integer, db.ForeignKey("job.id", name="fk_job_turret_change_job_id"), nullable=False)
+    # the machine whose turret it changes (a job moved to another machine does not take it along)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_job_turret_change_machine_id"))
     position = db.Column(db.Integer, nullable=False)
     tool_id = db.Column(db.Integer, db.ForeignKey("tool.id", name="fk_job_turret_change_tool_id"))  # empty: none
     machine_tool_id = db.Column(db.Integer, db.ForeignKey("tool.id", name="fk_job_turret_change_machine_tool_id"))
@@ -319,6 +321,10 @@ class Job(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     material_id = db.Column(db.Integer, db.ForeignKey("material.id"), nullable=False)
+    # The machine the job is planned for (calculation, turret set-up, G-code, cycle time); empty: the first machine.
+    # calculated_machine_id: the machine of the current calculation (another one: calculate again).
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_job_machine_id"))
+    calculated_machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_job_calculated_machine_id"))
     quantity = db.Column(db.Integer, nullable=False, default=1)
     blank_diameter = db.Column(db.Float, nullable=False)  # round bar: Ø; hex bar: size across flats S
     blank_length = db.Column(db.Float, nullable=False)
@@ -337,6 +343,8 @@ class Job(db.Model):
     created_at = db.Column(db.DateTime, default=_now)
 
     material = db.relationship("Material")
+    machine = db.relationship("Machine", foreign_keys=[machine_id])
+    calculated_machine = db.relationship("Machine", foreign_keys=[calculated_machine_id])
     # Features and operations are never deleted (only flagged), so the edit log keeps its context.
     features = db.relationship("Feature", back_populates="job", order_by="Feature.id")
     operations = db.relationship(
@@ -554,6 +562,7 @@ class GcodeProgram(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     job_id = db.Column(db.Integer, db.ForeignKey("job.id", name="fk_gcode_program_job_id"), nullable=False)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_gcode_program_machine_id"))  # made for it
     calculation_version = db.Column(db.Integer, nullable=False)
     dialect = db.Column(db.String(60), nullable=False)
     text = db.Column(db.Text, nullable=False)
@@ -567,3 +576,4 @@ class GcodeProgram(db.Model):
     created_at = db.Column(db.DateTime, default=_now, nullable=False)
 
     job = db.relationship("Job")
+    machine = db.relationship("Machine")

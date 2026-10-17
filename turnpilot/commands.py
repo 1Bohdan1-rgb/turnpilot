@@ -10,9 +10,9 @@ from .models import Job, db
 def gcode_demo_command(job_id):
     """Fill the empty programming values (and a job's set-up) with DEMO values, to look at a program before the
     machine's values are known. They are marked DEMO: no program is ready to run while one is used."""
-    machine = services.get_machine()
     job = db.session.get(Job, job_id) if job_id else None
     if job_id and job is None:
         raise click.ClickException(f"no job {job_id}")
+    machine = services.job_machine(job) if job else services.get_machine()
     services.set_gcode_demo(machine, job)
     click.echo("DEMO values set (source: demo). The operator replaces them on the Machine page and the job page.")

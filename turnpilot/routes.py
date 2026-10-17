@@ -657,7 +657,8 @@ def _job_from_form(form):
         blank_length=_number(form, "blank_length", required=True),
         blank_shape=blank_shape,
     )
-    machine = services.get_machine()
+    machine = services.get_machine()  # a new job is planned for the first machine; the job page changes it
+    job.machine = machine
     if machine and _stock_diameter(job) > machine.max_diameter:
         raise FormError(f"Blank diameter exceeds machine max diameter ({machine.max_diameter:g} mm)")
     return job
@@ -779,16 +780,30 @@ def jobs():
 def job_detail(job_id):
     job = db.get_or_404(Job, job_id)
     return render_template("job_detail.html", job=job, feature_types=FEATURE_TYPES, positions=POSITIONS,
-                           machine_warnings=services.machine_warnings(job, services.get_machine()),
+                           machine_warnings=services.machine_warnings(job, services.job_machine(job)),
                            suggested_free_end=services.suggest_free_end(job),
                            conflicts=services.radius_conflicts(job) if job.axial_order_known else {},
-                           turret=services.job_turret(job, services.get_machine()),
-                           suggestions=services.turret_suggestions(job, services.get_machine()),
+                           turret=services.job_turret(job, services.job_machine(job)),
+                           suggestions=services.turret_suggestions(job, services.job_machine(job)),
+                           job_machine=services.job_machine(job), machines=services.machines(),
                            depth_hints=services.bore_depth_hints(job),
                            arc_tops=services.arc_top_warnings(job) if job.axial_order_known else {},
                            depth_modes=services.BORE_DEPTH_MODES,
                            library=db.session.execute(db.select(Tool).filter_by(is_retired=False)
                                                       .order_by(Tool.name)).scalars().all())
+
+
+@bp.route("/jobs/<int:job_id>/machine", methods=["POST"])
+def set_job_machine(job_id):
+    """The machine the job is planned for; its calculation and programs made for another machine are kept, marked."""
+    job = db.get_or_404(Job, job_id)
+    machine = db.get_or_404(Machine, _number(request.form, "machine_id", int, required=True))
+    if machine.id != services.job_machine(job).id:
+        job.machine = machine
+        db.session.commit()
+        flash(f"The job is planned for {machine.name} now: calculate it for this machine"
+              + (" (the current calculation was made for another one)." if job.current_operations else "."))
+    return redirect(url_for("main.job_detail", job_id=job.id))
 
 
 @bp.route("/jobs/<int:job_id>/turret", methods=["POST"])
@@ -799,7 +814,8 @@ def change_job_turret(job_id):
         position = _number(request.form, "position", int, required=True)
         tool_id = _number(request.form, "tool_id", int)
         tool = db.get_or_404(Tool, tool_id) if tool_id else None
-        change = services.change_job_turret(job, _machine_or_404(), position, tool, request.form.get("decided_by"),
+        change = services.change_job_turret(job, services.job_machine(job), position, tool,
+                                            request.form.get("decided_by"),
                                             request.form.get("note"))
     except (FormError, services.TurretChangeError) as e:
         flash(str(e), "error")
@@ -827,7 +843,7 @@ def undo_job_turret_change(job_id, change_id):
 def job_gcode(job_id):
     """What a program needs, the values it would use with their sources, and the programs made so far."""
     job = db.get_or_404(Job, job_id)
-    machine = _machine_or_404()
+    machine = services.job_machine(job)
     if request.method == "POST":
         readiness, record = services.generate_gcode(job, machine)
         if record is None:
@@ -848,7 +864,7 @@ def gcode_program(program_id):
     from .gcode import svg
 
     record = db.get_or_404(GcodeProgram, program_id)
-    machine = _machine_or_404()
+    machine = record.machine or services.job_machine(record.job)  # the machine it was made for
     job = record.job
     sim = json.loads(record.simulation)
     settings = json.loads(record.settings)
@@ -879,7 +895,7 @@ def gcode_program(program_id):
 def gcode_ready(program_id):
     record = db.get_or_404(GcodeProgram, program_id)
     try:
-        services.mark_gcode_ready(record, _machine_or_404(), request.form)
+        services.mark_gcode_ready(record, record.machine or services.job_machine(record.job), request.form)
     except services.GcodeError as e:
         flash(f"Not ready to run: {e}.", "error")
     else:
@@ -891,7 +907,7 @@ def gcode_ready(program_id):
 @bp.route("/gcode/<int:program_id>/download")
 def gcode_download(program_id):
     record = db.get_or_404(GcodeProgram, program_id)
-    if record.status != "ready" or services.gcode_stale(record, _machine_or_404()):
+    if record.status != "ready" or services.gcode_stale(record, record.machine or services.job_machine(record.job)):
         abort(403, "Only a program marked ready to run, still matching the job and the machine, is downloaded.")
     name = f"O{record.job_id % 10000 or 1:04d}_job{record.job_id}_v{record.id}.nc"
     return current_app.response_class(record.text, mimetype="text/plain",
@@ -987,7 +1003,7 @@ def choose_arc_radius(job_id, feature_id):
         return redirect(url_for("main.job_detail", job_id=job_id))
     source = {"dimension": "dimension", "drawn": "drawn", "own": "operator"}[choice]
     note = (request.form.get("note") or "").strip()[:200] or None
-    flash(services.decide_arc_radius(feature, source, radius, note, name, _machine_or_404()))
+    flash(services.decide_arc_radius(feature, source, radius, note, name, services.job_machine(feature.job)))
     top = services.arc_top(feature.job, feature, radius)
     if top:
         flash(top, "error")
@@ -1037,7 +1053,7 @@ def calculate(job_id):
         flash("Add at least one feature before calculating.", "error")
         return redirect(url_for("main.job_detail", job_id=job.id))
     had_operations = bool(job.current_operations)
-    services.calculate_operations(job, _machine_or_404())
+    services.calculate_operations(job, services.job_machine(job))
     if had_operations:
         flash("Previous operations were archived. See the calculation history.")
     return redirect(url_for("main.operations", job_id=job.id))
@@ -1046,7 +1062,7 @@ def calculate(job_id):
 @bp.route("/jobs/<int:job_id>/operations")
 def operations(job_id):
     job = db.get_or_404(Job, job_id)
-    machine = _machine_or_404()
+    machine = services.job_machine(job)
     return render_template("operations.html", job=job, machine=machine,
                            machine_warnings=services.machine_warnings(job, machine))
 
@@ -1103,7 +1119,7 @@ def edit_operation(op_id):
     if op.is_archived:
         flash("Archived operations are read-only.", "error")
         return redirect(url_for("main.history", job_id=op.job_id))
-    machine = _machine_or_404()
+    machine = services.job_machine(op.job)
     if request.method == "POST":
         try:
             edits = services.apply_operation_edit(

@@ -39,6 +39,11 @@ def get_machine():
     return db.session.execute(db.select(Machine).order_by(Machine.id)).scalars().first()
 
 
+def job_machine(job):
+    """The machine a job is planned for (a job without one: the first machine)."""
+    return (job.machine if job is not None and job.machine is not None else None) or get_machine()
+
+
 def machines():
     return db.session.execute(db.select(Machine).order_by(Machine.id)).scalars().all()
 
@@ -193,7 +198,8 @@ class JobSlot:
 
 def job_turret(job, machine) -> list[JobSlot]:
     """The machine's turret with the job's active changes over it (a job without changes: the machine's)."""
-    changes = {c.position: c for c in (job.turret_changes if job is not None else []) if c.active}
+    changes = {c.position: c for c in (job.turret_changes if job is not None else [])
+               if c.active and c.machine_id in (None, machine.id)}
     return [JobSlot(s.position, changes[s.position].tool, changes[s.position]) if s.position in changes
             else JobSlot(s.position, s.tool) for s in machine.slots]
 
@@ -221,7 +227,8 @@ def change_job_turret(job, machine, position, tool, name, note=None):
     now = datetime.now(timezone.utc)
     if current.change is not None:
         current.change.removed_by, current.change.removed_at = name, now
-    change = JobTurretChange(job=job, position=position, tool=tool, machine_tool=slot.tool, decided_by=name,
+    change = JobTurretChange(job=job, machine_id=machine.id, position=position, tool=tool, machine_tool=slot.tool,
+                             decided_by=name,
                              note=(note or "").strip()[:200] or None, created_at=now)
     db.session.add(change)
     db.session.commit()
@@ -374,6 +381,7 @@ def calculate_operations(job, machine):
     Nothing is deleted: archived operations keep their status and edit log.
     """
     version = job.last_calculation_version + 1
+    job.calculated_machine_id = machine.id
     # the operator's skips go on to the same operation (feature, type, mode) of the new version
     skips = {(op.feature_id, op.tool_type, op.rough_finish): op for op in job.current_operations
              if op.status == "skipped"}
@@ -524,6 +532,9 @@ def gcode_readiness(job, machine):
     result = readiness.check(bool(job.axial_order_known), operations,
                              [t.name for t in job.tools_changed_since_calculation], source.source if source else None,
                              programming, labels, job_setup)
+    if job.current_operations and job.calculated_machine_id not in (None, machine.id):
+        result.blockers.insert(0, f"the calculation was made for {job.calculated_machine.name}: calculate the job "
+                                  f"for {machine.name}")
     by_id = {op.id: op for op in job.current_operations}
     for op_id in result.usable:  # a bore's drill: the operator decides what the drawing's depth means
         op = by_id[op_id]
@@ -831,7 +842,8 @@ def generate_gcode(job, machine):
         "compensation": [list(c) for c in program.compensation],
         "turret_setup": turret_setup_lines(job),
     }
-    record = GcodeProgram(job=job, calculation_version=job.last_calculation_version, dialect=fanuc.NAME, text=text,
+    record = GcodeProgram(job=job, machine_id=machine.id, calculation_version=job.last_calculation_version,
+                          dialect=fanuc.NAME, text=text,
                           sha256=hashlib.sha256(text.encode("ascii")).hexdigest(),
                           settings=json.dumps(gcode_settings(job, machine), ensure_ascii=False),
                           simulation=json.dumps(simulation, ensure_ascii=False))
@@ -844,6 +856,8 @@ def gcode_stale(record, machine):
     """Why a program no longer matches the job and the machine (empty: it still does)."""
     job = record.job
     reasons = []
+    if record.machine_id is not None and record.machine_id != job_machine(job).id:
+        reasons.append(f"made for {record.machine.name}; the job is planned for {job_machine(job).name} now")
     if record.calculation_version != job.last_calculation_version:
         reasons.append("the job was calculated again after this program")
     for feature in job.active_features:

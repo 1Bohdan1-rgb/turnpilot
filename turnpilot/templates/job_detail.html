@@ -7,6 +7,15 @@
   blank {{ job.blank_label }} × {{ job.blank_length|round(2) }} mm
   {% if job.extraction %}· created from drawing <a href="{{ url_for('main.extraction_file', extraction_id=job.extraction.id, which='original') }}" target="_blank">{{ job.extraction.original_filename }}</a>{% endif %}
 </p>
+<form method="post" action="{{ url_for('main.set_job_machine', job_id=job.id) }}" class="inline-form">
+  <label class="small">Planned for the machine
+    <select name="machine_id" aria-label="Machine">{% for m in machines %}<option value="{{ m.id }}" {% if m.id == job_machine.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select></label>
+  <button class="small">Set</button>
+  <a class="small" href="{{ url_for('main.machine', machine_id=job_machine.id) }}">{{ job_machine.name }}: turret and values</a>
+</form>
+{% if job.current_operations and job.calculated_machine_id and job.calculated_machine_id != job_machine.id %}
+<div class="warning">The current calculation was made for {{ job.calculated_machine.name }}: Calculate again for
+  {{ job_machine.name }} (its turret and limits).</div>{% endif %}
 {% for w in machine_warnings %}<div class="flash flash-error machine-warning">⚠ {{ w }}</div>{% endfor %}
 
 <h2>Features</h2>

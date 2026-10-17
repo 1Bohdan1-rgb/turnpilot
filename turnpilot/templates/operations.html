@@ -5,6 +5,8 @@
 <p class="muted">
   {{ job.material.name }} (ISO {{ job.material.iso_group }}) · blank Ø{{ job.blank_diameter|round(2) }} × {{ job.blank_length|round(2) }} mm ·
   {{ machine.name }}, max {{ machine.max_rpm }} rpm ·
+  {% if job.calculated_machine_id and job.calculated_machine_id != machine.id %}<strong class="warning">calculated for
+    {{ job.calculated_machine.name }}: calculate again for {{ machine.name }}</strong> ·{% endif %}
   <a href="{{ url_for('main.job_detail', job_id=job.id) }}">back to features</a>
   {% if job.archived_operations %}· <a href="{{ url_for('main.history', job_id=job.id) }}">calculation history</a>{% endif %}
 </p>
