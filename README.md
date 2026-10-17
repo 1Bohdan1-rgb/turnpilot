@@ -461,6 +461,17 @@ as not set; unless all three are from the passport the time is marked "without t
   part's time, marked incomplete without the passport's values. Nothing is sent to or read from the machines (that is
   stage 7.4).
 
+## Tool groups and rapids over the material
+
+- Operations one after another with the same tool: one G28 and tool change for the group; every block keeps its
+  T word (no indexing: the offset stays active, the operator may restart from its N) and its safe retract, no M01
+  between them; the next block's start goes X to the safe diameter first, then Z.
+- Roughing follows the material the passes written before leave: a pass with nothing to cut is left out (noted), a
+  rapid along Z runs only where the material is at least 1 mm below (and 1 mm before a face), else the tool feeds;
+  the way in to a taper / arc pass goes up first and feeds its last step down. The simulation errs on a G00 into
+  the material, between blocks too. The passes still run to the next face (a taper may take its neighbours'
+  material: the order of the operations is a later step).
+
 ## Skipping an operation
 
 The operator may leave any operation out (e.g. no centring before the self-centring 860-GM drill, 140° point): "Skip"

@@ -517,6 +517,7 @@ Planner constants (`turnpilot/planner.py`):
 | `METRIC_THREAD_DEPTH_FACTOR` | 0.613·P | external thread depth | ISO 68-1 (h3), from memory | code | open (C77 depth is for the full profile, not used for VM: operator decision) |
 | `INTERNAL_THREAD_DEPTH_FACTOR` | 0.541·P | internal thread depth | ISO 68-1 (H1), from memory | code | open (as above) |
 | thread passes and infeed series | C77 count (P 1 / 1.5 / 2: 5 / 6 / 8; internal 1.5: 6); series ϕ 0.3, 1, x − 1 | thread passes | TT C77, C82 | code | verified (other pitches: the tool's ap range, open) |
+| `RAPID_STOCK_MARGIN_MM` (`gcode/program.py`) | 1 mm | G00 over the material vs feed (roughing) | the operator's rule (2026-10-17) | code | open |
 | `THREAD_RUN_IN_PITCHES` (`gcode/program.py`) | run-in ≥ 3·P (max with the machine's value) | G92 start Z | rule of thumb (the operator, 2026-10-16) | code | open |
 | thread spring pass | one 0 mm pass | thread passes | rule of thumb | code | open |
 | `TAP_HOLES_C157` / `TAP_HOLES_C158` | PHD (drill) and PHDX (max) for cutting taps: M3–M48 coarse (19), 17 fine; else d − P | tap drill Ø, the drills accepted | SRT C157, C158 | code | verified (other threads: d − P, open) |
@@ -952,6 +953,34 @@ migration files).
   12.1 s a part (incomplete), 200 − 35 → 2000 s left; jobs/8 on Lathe 2: no program; jobs/7 on Lathe 1 program 5,
   94.7 s, out of date (the peck depth changed since). The user's DB: no order, no second machine, nothing placed.
 
+## Shop panel fixes, tool groups, rapids over the material (2026-10-17)
+Plan agreed with the user (with the corrections: T word kept in every block; G00 ≥ 1 mm from the material; the
+transition between blocks X then Z). Commits 5f76667 (order panel), 27c843d (B4 tool groups), 0fef871 (B5 rapids)
+and the docs commit. No migration; the files frozen by `dxf-blind-freeze` untouched.
+- Order / shop panel: one form, one operator field (from the machine's status when set; empty is an error); a mark
+  shows ✓, the name and the time, "Cancel the mark" adds a row; "left" counts the finished parts only (explained);
+  the shop panel opens again after an action; `back` accepts local paths only.
+- B4: `fanuc.render` leaves out G28 and M01 between blocks with the same tool; the T word stays; the simulation and
+  the cycle time take the same T as no change.
+- B5: the builder keeps the stock its straight passes leave (`_stock_r`, an upper bound); a pass with no material
+  is left out, an air part of a pass is a rapid when the material is ≥ `RAPID_STOCK_MARGIN_MM` (1 mm, the operator's
+  rule) below and before it, the way in to a taper / arc pass uses `_approach` (up first, the last step fed).
+  A first version recomputed the start Ø over the section's own span only and dropped a whole operation whose
+  passes also cleared a neighbour (a synthetic taper + groove part; the finishing then cut 5.4 mm): replaced by the
+  pass-by-pass rule before the commit. Not done (later, the user's decision): the operations' order (НД 012's taper
+  still roughs its neighbours' material, from D55).
+- Cause found (НД 012 gcode/8): the taper is roughed from the bar D55 (the planner passes over the arc next to it)
+  and its steps run to the Ø50 face, so the Ø45, Ø38.5 and arc roughing that follow fed through air (N3 70 mm, N5
+  108 mm, N6 41 mm; 275 mm in all, measured by replaying the program over the stock).
+- Measured (B4 → B5; scratchpad `b_metrics.py`, `b_compare.py`, `air_cuts.py`; jobs from a copy of the user's DB):
+  jobs/7 342 lines, cutting 94.7 → 78.1 s, DEMO total 113.9 → 97.9 s, air 274.5 → 45.9 mm; jobs/8 the same byte
+  for byte; real НД 012 air 220 → 23 mm, деталь 1 52 → 15 mm; Zavisa 36 only the X / Z split. Before B4 → after B4:
+  jobs/7 341 → 326 lines, 14 → 9 tool changes, DEMO total 121.4 → 113.9 s. jobs/7 and jobs/8: 0 simulation errors.
+- НД 012 extraction 27 ("lengths sum to 92 ≠ 114"): read by an older DXF version (dxf:4809a076, 2026-10-06) that gave a
+  threaded section a thread row only (no od_turn); a thread is not an axial section, so its 22 mm is missing
+  (114 − 22 = 92). Fixed the same day (ab942d5: od_turn + thread); extractions 28 and 30 sum to 114. Not a bug now:
+  27 is a stale record (its job, 4, was confirmed from it).
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -961,7 +990,7 @@ migration files).
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1104 tests pass (2026-10-17). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1112 tests pass (2026-10-17). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
