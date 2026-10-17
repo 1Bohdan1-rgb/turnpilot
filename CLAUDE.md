@@ -978,8 +978,8 @@ and the docs commit. No migration; the files frozen by `dxf-blind-freeze` untouc
   jobs/7 341 → 326 lines, 14 → 9 tool changes, DEMO total 121.4 → 113.9 s. jobs/7 and jobs/8: 0 simulation errors.
 - НД 012 extraction 27 ("lengths sum to 92 ≠ 114"): read by an older DXF version (dxf:4809a076, 2026-10-06) that gave a
   threaded section a thread row only (no od_turn); a thread is not an axial section, so its 22 mm is missing
-  (114 − 22 = 92). Fixed the same day (ab942d5: od_turn + thread); extractions 28 and 30 sum to 114. Not a bug now:
-  27 is a stale record (its job, 4, was confirmed from it).
+  (114 − 22 = 92). Fixed the same day (ab942d5: od_turn + thread); extractions 28 (job 4) and 30 (job 7) sum to 114.
+  Not a bug now: 27 is a stale reading never confirmed (no job).
 
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
