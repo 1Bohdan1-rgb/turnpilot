@@ -77,17 +77,21 @@ def _command(c) -> list[str]:
     raise TypeError(f"unknown command {c!r}")
 
 
-def _block(b: Block) -> list[str]:
+def _block(b: Block, home: bool = True, stop: bool = True) -> list[str]:
+    """A block of one operation. After a block with the same tool: no G28 (the tool stays where the safe retract left
+    it), but its T word again (no indexing: the offset is active and the operator may restart from this N); no M01
+    before a block with the same tool."""
     title = comment_lines(f"T{b.tool_position:02d} {b.tool_name} - {b.title}")
     lines = [f"N{b.number} " + title[0]] + title[1:]
     for note in b.notes:
         lines += comment_lines(note)
     for warning in b.warnings:
         lines += comment_lines(f"CHECK: {warning}")
-    lines += _command(Home()) + _command(ToolCall(b.tool_position))
+    lines += (_command(Home()) if home else []) + _command(ToolCall(b.tool_position))
     for c in b.commands:
         lines += _command(c)
-    lines += _command(OptionalStop())
+    if stop:
+        lines += _command(OptionalStop())
     return lines
 
 
@@ -102,8 +106,11 @@ def render(program: Program) -> str:
     for warning in program.warnings:
         lines += comment_lines(f"CHECK: {warning}")
     lines.append("G21 G18 G40 G99")
-    for b in program.blocks:
-        lines += _block(b)
+    blocks = program.blocks
+    for i, b in enumerate(blocks):
+        same_before = i > 0 and blocks[i - 1].tool_position == b.tool_position
+        same_after = i + 1 < len(blocks) and blocks[i + 1].tool_position == b.tool_position
+        lines += _block(b, home=not same_before, stop=not same_after)
     lines += ["M05"] + _command(Home()) + ["M30", "%"]
     return "\n".join(lines) + "\n"
 

@@ -66,6 +66,7 @@ class _Run:
         self.css = self.rpm = self.limit = None
         self.feed = None
         self.motion = None
+        self.tool = None
 
     def n_at(self, d: float) -> float | None:
         if self.rpm:
@@ -121,7 +122,10 @@ class _Run:
         if 28 in ln.g:
             self.x = self.z = None
             return
+        if "T" in words and words["T"] // 100 == self.tool:
+            return  # the same tool called again: no indexing, no time
         if "T" in words:
+            self.tool = words["T"] // 100
             self.op.tool_changes += 1
             self.op.tool_change_s = None if self.change is None else self.op.tool_changes * self.change
             self.css = self.rpm = self.limit = None

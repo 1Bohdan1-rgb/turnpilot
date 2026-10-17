@@ -598,6 +598,8 @@ class _Sim:
                     self.homed_z = True
                     self.pos = (self.pos[0], HOME[1])
                 continue
+            if "T" in words and words["T"] // 100 == self.tool:
+                continue  # the same tool called again (a block after one with the same tool): no indexing
             if "T" in words:
                 if not (self.homed_x and self.homed_z) or self.pos != HOME:
                     self.error(n, "tool change away from the reference point (G28 U0. then G28 W0. first)")
