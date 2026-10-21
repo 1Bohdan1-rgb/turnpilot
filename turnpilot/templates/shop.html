@@ -260,7 +260,9 @@
       .then(r => r.json().then(j => [r.ok, j]))
       .then(([ok, j]) => {
         if (!ok) { msg.textContent = j.error; draw(); return; }
-        location.href = `${location.pathname}?select=${id}`;
+        // the page comes back with the same scale and scroll, and says where the machine went
+        const view = vb ? `&view=${[vb.x, vb.y, vb.w, vb.h].map(v => Math.round(v)).join(",")}` : "";
+        location.href = `${location.pathname}?select=${id}&placed=${j.x},${j.y}${view}`;
       });
   }
   function dragOnPlan(g, m) {
@@ -384,7 +386,19 @@
     addEventListener("resize", () => { fitHeight(); dimCoveredLabels(); });
   }
 
-  draw(); apply(); fitHeight(); dimCoveredLabels();
+  draw(); apply(); fitHeight();
+  const args = new URLSearchParams(location.search);
+  const view = (args.get("view") || "").split(",").map(Number);
+  if (svg && view.length === 4 && view.every(Number.isFinite) && view[2] > 0 && view[3] > 0) {
+    vb = {x: view[0], y: view[1], w: view[2], h: view[3]};
+    setView();
+  }
+  const placed = (args.get("placed") || "").split(",").map(Number);
+  if (placed.length === 2 && placed.every(Number.isFinite)) {
+    const m = M.find(x => x.id === Number(args.get("select")));
+    if (m) { msg.textContent = `${m.name} placed at X ${placed[0]}, Y ${placed[1]} mm.`; msg.classList.add("sf-msg-ok"); }
+  }
+  dimCoveredLabels();
   const again = new URLSearchParams(location.search).get("open");  // back from the panel's form: open it again
   const picked = Number(new URLSearchParams(location.search).get("select"));
   if (again && M.some(m => m.id === Number(again))) { select(Number(again)); openPanel(Number(again)); }

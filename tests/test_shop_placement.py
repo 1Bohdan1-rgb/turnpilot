@@ -42,7 +42,7 @@ def test_a_place_needs_a_plan_and_a_name_snaps_to_100_mm_and_is_kept(app, client
     assert place(client, machine, 9000, 6000, name="").get_json()["error"] == "The operator's name is required"
     assert "outside the plan" in place(client, machine, 80000, 6000).get_json()["error"]
     assert place(client, machine, 9000, 6000, rotation=45).get_json()["error"] == "Rotation: 0, 90, 180 or 270"
-    assert place(client, machine, 9037, 5962).get_json() == {"ok": True}
+    assert place(client, machine, 9037, 5962).get_json() == {"ok": True, "x": 9000, "y": 6000}  # the snapped place
     place(client, machine, 9037, 5962, rotation=90, name="Ivan")
     assert [(p.x_mm, p.y_mm, p.rotation, p.placed_by) for p in machine.placements] == [
         (9000, 6000, 0, "Bohdan"), (9000, 6000, 90, "Ivan")]
@@ -123,6 +123,7 @@ def test_the_plan_has_a_scale_fits_the_window_and_fades_covered_labels(app, clie
     upload_plan(client)
     page = client.get("/shop").get_data(as_text=True)
     for piece in ('id="sf-zoom-in"', 'id="sf-zoom-out"', 'id="sf-fit"', "if (!e.ctrlKey) return;",
+                  "&placed=${j.x},${j.y}${view}", 'args.get("view")',
                   "function fitHeight()", "function dimCoveredLabels()", "Dropped outside the plan"):
         assert piece in page, piece
     css = (Path(__file__).resolve().parent.parent / "turnpilot" / "static" / "style.css").read_text(encoding="utf-8")

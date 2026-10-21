@@ -261,6 +261,7 @@ main:has(.shop-floor) { max-width:none; }  /* the shop page uses the window's wi
 .sf-operator input { font:inherit; padding:6px 8px; border:1px solid var(--sf-hair); background:var(--sf-sheet);
   color:var(--sf-ink); border-radius:6px; width:130px; }
 .sf-msg { min-height:1em; margin:6px 0 0; color:var(--sf-stop); font-size:13px; }
+.sf-msg.sf-msg-ok { color:var(--sf-run); }
 .sf-empty { padding:24px; }
 .sf-unplaced { margin-top:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .p-sheet { fill:var(--sf-sheet); }

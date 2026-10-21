@@ -1618,9 +1618,10 @@ def shop_machine(machine_id):
 def shop_machine_action(machine_id, action):
     machine = db.get_or_404(Machine, machine_id)
     try:
+        placed = None
         if action == "place":
             rotation = request.form.get("rotation", "")
-            services.place_machine(machine, _float_or_none(request.form.get("x_mm")),
+            placed = services.place_machine(machine, _float_or_none(request.form.get("x_mm")),
                                    _float_or_none(request.form.get("y_mm")),
                                    int(rotation) if rotation.lstrip("-").isdigit() else None,
                                    request.form.get("placed_by"))
@@ -1635,7 +1636,7 @@ def shop_machine_action(machine_id, action):
             return {"error": str(e)}, 400
         flash(str(e), "error")
     if request.headers.get("X-Requested-With") == "fetch":
-        return {"ok": True}
+        return {"ok": True, "x": placed.x_mm, "y": placed.y_mm} if placed else {"ok": True}
     return redirect(_local(request.form.get("back")) or url_for("main.shop"))
 
 
