@@ -216,6 +216,8 @@
           ${o.part ? `<dt>Per part</dt><dd>${esc(o.part)}</dd><dt>Left</dt><dd>${esc(o.left)}${o.incomplete ? " (incomplete: no rapids / tool changes without the passport's values)" : ""}</dd>` : ""}
           ${o.no_program ? `<dt>Time</dt><dd>no program for this machine</dd>` : ""}`
           : `<dt>Order</dt><dd>none running</dd>`}
+        ${m.queue.map(q => `<dt>Next</dt><dd>${esc(q.job)}, ${q.quantity} pcs${q.done ? ` (${q.done} done)` : ""}${q.no_program ? " · no program for this machine" : ""}</dd>`).join("")}
+        ${m.all_left !== null ? `<dt>All orders left</dt><dd>${esc(m.all_left)}${m.all_incomplete ? " (incomplete: no rapids / tool changes without the passport's values)" : ""}${m.all_without_program ? ` · ${m.all_without_program} order(s) without a program are not in it` : ""}</dd>` : ""}
       </dl>
       ${o ? `<div class="sf-bar" role="img" aria-label="${pct}% done"><i class="sf-${m.status}" style="width:${pct}%"></i></div>` : ""}
       <div class="sf-btns">

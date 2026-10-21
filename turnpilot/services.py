@@ -1881,6 +1881,23 @@ def shop_machines():
                 "incomplete": bool(progress["program"]) and not progress["complete"],
                 "no_program": progress["program"] is None,
             }
+        # the queue: the machine's other open orders, in the order they were made; the time left of all of them
+        queue, total, incomplete, without_program = [], 0.0, False, 0
+        for o in machine_orders(m):
+            p = order_progress(o)
+            if p["program"] is None:
+                without_program += 1
+            else:
+                total += p["left_s"]
+                incomplete = incomplete or not p["complete"]
+            if not o.is_current:
+                queue.append({"id": o.id, "job": o.job.name, "quantity": o.quantity, "done": o.done,
+                              "left": _clock(p["left_s"]) if p["left_s"] is not None else None,
+                              "no_program": p["program"] is None})
+        item["queue"] = queue
+        item["all_left"] = _clock(total) if machine_orders(m) else None
+        item["all_incomplete"] = incomplete
+        item["all_without_program"] = without_program
         out.append(item)
     return out
 

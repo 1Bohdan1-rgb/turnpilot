@@ -61,3 +61,28 @@ def test_the_status_panel_of_7_1_still_opens_from_the_card(app, client):
     assert "<html" not in panel and "Set the status" in panel and "Place on the plan" not in panel
     client.post(f"/shop/machines/{machine.id}/status", data={"status": "running", "decided_by": "Bohdan"})
     assert machine.status.status == "running"
+
+
+def test_the_card_shows_the_queue_and_the_time_left_of_all_orders(app, client):
+    """Lathe 1: the stud running, НД 012-like part next; the queue lists every open order not running and the time
+    left of all of them (incomplete while the passport's values are missing; an order without a program is named)."""
+    machine = ready_machine()
+    stud = make_job([Feature(type="face"), Feature(type="od_turn", diameter=20, length=24), Feature(type="parting")],
+                    blank=22, length=29, stickout=35, machine=machine, name="Stud")
+    pin = make_job([Feature(type="face"), Feature(type="od_turn", diameter=30, length=40), Feature(type="parting")],
+                   blank=32, length=45, stickout=50, machine=machine, name="Pin")
+    other = make_job([Feature(type="face"), Feature(type="od_turn", diameter=24, length=10)], blank=26, length=15,
+                     stickout=20, machine=machine, name="Collar")
+    services.generate_gcode(stud, machine)
+    services.generate_gcode(pin, machine)
+    running = services.create_order(stud, machine, 50, "Bohdan")
+    services.make_order_current(running, "Bohdan")
+    services.set_order_done(running, 10, "Bohdan")
+    queued = services.create_order(pin, machine, 40, "Bohdan")
+    services.create_order(other, machine, 5, "Bohdan")  # no program made for it
+    (m,) = machines_on(client.get("/shop").get_data(as_text=True))
+    assert [(q["job"], q["quantity"], q["no_program"]) for q in m["queue"]] == [("Pin", 40, False), ("Collar", 5, True)]
+    left = services.order_progress(running)["left_s"] + services.order_progress(queued)["left_s"]
+    assert m["all_left"] == services._clock(left) and m["all_incomplete"] and m["all_without_program"] == 1
+    page = client.get("/shop").get_data(as_text=True)
+    assert "<dt>Next</dt>" in page and "All orders left" in page
