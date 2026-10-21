@@ -1003,6 +1003,10 @@ Machine.machine_kind / footprint_length_mm / footprint_width_mm); DB backup
   with a name saved and shown with a yellow outline over the walkway; dark theme; phone width (the page 407 px, the
   plan scrolls in a 310 px box). The user's DB: no plan uploaded, Lathe 1 not placed (listed under the plan), its
   order 1 (1 of 50, 12.1 s a part, incomplete) and status running (Bohdan) in the card.
+- Later fixes (2026-10-17 / 21): dragging from the not-placed list by pointer events and X / Y / rotation in the card
+  (2b4c607); + / − / Fit, Ctrl + wheel, background pan, fits 1920 × 1080, labels under a machine fade (3bdfd25); after a
+  placement the page keeps its scale / scroll and says where the machine went (9deda0a: the drop point was right, the
+  page came back fitted); the card's queue and the time left of all orders (the docs commit's predecessor).
 - pytest took 15+ min once: the computer was switched off during that run; a timed run with durations: 1121 tests in
   4 min, the slowest 7.8 s (test_gcode_nose), nothing waits on a server.
 
@@ -1015,7 +1019,7 @@ Machine.machine_kind / footprint_length_mm / footprint_width_mm); DB backup
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1125 tests pass (2026-10-17). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1128 tests pass (2026-10-21). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
