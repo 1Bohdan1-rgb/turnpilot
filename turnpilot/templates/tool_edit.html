@@ -32,6 +32,10 @@
     <input name="max_ramp_angle" type="number" step="any" min="0" max="89" value="{{ tool.max_ramp_angle if tool.max_ramp_angle is not none else '' }}"></label>
   <label>Source of RMPX (catalogue page, holder)
     <input name="max_ramp_source" maxlength="200" value="{{ tool.max_ramp_source or '' }}"></label>
+  <label>Entering angle κr, ° (turning: the insert in its holder, e.g. 93° for a J holder)
+    <input name="entering_angle_deg" type="number" step="any" min="1" max="179" value="{{ tool.entering_angle_deg if tool.entering_angle_deg is not none else '' }}"></label>
+  <label>Source of κr (catalogue page, holder)
+    <input name="entering_angle_source" maxlength="200" value="{{ tool.entering_angle_source or '' }}"></label>
   <label>DMIN — smallest bore, mm (boring: the holder's, from the catalogue)
     <input name="min_bore_diameter" type="number" step="any" min="0" value="{{ tool.min_bore_diameter if tool.min_bore_diameter is not none else '' }}"></label>
   <label>Source of DMIN (catalogue page, holder)
@@ -66,6 +70,18 @@
   </form>
   {% endfor %}
   {% if tool.min_bore_diameter is not none %}<p class="small muted">Now: DMIN {{ tool.min_bore_diameter }} mm{% if tool.min_bore_source %} ({{ tool.min_bore_source }}){% endif %}.</p>{% endif %}
+</div>
+{% endif %}
+{% if kr %}
+<div class="card">
+  <h2>Entering angle κr by the holder (a suggestion: confirm it)</h2>
+  {% set style, angle, source = kr %}
+  <form method="post" action="{{ url_for('main.take_entering_angle', tool_id=tool.id) }}" class="inline">
+    <input type="hidden" name="holder_style" value="{{ style }}">
+    {{ tool.holder_code }}: style {{ style }}, κr {{ angle|round(1) }}° ({{ source }})
+    <button type="submit">Take κr {{ angle|round(1) }}°</button>
+  </form>
+  {% if tool.entering_angle_deg is not none %}<p class="small muted">Now: κr {{ tool.entering_angle_deg }}°{% if tool.entering_angle_source %} ({{ tool.entering_angle_source }}){% endif %}.</p>{% endif %}
 </div>
 {% endif %}
 {% if rmpx %}

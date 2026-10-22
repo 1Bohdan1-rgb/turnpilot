@@ -1343,6 +1343,33 @@ RMPX_TABLE = (
 )
 
 
+# The entering angle κr by the holder style letter (the 3rd letter of an ISO 5610 holder code: DVJNR -> J). A
+# suggestion only: the operator takes it by a click. (letter, κr, source)
+ENTERING_ANGLE_TABLE = (
+    ("J", 93.0, "Sandvik Turning tools catalogue: KAPR 93.0° (DVJNR / DDJNR), confirmed by the user 2026-10-22"),
+    ("L", 95.0, "ISO 5608 style L, from memory: check in the catalogue"),
+    ("A", 90.0, "ISO 5608 style A, from memory: check in the catalogue"),
+    ("F", 90.0, "ISO 5608 style F, from memory: check in the catalogue"),
+    ("G", 90.0, "ISO 5608 style G, from memory: check in the catalogue"),
+    ("K", 75.0, "ISO 5608 style K, from memory: check in the catalogue"),
+    ("N", 62.5, "ISO 5608 style N, from memory: check in the catalogue"),
+    ("Q", 107.5, "ISO 5608 style Q, from memory: check in the catalogue"),
+    ("S", 45.0, "ISO 5608 style S, from memory: check in the catalogue"),
+    ("U", 93.0, "ISO 5608 style U, from memory: check in the catalogue"),
+    ("V", 72.5, "ISO 5608 style V, from memory: check in the catalogue"),
+)
+
+
+def entering_angle_suggestion(holder_code: str | None) -> tuple[str, float, str] | None:
+    """(style letter, κr, source) for an ISO turning holder code (5 letters first: clamping, insert shape, style,
+    clearance, hand: 'DVJNR 2020K16' -> J); None for other codes."""
+    m = re.match(r"[A-Z]{2}([A-Z])[A-Z][RLN]", re.sub(r"\s+", "", holder_code or "").upper())
+    if not m:
+        return None
+    return next(((letter, angle, source) for letter, angle, source in ENTERING_ANGLE_TABLE if letter == m.group(1)),
+                None)
+
+
 # DMIN, the smallest bore a boring holder goes into, by insert and holder, from the catalogue. A suggestion only: the
 # operator confirms which holder is on the tool. (insert at the start of its code, holder, its code's start, DMIN, source)
 DMIN_TABLE = (

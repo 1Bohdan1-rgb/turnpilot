@@ -500,6 +500,13 @@ def _ramp_angle(form):
     return angle
 
 
+def _entering_angle(form):
+    angle = _number(form, "entering_angle_deg")
+    if angle is not None and not 0 < angle < 180:
+        raise FormError("Entering angle κr: degrees, within 0..180")
+    return angle
+
+
 def _tool_fields(form):
     """The editable fields of a tool from its form (not its type) or raise FormError."""
     name = form.get("name", "").strip()
@@ -533,6 +540,8 @@ def _tool_fields(form):
         holder_code=_holder_code(form),
         max_ramp_angle=_ramp_angle(form),
         max_ramp_source=form.get("max_ramp_source", "").strip()[:200] or None,
+        entering_angle_deg=_entering_angle(form),
+        entering_angle_source=form.get("entering_angle_source", "").strip()[:200] or None,
         min_bore_diameter=_number(form, "min_bore_diameter"),
         min_bore_source=form.get("min_bore_source", "").strip()[:200] or None,
         point_angle_deg=_point_angle(form),
@@ -590,6 +599,8 @@ def edit_tool(tool_id):
             flash(str(e), "error")
     return render_template("tool_edit.html", tool=tool, iso_groups=ISO_GROUPS,
                            rmpx=planner.rmpx_suggestions(tool.insert_code, tool.holder_code),
+                           kr=planner.entering_angle_suggestion(tool.holder_code)
+                           if tool.type in ("facing", "turning_rough", "turning_finish") else None,
                            dmin=planner.dmin_suggestions(tool.insert_code, tool.holder_code)
                            if tool.type in ("boring", "boring_rough") else [])
 
@@ -607,6 +618,21 @@ def take_rmpx(tool_id):
     tool.max_ramp_source = f"{chosen[2]}, holder {style} (confirmed by the operator)"
     db.session.commit()
     flash(f"RMPX {chosen[1]:g}° set for '{tool.name}' with the holder {style}.")
+    return redirect(url_for("main.edit_tool", tool_id=tool.id))
+
+
+@bp.route("/tools/<int:tool_id>/entering-angle", methods=["POST"])
+def take_entering_angle(tool_id):
+    """The operator takes κr for the holder style of the tool's holder code (planner.ENTERING_ANGLE_TABLE)."""
+    tool = _active_tool_or_404(tool_id)
+    chosen = planner.entering_angle_suggestion(tool.holder_code)
+    if chosen is None or chosen[0] != request.form.get("holder_style", ""):
+        flash("No entering angle for this holder code.", "error")
+        return redirect(url_for("main.edit_tool", tool_id=tool.id))
+    tool.entering_angle_deg = chosen[1]
+    tool.entering_angle_source = f"{chosen[2]}; holder {tool.holder_code} (taken by the operator)"[:200]
+    db.session.commit()
+    flash(f"κr {chosen[1]:g}° set for '{tool.name}' (holder {tool.holder_code}).")
     return redirect(url_for("main.edit_tool", tool_id=tool.id))
 
 

@@ -185,6 +185,11 @@ class Tool(db.Model):
     # the chuck (the catalogue's max in-copying angle). Empty: not known, no such move is programmed for it.
     max_ramp_angle = db.Column(db.Float)
     max_ramp_source = db.Column(db.String(200))  # where RMPX comes from (catalogue page, holder) and who chose it
+    # Turning tools: the entering angle κr of the insert in its holder (e.g. 93° for a J-style holder), with its
+    # source. With the insert's point angle it gives the trailing edge the simulation checks against the finished
+    # profile. Empty: not known, the edge is taken as flat (and a cut it makes below the profile is an error).
+    entering_angle_deg = db.Column(db.Float)
+    entering_angle_source = db.Column(db.String(200))
     # Boring tools: the smallest bore the holder goes into (the catalogue's DMIN), with its source. Empty: not known.
     min_bore_diameter = db.Column(db.Float)
     min_bore_source = db.Column(db.String(200))
