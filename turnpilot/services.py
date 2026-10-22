@@ -449,6 +449,39 @@ def accept_turret_setup(job, machine, name, signature):
     return setup
 
 
+def copy_turret(machine, source, name):
+    """The machine's turret becomes `source`'s, position by position, by the operator (name required); both turrets
+    as they were are kept (MachineTurretCopy). Refused when `source` holds a tool at a position this machine lacks."""
+    from .models import MachineTurretCopy
+
+    name = (name or "").strip()[:100]
+    if not name:
+        raise TurretChangeError("The operator's name is required to copy a turret")
+    if source is None or source.id == machine.id:
+        raise TurretChangeError("Choose another machine to copy the turret from")
+    mine = {s.position: s for s in machine.slots}
+    beyond = [f"T{s.position} {s.tool.name}" for s in source.slots if s.tool is not None and s.position not in mine]
+    if beyond:
+        raise TurretChangeError(f"{source.name} has tools at positions {machine.name} lacks: {', '.join(beyond)}")
+    before = {str(p): s.tool_id for p, s in sorted(mine.items())}
+    theirs = {s.position: s.tool for s in source.slots}
+    for position, slot in mine.items():
+        slot.tool = theirs.get(position)
+    after = {str(p): s.tool.id if s.tool else None for p, s in sorted(mine.items())}
+    copy = MachineTurretCopy(machine_id=machine.id, from_machine_id=source.id, copied_by=name,
+                             before=json.dumps(before), after=json.dumps(after))
+    db.session.add(copy)
+    db.session.commit()
+    return copy
+
+
+def turret_copies(machine):
+    from .models import MachineTurretCopy
+
+    return db.session.execute(db.select(MachineTurretCopy).filter_by(machine_id=machine.id)
+                              .order_by(MachineTurretCopy.id)).scalars().all()
+
+
 def undo_job_turret_change(change, name):
     name = (name or "").strip()[:100]
     if not name:
@@ -682,6 +715,13 @@ def gcode_readiness(job, machine):
     if job.current_operations and job.calculated_machine_id not in (None, machine.id):
         result.blockers.insert(0, f"the calculation was made for {job.calculated_machine.name}: calculate the job "
                                   f"for {machine.name}")
+    calculated = min((op.created_at for op in job.current_operations if op.created_at), default=None)
+    copied = [c for c in turret_copies(machine) if calculated and c.copied_at.replace(tzinfo=None)
+              > calculated.replace(tzinfo=None)] if machine else []
+    if copied:
+        c = copied[-1]
+        result.blockers.insert(0, f"{machine.name}'s turret was copied from {c.from_machine.name} by {c.copied_by} on "
+                                  f"{c.copied_at:%Y-%m-%d %H:%M}, after the calculation: calculate the job again")
     by_id = {op.id: op for op in job.current_operations}
     for op_id in result.usable:  # a bore's drill: the operator decides what the drawing's depth means
         op = by_id[op_id]
@@ -1077,6 +1117,10 @@ def gcode_stale(record, machine):
     if made and any((c.created_at and c.created_at.replace(tzinfo=None) > made)
                     or (c.removed_at and c.removed_at.replace(tzinfo=None) > made) for c in job.turret_changes):
         reasons.append("the job's turret set-up changed after this program")
+    for c in turret_copies(record.machine or machine):
+        if made and c.copied_at.replace(tzinfo=None) > made:
+            reasons.append(f"the machine's turret was copied from {c.from_machine.name} by {c.copied_by} on "
+                           f"{c.copied_at:%Y-%m-%d %H:%M}")
     then = {row["name"]: (row["value"], row["source"]) for row in json.loads(record.settings)}
     now = {row["name"]: (row["value"], row["source"]) for row in gcode_settings(job, machine)}
     changed = [row["label"] for row in gcode_settings(job, machine) if then.get(row["name"]) != now[row["name"]]]

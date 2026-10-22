@@ -152,6 +152,14 @@ def machine(machine_id=None):
                     if value != getattr(machine, field.name) or services.is_demo(machine, field.name):
                         services.set_machine_value(machine, field.name, value, SOURCE_OPERATOR)
                 flash("Programming values saved.")
+            elif request.form.get("action") == "copy_turret":
+                source = db.session.get(Machine, _number(request.form, "from_machine_id", int, required=True))
+                try:
+                    copy = services.copy_turret(machine, source, request.form.get("copied_by"))
+                except services.TurretChangeError as e:
+                    raise FormError(str(e)) from None
+                flash(f"{machine.name}'s turret copied from {copy.from_machine.name} by {copy.copied_by}. Jobs "
+                      "calculated for it before: calculate them again.")
             elif request.form.get("action") == "kind":
                 kind = request.form.get("machine_kind") or None
                 if kind is not None and kind not in MACHINE_KINDS:
@@ -200,6 +208,8 @@ def machine(machine_id=None):
         iso_groups=ISO_GROUPS, machine_fields=MACHINE_FIELDS, format_value=format_value,
         programming_fields=PROGRAMMING_FIELDS,
         hex_bar_sizes=", ".join(f"{s:g}" for s in hex_sizes),
+        machines=services.machines(), turret_copies=services.turret_copies(machine),
+        tool_names={t.id: t.name for t in db.session.execute(db.select(Tool)).scalars()},
     )
 
 

@@ -134,6 +134,22 @@
   </table>
   <button type="submit">Save turret</button>
 </form>
+{% set others = machines|rejectattr("id", "equalto", machine.id)|list %}
+{% if others %}
+<form method="post" class="card inline-form">
+  <input type="hidden" name="action" value="copy_turret">
+  <label>Copy the turret from <select name="from_machine_id" aria-label="Machine to copy from">
+    {% for m in others %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}</select></label>
+  <input name="copied_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
+  <button type="submit">Copy the turret from the other machine</button>
+  <span class="small muted">every position of this machine takes the other's tool (or empty); kept in the history</span>
+</form>
+{% endif %}
+{% if turret_copies %}<details class="card small"><summary>Turret copies ({{ turret_copies|length }})</summary><ul>
+  {% for c in turret_copies %}<li>{{ c.copied_at.strftime("%Y-%m-%d %H:%M") }}: from {{ c.from_machine.name }}, {{ c.copied_by }}
+    {% set before = c.before|fromjson %}{% set after = c.after|fromjson %}
+    <span class="muted">— changed: {% for p, t in after.items() if before[p] != t %}T{{ p }} {{ tool_names.get(before[p], "empty") }} → {{ tool_names.get(t, "empty") }}{% if not loop.last %}, {% endif %}{% else %}nothing{% endfor %}</span></li>{% endfor %}
+</ul></details>{% endif %}
 
 <h2>Tool library</h2>
 <div class="card">
