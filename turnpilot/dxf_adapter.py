@@ -19,6 +19,11 @@ on them):
 - a dimension's text is in its block as pieces, Cyrillic letters as \\U+XXXX, %%c for Ø, %%d for °, a Cyrillic "х"
   in chamfers, deviations as separate pieces after empty ones: they are joined into one text as KOMPAS writes it.
   Diameter and angular dimensions (an end view, a chamfer angle) are not taken: the KOMPAS reader has no use for them.
+
+A half section (one half of the main view a view, the other hatched as a section) whose halves differ, e.g. flats on a
+collar seen in the view half, has no contour symmetric about the axis, so the reader cannot take it. It is not read:
+the adapter says where the halves differ and what the end view shows, and the part is entered by hand (03057789-1-01;
+reading it is for a later stage, with other half-section drawings for a blind check).
 """
 from __future__ import annotations
 
@@ -30,7 +35,7 @@ from dataclasses import dataclass, field
 import ezdxf
 from ezdxf.tools.text import plain_mtext
 
-from .dxf_reader import AXIS, CONTOUR, THIN, DxfReadError, components
+from .dxf_reader import AXIS, CONTOUR, GEOM_TOL, THIN, DxfReadError, components, find_parts
 
 KOMPAS, SOLIDWORKS, UNKNOWN = "KOMPAS-3D", "SolidWorks", "unknown"
 SCALE_AGREEMENT = 0.01  # a dimension's measured / written ratio within 1% of the sheet's scale
@@ -305,4 +310,79 @@ def normalize_solidworks(doc):
         elif re.search(r"[А-Яа-яІіЇїЄєҐґ]", text) and len(text) > 12:
             adapted.warnings.append(f"note on the sheet: {text}")
     adapted.warnings.insert(0, f"read from a SolidWorks DXF ({doc.dxfversion}) drawn at {scale:g}:1, brought to 1:1")
+    half_section_check(doc, msp, omsp, k, contour_weight)
     return out, adapted
+
+
+# --- a half section -------------------------------------------------------------------------------------------------
+
+def _hatch_lines(hatch, k):
+    """The straight edges of a hatch's boundary, at 1:1."""
+    lines = []
+    for path in hatch.paths:
+        if hasattr(path, "edges"):
+            lines += [((e.start[0] * k, e.start[1] * k), (e.end[0] * k, e.end[1] * k)) for e in path.edges
+                      if e.EDGE_TYPE == "LineEdge"]
+        else:
+            pts = [(v[0] * k, v[1] * k) for v in path.vertices]
+            lines += list(zip(pts, pts[1:] + pts[:1]))
+    return lines
+
+
+def _end_view_arcs(doc, msp, k, contour_weight) -> list[str]:
+    """Centres where the outermost contour circle is drawn as arcs, not a full circle: an end view with flats or a lug
+    cut into a round section."""
+    rounds = {}
+    for e in msp.query("CIRCLE ARC"):
+        if _lineweight(doc, e) == contour_weight and _linetype(doc, e) == "CONTINUOUS":
+            centre = (round(e.dxf.center.x, 2), round(e.dxf.center.y, 2))
+            rounds.setdefault(centre, []).append(e)
+    found = []
+    for centre, curves in rounds.items():
+        outer = max(c.dxf.radius for c in curves)
+        if all(c.dxftype() == "ARC" for c in curves if abs(c.dxf.radius - outer) <= GEOM_TOL):
+            found.append(f"Ø{2 * outer * k:g}")
+    return found
+
+
+def half_section_check(doc, msp, omsp, k, contour_weight):
+    """DxfReadError in words when the rewritten sheet has no symmetric contour because it is a half section whose view
+    half differs from its section half; nothing when the reader finds a part (or there is no hatch on one side)."""
+    contour = [e for e in omsp.query("LINE ARC") if e.dxf.linetype == CONTOUR]
+    axes = [e for e in omsp.query("LINE") if e.dxf.linetype == AXIS]
+    if find_parts(contour, axes)[0]:
+        return
+    for axis in axes:
+        ay = axis.dxf.start.y
+        if abs(axis.dxf.end.y - ay) > GEOM_TOL:
+            continue
+        for hatch in msp.query("HATCH"):
+            edges = _hatch_lines(hatch, k)
+            ys = [p[1] for edge in edges for p in edge]
+            if not edges or not (max(ys) <= ay + GEOM_TOL or min(ys) >= ay - GEOM_TOL):
+                continue
+            below = max(ys) <= ay + GEOM_TOL
+            section = [(min(a[0], b[0]), max(a[0], b[0]), abs(a[1] - ay)) for a, b in edges
+                       if abs(a[1] - b[1]) <= GEOM_TOL]
+            view = [e for e in contour if e.dxftype() == "LINE" and abs(e.dxf.start.y - e.dxf.end.y) <= GEOM_TOL
+                    and (e.dxf.start.y > ay + GEOM_TOL if below else e.dxf.start.y < ay - GEOM_TOL)]
+            left = min(min(e.dxf.start.x, e.dxf.end.x) for e in contour)
+            differ = []
+            for e in view:
+                x0, x1 = sorted((e.dxf.start.x, e.dxf.end.x))
+                r = abs(e.dxf.start.y - ay)
+                if not any(abs(r - sr) <= GEOM_TOL and s0 < x1 - GEOM_TOL and x0 + GEOM_TOL < s1
+                           for s0, s1, sr in section):
+                    differ.append((x0 - left, x1 - left, r))
+            if not differ:
+                continue
+            spans = ", ".join(f"x {x0:g}…{x1:g} (a line {r:g} mm from the axis)" for x0, x1, r in sorted(differ))
+            message = (f"A half section: the main view is half a view and half a section (hatched, "
+                       f"{'below' if below else 'above'} the axis), and the view half differs from the section at "
+                       f"{spans}, from the left end. It is not a turned shape there (flats or a lug?).")
+            arcs = _end_view_arcs(doc, msp, k, contour_weight)
+            if arcs:
+                message += (f" On the end view {', '.join(arcs)} is drawn as arcs, not a full circle: flats are "
+                            "possible (milling, not turning).")
+            raise DxfReadError(message + " The reader needs a contour symmetric about the axis, so this drawing is "
+                               "not read: enter the part by hand.")

@@ -841,6 +841,17 @@ Plan agreed with the user (1–4; SolidWorks only; S355J2+N as P1.2). Commits 5e
   03057789-1-01 NOT read: its main view is a half section with a lug (the end view shows Ø50 with a flat), so no
   contour is symmetric about the axis (the reader's basic rule). Not patched: a half-section rule would be a reader
   change or a guess in the adapter.
+- 03057789-1-01 diagnosed (2026-10-22): the reader stops at `find_parts` ("no contour is symmetric"). The main view is
+  half a view (above the axis) and half a section (hatched, below). Found in the bushing: two flats S40 on the collar
+  Ø50 (x 10…20, running into the 45° cone; the "40" and Ø50 only on the end view) — milling, not turning; a through
+  internal thread M20 (bore Ø17.5), its "М20-6g" dimensioned as a half (axis to r 10, so 10 if read as it is), and 6g is
+  an external thread's class (6H expected?): to be checked, not corrected.
+- Done (option A, the user's choice): the adapter says it in words instead of "no symmetric contour": a half section,
+  where the view differs from the section, the end view's Ø drawn as arcs (flats possible), "enter the part by hand".
+- Not now (the user's decision): B, reading a half section (the hatched half mirrored, a half dimension × 2, flats from
+  the end view as a warning), goes with the "inner profiles" stage, once other half-section drawings exist for a blind
+  check (on this file it would be in-sample); C, a feature type "flats" (count, S, Z range; milling by a driven tool
+  with the C axis, else manual; left out of the G-code with the reason), after B.
 
 ## Turret set-up per job (built 2026-10-16)
 Plan agreed with the user (1–5; the operator's name Bohdan). Commits 99d24e0 (model), 954c1d7 (job page), 0e943f5
@@ -1025,7 +1036,7 @@ Machine.machine_kind / footprint_length_mm / footprint_width_mm); DB backup
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1130 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1138 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

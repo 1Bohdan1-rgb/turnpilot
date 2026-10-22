@@ -3,7 +3,7 @@ KOMPAS way for the KOMPAS reader (frozen by dxf-blind-freeze, not changed)."""
 import ezdxf
 import pytest
 from dxf_drawings import new_doc
-from sw_drawings import sheet
+from sw_drawings import half_section_sheet, sheet
 
 from turnpilot import dxf_adapter, dxf_input, dxf_reader
 from turnpilot.dxf_reader import DxfReadError
@@ -61,3 +61,16 @@ def test_the_frame_and_title_block_are_not_the_contour(tmp_path):
     reader_path, _ = dxf_adapter.prepare(str(path))
     doc, contour, thin, axes, _ = dxf_reader.load(reader_path)
     assert len(contour) == 12 and len(thin) == 2 and len(axes) == 1
+
+
+def test_a_half_section_with_flats_is_not_read_and_says_why(tmp_path):
+    # 03057789-1-01 (in-sample): the view half shows the flats' edge on the collar, the section half the full Ø50
+    path = tmp_path / "half.dxf"
+    half_section_sheet().saveas(path)
+    with pytest.raises(DxfReadError) as err:
+        dxf_adapter.prepare(str(path))
+    message = str(err.value)
+    assert message.startswith("A half section: the main view is half a view and half a section (hatched, below the axis)")
+    assert "differs from the section at x 10…20 (a line 15 mm from the axis), from the left end" in message
+    assert "On the end view Ø50 is drawn as arcs, not a full circle: flats are possible (milling, not turning)" in message
+    assert message.endswith("this drawing is not read: enter the part by hand.")

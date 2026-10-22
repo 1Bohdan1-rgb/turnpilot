@@ -50,3 +50,46 @@ def sheet(scale=2.0):
         msp.add_linear_dim(base=base, p1=p1, p2=p2, angle=angle, text=text,
                            override={"dimlfac": 1 / scale}).render()
     return doc
+
+
+def half_section_sheet(scale=2.0):
+    """A bushing drawn as a half section: Ø40 L10, a collar Ø50 L10 with two flats 40 across, Ø40 L20, a bore Ø16.
+    Below the axis the section (hatched: the full collar), above it the view (the flats' edge 15 from the axis on the
+    collar); an end view with the Ø50 as two arcs cut by the flats."""
+    doc = sheet(scale)
+    msp = doc.modelspace()
+    for e in list(msp.query("LINE DIMENSION")):  # keep the frame, the title block and the texts; a new part
+        if e.dxftype() == "DIMENSION" or e.dxf.lineweight in (25, 18):
+            msp.delete_entity(e)
+    x0, y0 = 40.0, 180.0
+
+    def P(x, r):
+        return (x0 + x * scale, y0 + r * scale)
+
+    def line(a, b, lw=25, linetype="Continuous"):
+        msp.add_line(a, b, dxfattribs={"lineweight": lw, "linetype": linetype})
+
+    outer = [(0, 20), (10, 20), (10, 25), (20, 25), (20, 20), (40, 20)]
+    for (xa, ra), (xb, rb) in zip(outer, outer[1:]):
+        line(P(xa, ra), P(xb, rb))
+        line(P(xa, -ra), P(xb, -rb))
+    for x in (0, 40):
+        line(P(x, 0), P(x, 20))  # the view's end faces
+        line(P(x, -8), P(x, -20))  # the section's, down to the bore
+    line(P(0, -8), P(40, -8))  # the bore
+    line(P(10, 15), P(20, 15))  # the flats' edge in the view
+    line(P(10, 0), P(10, 15))
+    line(P(20, 0), P(20, 15))
+    line(P(-2, 0), P(42, 0), 18, "CENTERX2")
+    hatch = msp.add_hatch()
+    hatch.paths.add_polyline_path([P(x, r) for x, r in
+                                   [(0, -8), (40, -8), (40, -20), (20, -20), (20, -25), (10, -25), (10, -20), (0, -20)]])
+    cx, cy = 160.0, 180.0  # the end view, away from the main view's axis
+    for a0, a1 in ((36.8699, 143.1301), (216.8699, 323.1301)):
+        msp.add_arc((cx, cy), 25 * scale, a0, a1, dxfattribs={"lineweight": 25})
+    for sx in (-20, 20):
+        line((cx + sx * scale, cy - 15 * scale), (cx + sx * scale, cy + 15 * scale))
+    for r in (20, 8):
+        msp.add_circle((cx, cy), r * scale, dxfattribs={"lineweight": 25})
+    msp.add_linear_dim(base=P(0, 35), p1=P(0, 0), p2=P(40, 0), text="<>", override={"dimlfac": 1 / scale}).render()
+    return doc
