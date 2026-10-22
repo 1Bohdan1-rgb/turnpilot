@@ -13,6 +13,7 @@
 <p class="actions"><a class="button" href="{{ url_for('main.job_gcode', job_id=job.id) }}">G-code</a></p>
 {% if job.current_operations %}<p class="muted small">Calculation version {{ job.last_calculation_version }}</p>{% endif %}
 {% for w in machine_warnings %}<div class="flash flash-error machine-warning">⚠ {{ w }}</div>{% endfor %}
+{% include "_turret_setup.html" %}
 {% set changed = job.tools_changed_since_calculation %}
 {% if changed %}
 <div class="flash flash-error tools-changed" role="alert">

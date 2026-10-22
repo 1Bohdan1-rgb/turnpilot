@@ -822,7 +822,7 @@ def job_detail(job_id):
                            suggested_free_end=services.suggest_free_end(job),
                            conflicts=services.radius_conflicts(job) if job.axial_order_known else {},
                            turret=services.job_turret(job, services.job_machine(job)),
-                           suggestions=services.turret_suggestions(job, services.job_machine(job)),
+                           setup=_setup_view(job),
                            job_machine=services.job_machine(job), machines=services.machines(),
                            job_orders=db.session.execute(db.select(Order).filter_by(job_id=job.id)
                                                          .order_by(Order.id)).scalars().all(),
@@ -863,6 +863,32 @@ def change_job_turret(job_id):
         flash(f"T{change.position} for this job: {change.machine_tool.name if change.machine_tool else 'empty'} -> "
               f"{change.tool.name if change.tool else 'empty'}. Calculate the job again.")
     return redirect(url_for("main.job_detail", job_id=job.id) + "#turret")
+
+
+def _setup_view(job):
+    """The set-up card's data for a calculated job (None before a calculation)."""
+    if not job.current_operations:
+        return None
+    machine = services.job_machine(job)
+    proposal = services.turret_setup_proposal(job, machine)
+    return {"proposal": proposal, "signature": services.setup_signature(proposal), "machine": machine,
+            "details": {r.position: services.setup_row_details(r, job.material) for r in proposal.rows}}
+
+
+@bp.route("/jobs/<int:job_id>/turret/setup", methods=["POST"])
+def accept_turret_setup(job_id):
+    """The operator accepts the proposed turret set-up as a whole; the job is calculated again."""
+    job = db.get_or_404(Job, job_id)
+    try:
+        setup = services.accept_turret_setup(job, services.job_machine(job), request.form.get("decided_by"),
+                                             request.form.get("signature", ""))
+    except services.TurretChangeError as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return redirect(_local(request.form.get("back")) or url_for("main.job_detail", job_id=job.id))
+    flash(f"Set-up accepted by {setup.accepted_by}: {len(setup.changes)} position(s) for this job; calculated again "
+          f"(v{job.last_calculation_version}). Install the tools and measure their offsets at the machine.")
+    return redirect(url_for("main.operations", job_id=job.id))
 
 
 @bp.route("/jobs/<int:job_id>/turret/<int:change_id>/undo", methods=["POST"])
@@ -1109,7 +1135,7 @@ def operations(job_id):
     job = db.get_or_404(Job, job_id)
     machine = services.job_machine(job)
     return render_template("operations.html", job=job, machine=machine,
-                           machine_warnings=services.machine_warnings(job, machine))
+                           machine_warnings=services.machine_warnings(job, machine), setup=_setup_view(job))
 
 
 @bp.route("/jobs/<int:job_id>/history")

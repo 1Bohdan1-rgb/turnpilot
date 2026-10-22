@@ -102,7 +102,7 @@ def test_the_job_page_changes_and_undoes(app, client):
     assert "Undone changes (2)" in client.get(f"/jobs/{job.id}").get_data(as_text=True)
 
 
-def test_a_drill_of_the_bore_size_is_suggested_on_a_free_position(app, client):
+def test_a_drill_of_the_bore_size_is_proposed_on_a_free_position(app, client):
     # the Ø10 drill not in the turret (T12 holds a VNMG): the job does not use T3 (CNMG M/N, ISO M/N) -> T3
     machine = ready_machine()
     slot12 = next(s for s in machine.slots if s.position == 12)
@@ -110,21 +110,45 @@ def test_a_drill_of_the_bore_size_is_suggested_on_a_free_position(app, client):
     db.session.commit()
     job = bore_job()
     services.calculate_operations(job, machine)
-    (s,) = services.turret_suggestions(job, machine)
-    assert (s.tool.insert_code, s.reason) == ("860.1-1000-029A0-GM", "the bore Ø10 drilled to size in one operation")
+    proposal = services.turret_setup_proposal(job, machine)
+    (row,) = proposal.rows
+    assert (row.install.insert_code, row.reasons) == ("860.1-1000-029A0-GM",
+                                                      ["the bore Ø10 drilled to size in one operation"])
     used = {op.turret_position for op in job.current_operations if op.tool_id}
-    assert s.position not in used
+    assert row.position not in used
     page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
-    assert "Suggested for this job" in page and "the bore Ø10 drilled to size in one operation" in page
-    client.post(f"/jobs/{job.id}/turret", data={"position": str(s.position), "tool_id": str(s.tool.id),
-                                                 "decided_by": "Bohdan", "note": s.reason})
-    services.calculate_operations(job, machine)
+    assert "Turret set-up from the library" in page and "the bore Ø10 drilled to size in one operation" in page
+    assert "Accept the set-up" in client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
+    signature = services.setup_signature(proposal)
+    response = client.post(f"/jobs/{job.id}/turret/setup", data={"signature": signature}, follow_redirects=True)
+    assert "The operator&#39;s name is required to accept the set-up" in response.get_data(as_text=True)
+    version = job.last_calculation_version
+    client.post(f"/jobs/{job.id}/turret/setup", data={"signature": signature, "decided_by": "Bohdan"})
+    assert job.last_calculation_version == version + 1  # calculated again
     drill = next(op for op in job.current_operations if op.tool_type == "drilling")
-    assert (drill.turret_position, drill.ref_diameter) == (s.position, 10)
-    assert services.turret_suggestions(job, machine) == []
+    assert (drill.turret_position, drill.ref_diameter) == (row.position, 10)
+    (change,) = [c for c in job.turret_changes if c.active]
+    assert (change.setup.accepted_by, change.decided_by, change.note) == (
+        "Bohdan", "Bohdan", "the bore Ø10 drilled to size in one operation")
+    after = services.turret_setup_proposal(job, machine)
+    assert after.rows == [] and after.missing == [  # no centre drill in the library (TT / SRT have none)
+        "the library has no centre_drilling tool for ISO P checked by the catalogue for P1.2: bore Ø10 L5 "
+        f"(row {next(f.id for f in job.active_features if f.type == 'bore')})"]
 
 
-def test_a_copying_tool_is_suggested_for_a_steep_concave_arc(app):
+def test_a_set_up_changed_since_the_page_is_not_accepted(app, client):
+    machine = ready_machine()
+    next(s for s in machine.slots if s.position == 12).tool = tool("VNMG160404-PF")
+    db.session.commit()
+    job = bore_job()
+    services.calculate_operations(job, machine)
+    response = client.post(f"/jobs/{job.id}/turret/setup", data={"signature": "3:1", "decided_by": "Bohdan"},
+                           follow_redirects=True)
+    assert "has changed since the page was opened" in response.get_data(as_text=True)
+    assert not job.turret_changes
+
+
+def test_a_copying_tool_is_proposed_for_a_steep_concave_arc(app):
     machine = ready_machine()
     tool("DNMG150604-PF").max_ramp_angle = 27.0
     vnmg = tool("VNMG160404-PF")
@@ -134,9 +158,9 @@ def test_a_copying_tool_is_suggested_for_a_steep_concave_arc(app):
     job = make_job([Feature(type="face"), Feature(type="od_turn", diameter=30, length=10),
                     Feature(type="arc", start_diameter=30, diameter=30, length=2, radius=1.7, arc_convex=False),
                     Feature(type="od_turn", diameter=30, length=10)], blank=32, length=30, stickout=35, approve=False)
-    suggestions = services.turret_suggestions(job, machine)
-    assert [(s.tool.insert_code, s.reason) for s in suggestions] == [
-        ("VNMG160404-PF", "the concave R1.7 goes down at 36°: a tool with RMPX ≥ 36°")]
+    proposal = services.turret_setup_proposal(job, machine)
+    assert [(r.install.insert_code, r.reasons) for r in proposal.rows] == [
+        ("VNMG160404-PF", ["the concave R1.7 goes down at 36°: a tool with RMPX ≥ 36°"])]
 
 
 def test_the_program_names_the_set_up_and_is_out_of_date_after_a_change(app, client):
