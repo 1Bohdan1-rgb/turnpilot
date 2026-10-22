@@ -229,14 +229,68 @@ class JobTurretChange(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=_now)
     removed_by = db.Column(db.String(100))
     removed_at = db.Column(db.DateTime)
+    # the accepted set-up it belongs to (empty: a change made one by one before set-ups existed)
+    setup_id = db.Column(db.Integer, db.ForeignKey("turret_setup.id", name="fk_job_turret_change_setup_id"))
 
     job = db.relationship("Job", back_populates="turret_changes")
     tool = db.relationship("Tool", foreign_keys=[tool_id])
     machine_tool = db.relationship("Tool", foreign_keys=[machine_tool_id])  # what the machine had at that time
+    setup = db.relationship("TurretSetup", back_populates="changes")
+    installs = db.relationship("TurretInstall", back_populates="change", order_by="TurretInstall.id")
 
     @property
     def active(self):
         return self.removed_at is None
+
+    @property
+    def install(self):
+        """The operator's mark that the tool is in and its X / Z offsets measured (None: not yet, or undone)."""
+        return next((m for m in reversed(self.installs) if m.undone_at is None), None)
+
+
+class TurretSetup(db.Model):
+    """A job's turret set-up proposed from the library and accepted by the operator as a whole (its changes are
+    JobTurretChange rows). Never deleted."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey("job.id", name="fk_turret_setup_job_id"), nullable=False)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_turret_setup_machine_id"), nullable=False)
+    accepted_by = db.Column(db.String(100), nullable=False)
+    accepted_at = db.Column(db.DateTime, nullable=False, default=_now)
+
+    changes = db.relationship("JobTurretChange", back_populates="setup", order_by="JobTurretChange.position")
+
+
+class TurretInstall(db.Model):
+    """The operator at the machine: the tool of a turret change is in, and its X / Z offsets are measured (a new tool
+    without its offsets is scrap or a crash). Undoing it records who and when; never deleted."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    change_id = db.Column(db.Integer, db.ForeignKey("job_turret_change.id", name="fk_turret_install_change_id"),
+                          nullable=False)
+    installed_by = db.Column(db.String(100), nullable=False)
+    installed_at = db.Column(db.DateTime, nullable=False, default=_now)
+    undone_by = db.Column(db.String(100))
+    undone_at = db.Column(db.DateTime)
+
+    change = db.relationship("JobTurretChange", back_populates="installs")
+
+
+class MachineTurretCopy(db.Model):
+    """A machine's turret copied from another machine's by the operator: both turrets as they were, kept as history."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_machine_turret_copy_machine_id"),
+                           nullable=False)
+    from_machine_id = db.Column(db.Integer, db.ForeignKey("machine.id", name="fk_machine_turret_copy_from_machine_id"),
+                                nullable=False)
+    copied_by = db.Column(db.String(100), nullable=False)
+    copied_at = db.Column(db.DateTime, nullable=False, default=_now)
+    before = db.Column(db.Text, nullable=False)  # JSON {position: tool id or null} of this machine before the copy
+    after = db.Column(db.Text, nullable=False)  # JSON, the same after it
+
+    machine = db.relationship("Machine", foreign_keys=[machine_id])
+    from_machine = db.relationship("Machine", foreign_keys=[from_machine_id])
 
 
 class TurretSlot(db.Model):
