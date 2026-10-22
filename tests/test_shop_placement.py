@@ -47,7 +47,7 @@ def test_a_place_needs_a_plan_and_a_name_snaps_to_100_mm_and_is_kept(app, client
     assert [(p.x_mm, p.y_mm, p.rotation, p.placed_by) for p in machine.placements] == [
         (9000, 6000, 0, "Bohdan"), (9000, 6000, 90, "Ivan")]
     m = machines_on(client.get("/shop").get_data(as_text=True))[machine.name]
-    assert (m["x"], m["y"], m["rotation"], m["placed_by"]) == (9000, 6000, 90, "Ivan")
+    assert (m["x"], m["y"], m["rotation"], m["changed_by"], m["removed"]) == (9000, 6000, 90, "Ivan", False)
 
 
 def test_running_into_a_wall_a_column_a_walkway_or_a_machine_is_kept_with_a_warning(app, client):
@@ -128,3 +128,33 @@ def test_the_plan_has_a_scale_fits_the_window_and_fades_covered_labels(app, clie
         assert piece in page, piece
     css = (Path(__file__).resolve().parent.parent / "turnpilot" / "static" / "style.css").read_text(encoding="utf-8")
     assert "main:has(.shop-floor) { max-width:none; }" in css and ".p-zone-label.covered { opacity:.2; }" in css
+
+
+def test_take_a_machine_off_the_plan_keeps_the_history(app, client):
+    """'Прибрати з плану': the name required, a new record (the last place kept, nothing deleted); the machine goes
+    back to the not-placed list."""
+    machine = ready_machine()
+    upload_plan(client)
+    place(client, machine, 9000, 6000)
+    off = lambda name: client.post(f"/shop/machines/{machine.id}/unplace", headers={"X-Requested-With": "fetch"},
+                                   data={"placed_by": name})
+    assert off("").get_json()["error"] == "The operator's name is required" and machine.placement is not None
+    assert off("Office").get_json() == {"ok": True}
+    assert machine.placement is None
+    assert [(p.x_mm, p.y_mm, p.removed, p.placed_by) for p in machine.placements] == [
+        (9000, 6000, False, "Bohdan"), (9000, 6000, True, "Office")]
+    m = machines_on(client.get("/shop").get_data(as_text=True))[machine.name]
+    assert (m["x"], m["removed"], m["changed_by"]) == (None, True, "Office")
+    assert f"{machine.name} is not on the plan" in off("Office").get_json()["error"]
+    place(client, machine, 12000, 6000)  # placed again later: the history goes on
+    assert machine.placement.x_mm == 12000 and len(machine.placements) == 3
+
+
+def test_the_page_asks_who_changes_the_plan_and_moves_nothing_without_it(app, client):
+    ready_machine()
+    upload_plan(client)
+    page = client.get("/shop").get_data(as_text=True)
+    assert "Хто змінює" in page and 'id="sf-operator"' not in page and "Впишіть, хто змінює" in page
+    assert 'sessionStorage.getItem("sf-changer")' in page and "changerField.focus()" in page
+    assert page.count("!changer()) { start = null; return; }") == 2  # dragging on the plan and from the list
+    assert "Прибрати з плану" in page and "змінив/змінила" in page

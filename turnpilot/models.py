@@ -84,7 +84,13 @@ class Machine(db.Model):
 
     @property
     def placement(self):
-        """The machine's place on the plan: the last record (None: not placed)."""
+        """The machine's place on the plan: the last record (None: not placed, or taken off the plan)."""
+        last = self.placements[-1] if self.placements else None
+        return None if last is None or last.removed else last
+
+    @property
+    def last_placement_record(self):
+        """The last placing or taking-off record (who changed it and when), whatever it was."""
         return self.placements[-1] if self.placements else None
 
     @property
@@ -706,5 +712,7 @@ class MachinePlacement(db.Model):
     x_mm = db.Column(db.Float, nullable=False)
     y_mm = db.Column(db.Float, nullable=False)
     rotation = db.Column(db.Integer, nullable=False)
-    placed_by = db.Column(db.String(100), nullable=False)
+    # taken off the plan (the machine goes back to the not-placed list); its last place is kept in x / y / rotation
+    removed = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    placed_by = db.Column(db.String(100), nullable=False)  # who changed it (the office or the operator)
     placed_at = db.Column(db.DateTime, nullable=False, default=_now)

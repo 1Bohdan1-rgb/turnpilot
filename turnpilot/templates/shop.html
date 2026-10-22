@@ -16,8 +16,9 @@
     <button type="button" class="sf-chip" data-s="{{ s }}" aria-pressed="false"><span class="sf-dot sf-{{ s }}"></span>{{ label }}</button>
     {% endfor %}
     <span class="sf-count" id="sf-count"></span>
-    <label class="sf-operator">Operator <input id="sf-operator" maxlength="100" autocomplete="off"
-      aria-label="Operator's name (for moving a machine)"></label>
+    <label class="sf-operator">Хто змінює <input id="sf-changer" maxlength="100" autocomplete="off"
+      aria-label="Хто змінює (розміщення верстатів на плані)" aria-describedby="sf-changer-msg"></label>
+    <span class="sf-changer-msg" id="sf-changer-msg" role="alert"></span>
     <button type="button" class="sf-chip" id="sf-theme" aria-label="Light or dark theme">◐ Theme</button>
   </div>
 </header>
@@ -211,7 +212,7 @@
         <dt>Capacity</dt><dd>${esc(m.capacity)}</dd>
         <dt>Footprint</dt><dd>${m.length && m.width ? `${m.length} × ${m.width} mm` : "not set"}</dd>
         ${m.status_by ? `<dt>Status by</dt><dd>${esc(m.status_by)}${m.status_note ? ": " + esc(m.status_note) : ""}</dd>` : ""}
-        ${m.placed_by ? `<dt>Placed</dt><dd>${esc(m.placed_by)}, ${esc(m.placed_at)}</dd>` : ""}
+        ${m.changed_by ? `<dt>${m.removed ? "Taken off the plan" : "Placed"}</dt><dd>змінив/змінила ${esc(m.changed_by)}, ${esc(m.changed_at)}</dd>` : ""}
         ${o ? `<dt>Order</dt><dd>${o.id} · ${esc(o.job)}</dd><dt>Done</dt><dd>${o.done} of ${o.quantity}</dd>
           ${o.part ? `<dt>Per part</dt><dd>${esc(o.part)}</dd><dt>Left</dt><dd>${esc(o.left)}${o.incomplete ? " (incomplete: no rapids / tool changes without the passport's values)" : ""}</dd>` : ""}
           ${o.no_program ? `<dt>Time</dt><dd>no program for this machine</dd>` : ""}`
@@ -224,7 +225,8 @@
         <a class="sf-button" href="${URLS.upload(m.id)}">Upload drawing</a>
         <a class="sf-button ghost" href="${URLS.machine(m.id)}">Machine page</a>
         <button type="button" class="sf-button ghost" id="sf-panel">Status and order</button>
-        ${m.x !== null ? `<button type="button" class="sf-button ghost" id="sf-rotate">Rotate 90°</button>` : ""}
+        ${m.x !== null ? `<button type="button" class="sf-button ghost" id="sf-rotate">Rotate 90°</button>
+          <button type="button" class="sf-button ghost" id="sf-unplace">Прибрати з плану</button>` : ""}
       </div>
       ${svg ? `<form class="sf-place" id="sf-place">
         <label>X, mm <input name="x" type="number" step="100" min="0" value="${m.x ?? ""}" required></label>
@@ -240,6 +242,8 @@
     document.getElementById("sf-panel").addEventListener("click", () => openPanel(m.id));
     const rot = document.getElementById("sf-rotate");
     if (rot) rot.addEventListener("click", () => place(m.id, m.x, m.y, (m.rotation + 90) % 360));
+    const off = document.getElementById("sf-unplace");
+    if (off) off.addEventListener("click", () => unplace(m.id));
   }
   const panel = document.getElementById("shop-panel"), body = document.getElementById("shop-panel-body");
   function openPanel(id) {
@@ -254,9 +258,29 @@
     const p = pt.matrixTransform(svg.getScreenCTM().inverse());
     return [Math.round(p.x / SNAP) * SNAP, Math.round(p.y / SNAP) * SNAP];
   }
+  // who changes the plan (the office or the operator): required, kept until the tab is closed, never filled in
+  const changerField = document.getElementById("sf-changer"), changerMsg = document.getElementById("sf-changer-msg");
+  try { changerField.value = sessionStorage.getItem("sf-changer") || ""; } catch (e) {}
+  changerField.addEventListener("input", () => {
+    changerMsg.textContent = "";
+    try { sessionStorage.setItem("sf-changer", changerField.value.trim()); } catch (e) {}
+  });
+  function changer() {
+    const name = changerField.value.trim();
+    if (!name) { changerMsg.textContent = "Впишіть, хто змінює"; changerField.focus(); }
+    return name || null;
+  }
+  function unplace(id) {
+    const name = changer();
+    if (!name) return;
+    fetch(`/shop/machines/${id}/unplace`, {method: "POST", body: new URLSearchParams({placed_by: name}),
+                                           headers: {"X-Requested-With": "fetch"}})
+      .then(r => r.json().then(j => [r.ok, j]))
+      .then(([ok, j]) => { if (!ok) { msg.textContent = j.error; return; } location.href = `${location.pathname}?select=${id}`; });
+  }
   function place(id, x, y, rotation) {
-    const name = document.getElementById("sf-operator").value.trim();
-    if (!name) { msg.textContent = "Type your name in the Operator field: the place is saved with it."; draw(); return; }
+    const name = changer();
+    if (!name) { draw(); return; }
     const body = new URLSearchParams({x_mm: x, y_mm: y, rotation: rotation, placed_by: name});
     fetch(URLS.place(id), {method: "POST", body, headers: {"X-Requested-With": "fetch"}})
       .then(r => r.json().then(j => [r.ok, j]))
@@ -273,6 +297,7 @@
     g.addEventListener("pointermove", e => {
       if (!start) return;
       if (Math.hypot(e.clientX - start[0], e.clientY - start[1]) < 4 && !g.classList.contains("moving")) return;
+      if (!g.classList.contains("moving") && !changer()) { start = null; return; }  // no name: nothing moves
       g.classList.add("moving");
       const [x, y] = toPlan(e);
       g.setAttribute("transform", `translate(${x} ${y}) rotate(${m.rotation})`);
@@ -297,11 +322,13 @@
     chip.addEventListener("pointermove", e => {
       if (!start || !svg) return;
       if (!ghost && Math.hypot(e.clientX - start[0], e.clientY - start[1]) < 4) return;
+      if (!ghost && !changer()) { start = null; return; }  // no name: nothing moves
       if (!ghost) { ghost = document.createElement("div"); ghost.className = "sf-ghost"; ghost.textContent = m.name;
                     document.body.appendChild(ghost); }
       ghost.style.left = `${e.clientX + 8}px`; ghost.style.top = `${e.clientY + 8}px`;
     });
     chip.addEventListener("pointerup", e => {
+      if (!start && !ghost) return;  // the drag was refused (no name)
       const dragged = !!ghost;
       if (ghost) { ghost.remove(); ghost = null; }
       start = null;

@@ -1625,6 +1625,8 @@ def shop_machine_action(machine_id, action):
                                    _float_or_none(request.form.get("y_mm")),
                                    int(rotation) if rotation.lstrip("-").isdigit() else None,
                                    request.form.get("placed_by"))
+        elif action == "unplace":
+            services.remove_from_plan(machine, request.form.get("placed_by"))
         elif action == "status":
             services.set_machine_status(machine, request.form.get("status"), request.form.get("decided_by"),
                                         request.form.get("note"))

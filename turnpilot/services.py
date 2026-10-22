@@ -1867,8 +1867,10 @@ def shop_machines():
             "status_note": m.status.note if m.status else None,
             "x": place.x_mm if place else None, "y": place.y_mm if place else None,
             "rotation": place.rotation if place else 0,
-            "placed_by": place.placed_by if place else None,
-            "placed_at": place.placed_at.strftime("%Y-%m-%d %H:%M") if place else None,
+            "changed_by": m.last_placement_record.placed_by if m.last_placement_record else None,
+            "changed_at": (m.last_placement_record.placed_at.strftime("%Y-%m-%d %H:%M")
+                           if m.last_placement_record else None),
+            "removed": bool(m.last_placement_record and m.last_placement_record.removed),
             "length": m.footprint_length_mm, "width": m.footprint_width_mm,
             "conflicts": clashes.get(m.id, []),
             "order": None,
@@ -1968,3 +1970,17 @@ def placement_conflicts(plan):
                                                   m.footprint_width_mm))
     return {mid: conflicts(plan, rect, [other for oid, other in rects.items() if oid != mid])
             for mid, (_, rect) in rects.items()}
+
+
+def remove_from_plan(machine, name):
+    """Take a machine off the plan: a new record (its last place kept), nothing deleted. Raises OrderError."""
+    from .models import MachinePlacement
+
+    name = _name(name)
+    place = machine.placement
+    if place is None:
+        raise OrderError(f"{machine.name} is not on the plan")
+    db.session.add(MachinePlacement(machine_id=machine.id, x_mm=place.x_mm, y_mm=place.y_mm, rotation=place.rotation,
+                                    removed=True, placed_by=name))
+    db.session.commit()
+    db.session.refresh(machine)
