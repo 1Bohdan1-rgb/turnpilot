@@ -247,7 +247,11 @@
   }
   const panel = document.getElementById("shop-panel"), body = document.getElementById("shop-panel-body");
   function openPanel(id) {
-    fetch(URLS.panel(id)).then(r => r.text()).then(html => { body.innerHTML = html; panel.showModal(); });
+    fetch(URLS.panel(id)).then(r => r.text()).then(html => {
+      body.innerHTML = html;
+      panel.showModal();
+      if (window.turnpilotPart3d) window.turnpilotPart3d.mountAll(body);  // scripts in a fragment do not run
+    });
   }
 
   // placing: a machine dragged on the plan (or a chip dropped on it) goes to the nearest 100 mm, with the operator's

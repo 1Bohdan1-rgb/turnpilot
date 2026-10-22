@@ -31,3 +31,46 @@ def test_program_page_offers_the_3d_view_from_the_project_files(app, client):
     assert data["states"][0]["n"] is None and len(data["states"]) > 2
     assert data["bar_radius"] == 16 and data["z_jaws"] == -75 and data["final"] and data["computed_at"] is None
     assert data["stale"] == []
+
+
+def test_order_view_follows_the_operator_marks_on_the_order_program(app, client):
+    machine = ready_machine()
+    job = make_job(**pin())
+    _, first = services.generate_gcode(job, machine)
+    order = services.create_order(job, machine, 10, "Bohdan")
+    _, newer = services.generate_gcode(job, machine)  # the order keeps the program it took
+    assert order.program == first and newer.id != first.id
+    data = client.get(f"/orders/{order.id}/part3d.json").get_json()
+    blocks = [s["n"] for s in data["states"][1:]]
+    assert data["program"] == first.id and (data["done"], data["next"], data["note"]) == (0, blocks[0], None)
+    assert data["final"] and data["bar_radius"] == 16
+    services.mark_order_block(order, blocks[0], True, "Ivan")
+    services.mark_order_block(order, blocks[1], True, "Ivan")
+    data = services.order_part3d(order)
+    assert (data["done"], data["next"], data["note"]) == (2, blocks[2], None)
+    services.mark_order_block(order, blocks[3], True, "Ivan")
+    data = services.order_part3d(order)
+    assert data["done"] == 2 and data["note"] == f"N{blocks[3]} marked done, but N{blocks[2]} is not: shown up to N{blocks[1]}."
+    services.mark_order_block(order, blocks[0], False, "Ivan")
+    assert services.order_part3d(order)["note"].endswith("shown up to the bar.")
+
+
+def test_shop_panel_shows_the_part_by_the_marks_with_its_captions(app, client):
+    machine = ready_machine()
+    job = make_job(**pin())
+    services.generate_gcode(job, machine)
+    order = services.create_order(job, machine, 10, "Bohdan")
+    services.make_order_current(order, "Bohdan")
+    panel = client.get(f"/shop/machines/{machine.id}?fragment=1").get_data(as_text=True)
+    assert f'data-src="/orders/{order.id}/part3d.json"' in panel and 'data-mode="order"' in panel
+    assert "за відмітками оператора, не з верстата" in panel
+    assert "Лише зовнішній профіль — отвори й лиски не показано" in panel
+    assert "turnpilotPart3d.mountAll(body)" in client.get("/shop").get_data(as_text=True)
+
+
+def test_an_order_without_a_program_says_so(app, client):
+    machine = ready_machine()
+    job = make_job(**pin())
+    order = services.create_order(job, machine, 10, "Bohdan")
+    assert order.program is None
+    assert "No program taken by order" in client.get(f"/orders/{order.id}/part3d.json").get_json()["error"]

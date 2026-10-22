@@ -884,6 +884,24 @@ def part3d_data(record):
             "z_jaws": -float(settings.get("stickout_mm") or 0), "stale": gcode_stale(record, machine)}
 
 
+def order_part3d(order):
+    """The 3D view of the part on the machine now, by the operator's marks on the order's own program: the stock after
+    the blocks marked done from the first one on without a gap; the next block's material is highlighted."""
+    if order.program is None:
+        return {"error": f"No program taken by order {order.id}: no operations to show."}
+    data = part3d_data(order.program)
+    blocks = [s["n"] for s in data["states"][1:]]
+    done = order.done_blocks
+    k = 0
+    while k < len(blocks) and blocks[k] in done:
+        k += 1
+    after = [n for n in blocks[k:] if n in done]
+    data["done"], data["next"] = k, blocks[k] if k < len(blocks) else None
+    data["note"] = (f"N{', N'.join(map(str, after))} marked done, but N{blocks[k]} is not: shown up to "
+                    + (f"N{blocks[k - 1]}." if k else "the bar.")) if after else None
+    return data
+
+
 def gcode_stale(record, machine):
     """Why a program no longer matches the job and the machine (empty: it still does)."""
     job = record.job

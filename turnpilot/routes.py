@@ -1561,6 +1561,11 @@ def order_detail(order_id):
                            fragment=bool(request.args.get("fragment")))
 
 
+@bp.route("/orders/<int:order_id>/part3d.json")
+def order_part3d(order_id):
+    return services.order_part3d(db.get_or_404(Order, order_id))
+
+
 @bp.route("/orders/<int:order_id>/<action>", methods=["POST"])
 def order_action(order_id, action):
     order = db.get_or_404(Order, order_id)

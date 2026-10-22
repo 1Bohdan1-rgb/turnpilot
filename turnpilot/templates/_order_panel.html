@@ -25,6 +25,16 @@ one operator field for the whole panel (in_form: the page around it holds the fo
       job's <a href="{{ url_for('main.job_gcode', job_id=order.job_id) }}">G-code page</a>, then take it here.</p>
   {% else %}
     {% if p.stale %}<p class="warning small">Program {{ p.program.id }} is out of date: {{ p.stale|join("; ") }}.</p>{% endif %}
+    <div class="part3d" data-src="{{ url_for('main.order_part3d', order_id=order.id) }}" data-mode="order">
+      <p class="small"><strong>The part on the machine now</strong> (program {{ p.program.id }}, the order's):
+        за відмітками оператора, не з верстата.
+        Лише зовнішній профіль — отвори й лиски не показано.</p>
+      <div class="part3d-view"></div>
+      <p class="small legend"><span class="key k3-done"></span> marked done <span class="key k3-next"></span> the next
+        operation <span class="key k3-bar"></span> not machined yet <span class="key k3-final"></span> the finished part
+        (drawing), transparent</p>
+      <p class="small warning part3d-info"></p>
+    </div>
     <table>
       <thead><tr><th>N</th><th>Operation</th><th>Time</th><th>This part</th></tr></thead>
       <tbody>
