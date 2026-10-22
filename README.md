@@ -387,6 +387,13 @@ presses Start after the machine check.
   the passes): passes placed for the nose centre on arcs concentric to the drawn one (needs rε and T), from the
   level the roughing already left, down to the finishing allowance. Material left where the profile goes down
   steeper than every finishing tool's RMPX is a simulation error naming the place and the way out.
+- **The insert's trailing edge and the finished profile:** stock left below the finished profile by more than
+  0.01 mm, by any part of a tool, is a simulation error naming the line that first cut there, the depth, the tool and
+  the drawing's tolerance there (for reference only: roughing never goes below the profile). Beside the nose the
+  insert's trailing edge rises towards +Z at 180° − κr − ε: κr is the operator's on the tool page (a suggestion by
+  the holder style: J 93°, Sandvik Turning tools KAPR 93.0°; the other letters ISO 5608 from memory, "check"), ε and
+  the edge length come from the insert code (V 35°, D 55°, C 80° …). Without κr the edge is taken as flat, ap max
+  long at the nose's lowest point (cautious), and the error says κr is not set.
 - **Grooving holders:** a tool's holder code is the operator's; a CoroCut 1-2 insert and holder of another seat
   size (G vs E) are refused; a grooving tool's max depth is its holder's.
 - **Not written:** boring, internal threads, taps, a groove's finishing pass, a concave radius smaller than rε, cuts

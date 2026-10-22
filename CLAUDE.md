@@ -1044,12 +1044,35 @@ G-code text and the golden files unchanged; the files frozen by `dxf-blind-freez
 - Measured on a copy of the user's DB (scratchpad `stock3d_check.py`): jobs/7 program 11: 14 blocks, k=0 the bar,
   k=14 = final_stock, no block adds material, simulation 7.7–8.9 s, states 0.2 s, 10.5 KB JSON, 2…75 points a state;
   jobs/8 program 10: 6 blocks, the same checks, inside the part |Δr| ≤ 0.0005 mm from profile.final, 1.1 KB.
-- **Found on jobs/7, not fixed (simulation, out of 7.3):** after N4 (T03 copy roughing R12.5) the simulated stock is
-  1.54 mm below the finished profile from Z-46.98 to Z-54.28 (D35.41 on the Ø38.5 section and the arc's start), with no
-  simulation error. Cause in `simulate._nose_cut`: the "insert's edge beside the nose" (`edge`, ap max along +Z on a move
-  with X) lowers the stock without the finished-profile check that the nose circle has. Either a real gouge by the edge
-  or the edge model is too crude for a copying insert (VNMG 35°): to be decided with the operator. The 3D view shows
-  that dip as the simulation computes it.
+- Found on jobs/7 after N4 (T03 copy roughing R12.5): the simulated stock 1.54 mm below the finished profile from
+  Z-46.98 to Z-54.28, with no error. Resolved the same day, see "The insert's trailing edge (2026-10-22)".
+
+## The insert's trailing edge (2026-10-22)
+Plan 1–4 agreed with the user (tolerance 0.01 mm, the drawing's tolerance shown for reference; without κr the flat
+edge, cautious; κr of J = 93° from the Sandvik Turning tools catalogue, KAPR 93.0°, the user). Commits ac1bd5b (error),
+24bc4ca (κr), a6b4df2 (trailing edge) and the docs commit. Migration a9d3f5b7c1e2 (Tool.entering_angle_deg / _source;
+DB backup `instance/turnpilot.db.bak-2026-10-22-before-entering-angle`, the server stopped). G-code text unchanged.
+- The question: does the VNMG 16 04 08 (T03, DVJNR, RMPX 44°) cut the Ø38.5 neck after N4? **No.** By hand (scratchpad
+  `n4_edge_calc.py`): its nose centre runs on arcs about the R12.5 centre (Z-57.5, r 29.25), radii 10.05 / 11.30; the
+  trailing edge rises at 180 − 93 − 35 = 52° and clears the profile by ≥ +0.535 mm (+0.490 even at the RMPX 44°), the
+  nose by +0.400 (the finishing allowance). The simulation's flat edge (ap max 4 mm at the nose's lowest point, any move
+  with X) gave −1.540, exactly the dip. The generator needs no change.
+- `simulate.py`: every lowering of the stock (`_lower`) keeps the first line taking a cell below the finished profile
+  (the lower of its neighbours: a step face is between cells); `_below_final` reports runs not already reported as
+  errors (BELOW_FINAL_MM 0.01, the depth, the tool, the drawing's tolerance from `Section.tolerance`).
+- `_edge`: the trailing edge tangent to the nose (or from the tip point) at 180° − κr − ε, the insert's edge long
+  (`planner.insert_shape`: ε by the ISO shape letter, length = the size digits); no κr or no shape: the old flat, and the
+  error says "κr of the holder is not set".
+- Tests: five tests with V / D inserts going down got the error from the flat model in ac1bd5b and are clean again with
+  κr 93° in a6b4df2; the back chamfer test now gives its DNMG κr 72.5° (52.5° edge) for its RMPX 50°: in a 93° holder
+  its 32° edge really cuts a 45° chamfer (the catalogue's RMPX for it is 27°).
+- Measured on a copy of the user's DB (scratchpad `edge_measure.py`): jobs/7 program 13 without κr: 1 error (the dip,
+  1.54 mm, T03); with κr 93° on tools 4, 18, 19 (as the operator would take it): 0 errors, nowhere below the profile;
+  jobs/8 program 10: 0 errors both ways. The 4 real parts (`tools/gcode_real.py`, plain and --tip-direction 4=3, seed tools
+  without κr): the 8 programs byte for byte the same as at 1d9ae2c, the same simulation summaries (Zavisa 36 parts 1 / 2
+  complete, 0 errors; НД 012 2 errors, not complete; деталь 1 not complete, as before).
+- In the user's DB κr waits for the operator: tools 19 / 18 (VNMG PM / PF, DVJNR) and 4 (DNMG, DDJNR) have the J
+  suggestion; 1 (SCMT), 2 and 3 (CNMG), 5 (VCGT) have no holder code.
 
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
@@ -1060,7 +1083,7 @@ G-code text and the golden files unchanged; the files frozen by `dxf-blind-freez
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1153 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1159 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
