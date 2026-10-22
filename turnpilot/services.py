@@ -825,7 +825,8 @@ def demo_settings(settings):
 
 def generate_gcode(job, machine):
     """Build, print and simulate a program for the job; kept as a new GcodeProgram. (readiness, program or None)."""
-    from .gcode import fanuc
+    from .gcode import fanuc, stock3d
+    from .gcode import simulate as gsim
     from .models import GcodeProgram
 
     readiness, program = gcode_program(job, machine)
@@ -841,6 +842,7 @@ def generate_gcode(job, machine):
         "program_warnings": program.warnings, "skipped": {str(k): v for k, v in program.skipped.items()},
         "compensation": [list(c) for c in program.compensation],
         "turret_setup": turret_setup_lines(job),
+        "stock_by_block": stock3d.states(result, gsim.DZ),
     }
     record = GcodeProgram(job=job, machine_id=machine.id, calculation_version=job.last_calculation_version,
                           dialect=fanuc.NAME, text=text,
@@ -850,6 +852,23 @@ def generate_gcode(job, machine):
     db.session.add(record)
     db.session.commit()
     return readiness, record
+
+
+def stock_states(record):
+    """The stock after each block of a program (gcode/stock3d.py). A program made before they were kept: simulated
+    again from its text now (the job's and the turret's current data) and saved with the time, so once only."""
+    from .gcode import stock3d
+    from .gcode import simulate as gsim
+
+    sim = json.loads(record.simulation)
+    if "stock_by_block" not in sim:
+        machine = record.machine or job_machine(record.job)
+        result = gcode_simulation(record.job, machine, record.text)
+        sim["stock_by_block"] = stock3d.states(result, gsim.DZ)
+        sim["stock_by_block_computed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        record.simulation = json.dumps(sim, ensure_ascii=False)
+        db.session.commit()
+    return sim["stock_by_block"], sim.get("stock_by_block_computed_at")
 
 
 def gcode_stale(record, machine):

@@ -16,6 +16,7 @@ T, an arc or a corner the nose does not fit (an interference), the nose centre b
 a tip direction the simulation does not know (T5 to T8).
 Warnings: parting to the axis in G96, n·P unknown, speeds below the min, an inner corner left with the nose radius.
 Material left on the part makes the program incomplete ("part not complete"), apart from the warnings.
+The stock at the end of every block N is kept (SimResult.blocks): the part after each operation, for the 3D view.
 """
 from __future__ import annotations
 
@@ -74,6 +75,13 @@ class Segment:
 
 
 @dataclass
+class BlockState:
+    number: int  # the block's N
+    title: str  # its comment
+    stock: list[float]  # the stock's radius per grid z at the end of the block
+
+
+@dataclass
 class SimResult:
     segments: list[Segment] = field(default_factory=list)
     errors: list[tuple[int, str]] = field(default_factory=list)  # (line, message)
@@ -82,6 +90,8 @@ class SimResult:
     incomplete: list[str] = field(default_factory=list)  # the part is not finished by this program: why
     final_stock: list[float] = field(default_factory=list)
     z_top: float = 0.0
+    initial_stock: list[float] = field(default_factory=list)  # the bar, before the first block
+    blocks: list[BlockState] = field(default_factory=list)  # the stock at the end of each block, in program order
 
     @property
     def ok(self) -> bool:
@@ -100,6 +110,7 @@ class _Sim:
         self.z_jaws = -data.stickout
         count = int(round((self.z_top - self.z_jaws) / DZ)) + 1
         self.stock = [data.stock_radius] * count
+        self.block: tuple[int, str] | None = None  # the block running: (N, its comment)
         self.final = [data.profile.final(self.z(i)) for i in range(count)]
         self.hole = 0.0  # the drilled depth on the axis (z of the bottom)
         self.r = SimResult(z_top=self.z_top)
@@ -585,9 +596,13 @@ class _Sim:
         if not parsed.ok:
             return self.r
         self._plan_compensation(parsed.lines)
+        self.r.initial_stock = list(self.stock)
         seen_end = False
         for ln in parsed.lines:
             words, n = ln.words, ln.number
+            if "N" in words:
+                self._close_block()
+                self.block = (words["N"], ln.comment)
             if 4 in ln.g:  # a dwell: no motion
                 continue
             if 28 in ln.g:
@@ -666,8 +681,14 @@ class _Sim:
                                 "operator may switch to G97")
         if not seen_end:
             self.error(len(text.splitlines()), "no M30 at the end")
+        self._close_block()
         self.finish()
         return self.r
+
+    def _close_block(self) -> None:
+        if self.block is not None:
+            self.r.blocks.append(BlockState(self.block[0], self.block[1], list(self.stock)))
+            self.block = None
 
     def thread(self, line: int, x: float, z: float, pitch: float | None) -> None:
         if self.rpm is None:
