@@ -68,7 +68,8 @@ Stages, in this order:
    profile first, one control, simulation required.
    **Built 2026-10-09** (see "Stage 6: G-code"): the operator checked the Zavisa 36 pin program as a turner; ready
    to run waits for the machine's real values (passport, the operator's programming values).
-7. Probing the blank and sending the program to the machine. **7.1 (machines, orders, the shop page by hand) and 7.2
+7. Probing the blank and sending the program to the machine. **7.3 (the part in 3D from the simulation) built
+   2026-10-22** (see "Stage 7.3"). **7.1 (machines, orders, the shop page by hand) and 7.2
    (the shop plan in mm) built 2026-10-17** (see "Stage 7.1", "Stage 7.2"); the rest **planned 2026-10-10, not started**: it starts only
    once the machine's passport shows a probe and the custom macro option (Fanuc Custom Macro B).
    - At the program's start a probing block (Custom Macro B) measures the blank's real Ø and stick-out and sets
@@ -1027,6 +1028,29 @@ Machine.machine_kind / footprint_length_mm / footprint_width_mm); DB backup
 - pytest took 15+ min once: the computer was switched off during that run; a timed run with durations: 1121 tests in
   4 min, the slowest 7.8 s (test_gcode_nose), nothing waits on a server.
 
+## Stage 7.3: the part in 3D (built 2026-10-22)
+Plan 1–5 agreed with the user, plus: the shop card shows the finished part (profile.final) transparent with the stock by
+the marks over it and the next operation highlighted; it takes the order's own program; the caption "лише зовнішній
+профіль"; states computed for an old program are saved. Commits 7707dc7 (states), bf1b9da (three.js), 16817ca (program
+page), c1c7e2c (shop / order) and the docs commit. No migration (the states are in the program's simulation JSON); the
+G-code text and the golden files unchanged; the files frozen by `dxf-blind-freeze` untouched.
+- `simulate.py` keeps `initial_stock` and the stock at the end of every block N (`SimResult.blocks`);
+  `gcode/stock3d.py`: `profile_after(result, k)`, Douglas-Peucker to 0.01 mm, `states` (in the JSON as `stock_by_block`).
+  `services.stock_states` simulates an old program from its text once and saves the states with the time.
+- `static/part3d.js` + `static/vendor/three` (three@0.160.0 from npm, integrity checked; three.module.min.js 670 681 B,
+  OrbitControls.js 29 868 B, LICENSE; sha256 in VERSION.txt, tested; `-text` in .gitattributes). Import map in base.html.
+- Shop / order: blocks marked done from the first without a gap; a gap is named ("N5 marked done, but N3 is not: shown up
+  to N2"), nothing mixed.
+- Measured on a copy of the user's DB (scratchpad `stock3d_check.py`): jobs/7 program 11: 14 blocks, k=0 the bar,
+  k=14 = final_stock, no block adds material, simulation 7.7–8.9 s, states 0.2 s, 10.5 KB JSON, 2…75 points a state;
+  jobs/8 program 10: 6 blocks, the same checks, inside the part |Δr| ≤ 0.0005 mm from profile.final, 1.1 KB.
+- **Found on jobs/7, not fixed (simulation, out of 7.3):** after N4 (T03 copy roughing R12.5) the simulated stock is
+  1.54 mm below the finished profile from Z-46.98 to Z-54.28 (D35.41 on the Ø38.5 section and the arc's start), with no
+  simulation error. Cause in `simulate._nose_cut`: the "insert's edge beside the nose" (`edge`, ap max along +Z on a move
+  with X) lowers the stock without the finished-profile check that the nose circle has. Either a real gouge by the edge
+  or the edge model is too crude for a copying insert (VNMG 35°): to be decided with the operator. The 3D view shows
+  that dip as the simulation computes it.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -1036,7 +1060,7 @@ Machine.machine_kind / footprint_length_mm / footprint_width_mm); DB backup
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1138 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1153 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

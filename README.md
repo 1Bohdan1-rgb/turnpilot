@@ -480,6 +480,21 @@ as not set; unless all three are from the passport the time is marked "without t
   part's time, the time left, incomplete without the passport's values; Upload drawing for a job on this machine,
   Machine page, Status and order), a light and a dark theme on this page; on a phone the plan scrolls in its box.
 
+## The part in 3D (stage 7.3)
+
+- The stock after every block N is kept from the program's own simulation (its 0.01 mm grid, simplified to within
+  0.01 mm): nothing is drawn that the simulation did not compute. A program made before is simulated once from its
+  text when its 3D view is first asked for, and saved with the time (named on the page).
+- Program page, "Part in 3D": a slider over the operations, from the bar to the finished part; machined before /
+  removed by this operation (with a transparent ghost of what it removes) / not machined yet.
+- Shop panel and the order page: the part on the machine now, from the order's own program, after the blocks the
+  operator marked done from the first on without a gap (a gap is named); the next operation's material highlighted;
+  the drawing's finished part transparent, with its outline. "За відмітками оператора, не з верстата."
+- Only the outer profile: holes and flats are not shown (the simulation keeps no inner radius).
+- three.js 0.160.0 (MIT) is a file of the project (`turnpilot/static/vendor/three`, ≈ 0.7 MB, sha256 in its
+  `VERSION.txt`): no internet needed. Loaded only when a 3D view is open; drawn only when it changes, pixel ratio
+  ≤ 1.5, no antialiasing; without WebGL the page says so and the 2D simulation stays.
+
 ## Tool groups and rapids over the material
 
 - Operations one after another with the same tool: one G28 and tool change for the group; every block keeps its
@@ -569,12 +584,12 @@ turnpilot/
   catalogue_file.py  import of a hand-typed catalogue file (docs/turnpilot_catalog_*.md)
   catalogue_reader.py  catalogue PDF: pages, search, the record_cutting_data reading and its checks
   gcode/           readiness, profile (r(z) from the part zero), program (neutral commands), fanuc (print /
-                   read back), simulate (the checks), svg (the drawing)
+                   read back), simulate (the checks), svg (the drawing), stock3d (the stock after each block)
   commands.py      `flask gcode-demo`
   passport_reader.py, machine_spec.py  machine passport reading, machine fields with sources
   routes.py        pages
   seed.py          seed data and `seed` CLI command
-  templates/, static/
+  templates/, static/ (part3d.js: the 3D view; vendor/three: three.js 0.160.0)
 migrations/        Alembic migrations (Flask-Migrate)
 tools/             generate_drawings.py, eval_extraction.py, eval_catalogue.py, dxf_blind_check.py, gcode_real.py
 docs/              eval_results.md, turnpilot_catalog_P1.2.md (Sandvik 2020 numbers and pages, steel P1.2)
