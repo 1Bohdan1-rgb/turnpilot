@@ -470,8 +470,10 @@ as not set; unless all three are from the passport the time is marked "without t
 - A machine's type (CNC lathe, manual lathe, machining centre, saw, CMM) is the operator's choice on its page; its
   footprint (length along the spindle × width) comes from the passport or the operator. Without either it is a grey
   marker, not to scale, with a warning: nothing is guessed.
-- The operator drags a machine (or a machine not yet placed) onto the plan: its centre goes to the nearest 100 mm,
-  the card rotates it by 90°; every place is kept with the name and the time. A footprint that crosses a wall,
+- Whoever changes the plan (the office or the operator) types the name in "Хто змінює" (kept until the tab is
+  closed; without it nothing moves) and drags a machine (or one not yet placed) onto the plan: its centre goes to
+  the nearest 100 mm at any scale (+ / − / Fit, Ctrl + wheel, the background drags), the card rotates it by 90°, gives
+  X / Y, or takes it off the plan ("Прибрати з плану"); every change is kept with the name and the time. A footprint that crosses a wall,
   stands on a column or a walkway, or overlaps another machine is kept with a yellow outline and a warning.
 - Status colours from the operator's statuses (alarm: the stopped colour and "!"), search by name / type / control,
   a filter by status (the others dim), the card (type, control, capacity, the order running, done / all, the

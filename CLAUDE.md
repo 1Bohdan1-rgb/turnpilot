@@ -1007,6 +1007,12 @@ Machine.machine_kind / footprint_length_mm / footprint_width_mm); DB backup
   (2b4c607); + / − / Fit, Ctrl + wheel, background pan, fits 1920 × 1080, labels under a machine fade (3bdfd25); after a
   placement the page keeps its scale / scroll and says where the machine went (9deda0a: the drop point was right, the
   page came back fitted); the card's queue and the time left of all orders (the docs commit's predecessor).
+- 2026-10-22 (fae8b33; migration f4b8d2e6a1c9 `MachinePlacement.removed`, DB backup
+  `instance/turnpilot.db.bak-2026-10-22-before-unplace`): the office places the machines, so the page's field is
+  "Хто змінює" (required, kept in sessionStorage until the tab is closed, never filled in); without it a drag does not
+  start (red "Впишіть, хто змінює", the field focused, nothing sent); the card shows "змінив/змінила <name>"; "Прибрати
+  з плану" adds a removed row (the last place kept) and the machine goes back to the not-placed list. Statuses and
+  operation marks keep their operator field.
 - pytest took 15+ min once: the computer was switched off during that run; a timed run with durations: 1121 tests in
   4 min, the slowest 7.8 s (test_gcode_nose), nothing waits on a server.
 
@@ -1019,7 +1025,7 @@ Machine.machine_kind / footprint_length_mm / footprint_width_mm); DB backup
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1128 tests pass (2026-10-21). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1130 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
