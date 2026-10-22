@@ -5,7 +5,7 @@ import json
 import os
 import re
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
 from . import catalogue_file, catalogue_reader, cutting_data, drawing_reader, dxf_adapter, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
@@ -300,6 +300,137 @@ def turret_suggestions(job, machine) -> list[TurretSuggestion]:
         slot = free.pop(0) if free else None
         out.append(TurretSuggestion(tool, reason, slot.position if slot else None, slot.tool if slot else None))
     return out
+
+
+VIRTUAL_POSITION = 1000  # library tools tried in a dry run of the planner sit beyond every real position
+
+
+@dataclass
+class SetupRow:
+    """One position of a proposed set-up: what comes out, what goes in, why, and where else that tool stands."""
+    position: int
+    install: object  # the library Tool
+    remove: object = None  # the Tool there now (None: empty)
+    reasons: list = field(default_factory=list)
+    also_on: list = field(default_factory=list)  # names of other machines whose turret holds this tool now
+
+
+@dataclass
+class SetupProposal:
+    rows: list = field(default_factory=list)
+    missing: list = field(default_factory=list)  # what the library cannot give, in words
+    unplaced: list = field(default_factory=list)  # (Tool, reason): wanted, but no position the job leaves free
+
+    @property
+    def needed(self) -> bool:
+        return bool(self.rows or self.missing or self.unplaced)
+
+
+def _plan(job, machine, entries):
+    power = planner.PowerSpec(machine.power_kw, machine.drive_efficiency)
+    limits = planner.MachineLimits(machine.min_rpm, machine.coolant, machine.live_tooling, machine.c_axis)
+    return planner.plan_job(job_spec(job), entries, machine.max_rpm, machine.max_thread_feed, power, limits)
+
+
+def _feature_label(feature) -> str:
+    if feature is None:
+        return "the part"
+    size = (f" Ø{feature.diameter:g}" if feature.diameter else "") + (f" L{feature.length:g}" if feature.length else "")
+    return f"{feature.type}{size} (row {feature.id})"
+
+
+def _needs_another_tool(op, features, specs, job, tools) -> str | None:
+    """Why a planned operation needs a tool the turret lacks (None: its tool fits): no tool, a bore not drilled to
+    size, a concave arc steeper than its tool's RMPX (the rules of turret_suggestions)."""
+    feature = features.get(op.feature_id)
+    if op.tool_id is None:
+        return (op.warnings[0] if op.warnings else f"no {op.tool_type} tool")
+    if feature is None:
+        return None
+    if op.tool_type == "drilling" and feature.type == "bore" and feature.diameter and not (
+            op.ref_diameter and abs(op.ref_diameter - feature.diameter) <= 0.01):
+        return f"the bore Ø{feature.diameter:g} drilled to size in one operation"
+    if feature.type == "arc" and op.tool_type in ("turning_finish", "turning_rough") and job.axial_order_known:
+        angle = planner.concave_arc_angle(specs[feature.id])
+        have = tools[op.tool_id].max_ramp_angle if op.tool_id in tools else None
+        if angle is not None and (have is None or angle > have + 0.5):
+            return f"the concave R{feature.radius:g} goes down at {angle:.0f}°: a tool with RMPX ≥ {angle:.0f}°"
+    return None
+
+
+def turret_setup_proposal(job, machine) -> SetupProposal:
+    """The job's full turret set-up from the library, by the planner's own rules: a dry run with the job's turret, a
+    dry run with the checked library tools added beyond the real positions, a check run with the set-up. A tool that is
+    in the turret and fits stays; a library tool is taken only for an operation whose tool is missing or does not fit;
+    it goes to an empty position first (the lowest), else to one whose tool the job does not use; the order is the
+    operations' order. Library tools: not retired, the material's ISO group, cutting data from confirmed catalogue rows
+    for the material's group. Nothing is written."""
+    material = job.material
+    rows = confirmed_rows()
+    slots = job_turret(job, machine)
+    base = [planner.TurretEntry(s.position, tool_spec(s.tool, material, rows)) for s in slots if s.tool is not None]
+    first = _plan(job, machine, base)
+    features = {f.id: f for f in job.active_features}
+    specs = {f.id: f for f in job_spec(job).features}
+    tools = {t.id: t for t in db.session.execute(db.select(Tool)).scalars()}
+    skipped = {(op.feature_id, op.tool_type, op.rough_finish) for op in job.current_operations if op.status == "skipped"}
+    needs = {}  # (feature id, tool type) -> reason
+    for op in first:
+        if (op.feature_id, op.tool_type, op.mode) in skipped:  # left out by the operator: needs no tool
+            continue
+        reason = _needs_another_tool(op, features, specs, job, tools)
+        if reason:
+            needs.setdefault((op.feature_id, op.tool_type), reason)
+    proposal = SetupProposal()
+    if not needs:
+        return proposal
+    in_turret = {s.tool_id for s in slots if s.tool_id}
+    candidates = []
+    for tool in sorted(tools.values(), key=lambda t: t.id):
+        if tool.is_retired or tool.id in in_turret or material.iso_group not in tool.iso_group:
+            continue
+        spec = tool_spec(tool, material, rows)
+        if spec.catalogue_warning:  # not checked by a confirmed catalogue row for this material's group
+            continue
+        candidates.append(planner.TurretEntry(VIRTUAL_POSITION + len(candidates), spec))
+    wanted = {}  # tool id -> reasons, in the operations' order
+    for op in _plan(job, machine, base + candidates):
+        key = (op.feature_id, op.tool_type)
+        if op.turret_position and op.turret_position >= VIRTUAL_POSITION and key in needs:
+            reasons = wanted.setdefault(op.tool_id, [])
+            if needs[key] not in reasons:
+                reasons.append(needs[key])
+    used = {op.turret_position for op in first if op.tool_id is not None and op.turret_position}
+    free = [s for s in slots if s.tool is None] + [s for s in slots if s.tool is not None and s.position not in used]
+    for tool_id, reasons in wanted.items():
+        tool = tools[tool_id]
+        if not free:
+            proposal.unplaced.append((tool, "; ".join(reasons)))
+            continue
+        slot = free.pop(0)
+        others = sorted({m.name for m in db.session.execute(db.select(Machine)).scalars() if m.id != machine.id
+                         and any(s.tool_id == tool_id for s in m.slots)})
+        proposal.rows.append(SetupRow(slot.position, tool, slot.tool, reasons, others))
+    placed = {r.position: r.install for r in proposal.rows}
+    check = [planner.TurretEntry(s.position, tool_spec(placed.get(s.position, s.tool), material, rows))
+             for s in slots if placed.get(s.position, s.tool) is not None]
+    said = set()
+    for op in _plan(job, machine, check):
+        if op.tool_id is not None or (op.feature_id, op.tool_type) in said                 or (op.feature_id, op.tool_type, op.mode) in skipped:
+            continue
+        said.add((op.feature_id, op.tool_type))
+        where = _feature_label(features.get(op.feature_id))
+        unchecked = [t.name for t in tools.values() if t.type == op.tool_type and not t.is_retired
+                     and material.iso_group in t.iso_group]
+        if unchecked:
+            proposal.missing.append(f"{', '.join(unchecked)}: in the library, but its cutting data are not from a "
+                                    f"confirmed catalogue row for {material.catalogue_group or material.name}: "
+                                    f"not proposed for {op.tool_type} of {where}")
+        else:
+            proposal.missing.append(f"the library has no {op.tool_type} tool for ISO {material.iso_group} checked by "
+                                    f"the catalogue for {material.catalogue_group or material.name}: {where}"
+                                    + (f" ({op.warnings[0]})" if op.warnings and "narrower" in op.warnings[0] else ""))
+    return proposal
 
 
 def undo_job_turret_change(change, name):
