@@ -4,6 +4,10 @@ jaws. A turning or facing insert whose nose radius rε and tip direction T are k
 the tip moved by T without compensation, the offset path with G41 / G42); the other tools are their imaginary tip
 point (grooving and parting inserts: their width).
 
+The insert's trailing edge beside the nose (a move with X): with κr and the insert's shape, a straight line tangent to
+the nose (or from the tip point) rising towards +Z at 180° − κr − ε, as long as the insert's edge; without them, a
+flat ap max long at the nose's lowest point (cautious: what it takes below the finished profile is an error).
+
 Errors (the program is not ready to run): a turning cut deeper than the tool's ap max, a turning cut down towards
 the chuck steeper than the insert's max in-copying angle (or with that angle not known), a rapid through material (both orders of the axes, as a Fanuc control
 may move them separately), a cut below the finished profile, a tool point at the jaws, X below the axis (beyond the
@@ -46,6 +50,16 @@ class ToolInfo:
     tip_direction: int | None = None  # turning: the imaginary tip's number T (0-9)
     name: str = ""  # the tool's name, for the messages
     insert_code: str | None = None
+    entering_angle: float | None = None  # turning: κr of the insert in its holder (the operator's)
+    shape: tuple[float, float] | None = None  # turning: (point angle ε, edge length) from the insert code
+
+    @property
+    def trailing(self) -> tuple[float, float] | None:
+        """(angle to the axis, length) of the trailing edge beside the nose, rising towards +Z (the tool cuts towards
+        the chuck): 180° − κr − ε; None when κr or the insert's shape is not known (the edge is then taken as flat)."""
+        if self.entering_angle is None or self.shape is None:
+            return None
+        return 180.0 - self.entering_angle - self.shape[0], self.shape[1]
 
 
 @dataclass(frozen=True)
@@ -419,9 +433,7 @@ class _Sim:
                 if low < self.final[i] - TOL and low < gouged.get(i, math.inf):
                     gouged[i] = low  # the deepest per cell, reported after the move (one message per cell)
             if edge:  # the insert's edge beside the nose, as for the tip point
-                for i in self.indices(zz, zz + edge):
-                    if self.stock[i] > max(rr - radius, 0.0):
-                        self._lower(i, max(rr - radius, 0.0), line)
+                self._edge(line, zz, rr, radius, edge)
         for i, low in sorted(gouged.items()):
             if -length + TOL < self.z(i) < -TOL:
                 self.gouge_lines.add(line)
@@ -558,13 +570,14 @@ class _Sim:
 
     def _remove(self, line: int, z: float, r: float, radial: bool) -> None:
         """The tool at (z, r) takes the material above r over its footprint; a turning insert moving radially
-        also takes it along its edge ahead of the tip. Below the finished profile (inside the part): an error."""
+        also takes it along its trailing edge beside the tip (towards +Z, `_edge`). Below the finished profile (inside
+        the part): an error."""
         lo, hi = self.footprint(z)
         info = self.info
         wide = hi - lo > 2 * TOL
         cells = list(self.indices(lo, hi)) if wide else [i for i in [self.index(z)] if i is not None]
         if radial and info and info.tool_type in ("facing", "turning_rough", "turning_finish") and info.edge:
-            cells += [i for i in self.indices(z, z + info.edge) if i not in cells]
+            self._edge(line, z, r, 0.0, info.edge)
         length = self.d.profile.length
         for i in cells:
             zi = self.z(i)
@@ -575,6 +588,26 @@ class _Sim:
                 self.gouge_lines.add(line)
                 self.error(line, f"cuts below the finished profile at Z{fanuc.number(zi)} "
                                  f"(D{fanuc.number(2 * r)} < D{fanuc.number(2 * self.final[i])})")
+
+    def _edge(self, line: int, cz: float, cr: float, radius: float, flat: float) -> None:
+        """The insert's trailing edge beside a nose circle (radius 0: the tip point) at (cz, cr): its line rising
+        towards +Z (ToolInfo.trailing), else a flat `flat` long at the nose's lowest point."""
+        trailing = self.info.trailing if self.info else None
+        if trailing is None:
+            for i in self.indices(cz, cz + flat):
+                if self.stock[i] > max(cr - radius, 0.0):
+                    self._lower(i, max(cr - radius, 0.0), line)
+            return
+        angle, length = trailing
+        if angle <= 0.0:  # the edge goes back down or along the nose: nothing beside it below the nose
+            return
+        a = math.radians(angle)
+        tz, tr = cz + radius * math.sin(a), cr - radius * math.cos(a)  # where the edge touches the nose circle
+        slope = math.tan(a)
+        for i in self.indices(tz, tz + length * math.cos(a)):
+            low = max(tr + (self.z(i) - tz) * slope, 0.0)
+            if self.stock[i] > low:
+                self._lower(i, low, line)
 
     def _lower(self, i: int, r: float, line: int) -> None:
         """The stock at cell i cut down to r; the first line that takes it below the finished profile is kept."""
@@ -608,8 +641,14 @@ class _Sim:
             if tool is not None:
                 message += f", first cut by T{tool:02d}" + (f" {info.name}" if info and info.name else "")
             if info and info.edge and info.tool_type in NOSE_TYPES:
-                message += (f" (the insert's edge beside the nose is taken as {info.edge:g} mm along Z at the "
-                            "nose's lowest point)")
+                if info.trailing is None:
+                    message += (f" (the insert's edge beside the nose is taken as {info.edge:g} mm along Z at the "
+                                "nose's lowest point: " + ("κr of the holder is not set: enter it on the tool page to "
+                                "check the real edge" if info.entering_angle is None else "the insert code gives no "
+                                "shape") + ")")
+                else:
+                    message += (f" (the insert's trailing edge: κr {info.entering_angle:g}° and ε {info.shape[0]:g}°, "
+                                f"{info.trailing[0]:g}° to the axis)")
             sections = []
             for z in (z0, z1):
                 section = self.d.profile.section_at(z)

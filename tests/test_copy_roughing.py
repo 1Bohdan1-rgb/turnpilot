@@ -19,9 +19,9 @@ def hollow_job():
                     blank=50, length=40, stickout=45)
 
 
-def install(machine, position, code, rmpx=44.0, tip=3):
+def install(machine, position, code, rmpx=44.0, tip=3, kr=93.0):
     t = tool(code)
-    t.max_ramp_angle, t.tip_direction = rmpx, tip
+    t.max_ramp_angle, t.tip_direction, t.entering_angle_deg = rmpx, tip, kr
     machine.slots[position - 1].tool = t  # in this test's database only
 
 
@@ -29,6 +29,7 @@ def install(machine, position, code, rmpx=44.0, tip=3):
 def machine(app):
     machine = ready_machine()
     tool("DNMG150604-PF").max_ramp_angle = 27.0
+    tool("DNMG150604-PF").entering_angle_deg = 93.0
     db.session.commit()
     return machine
 
@@ -55,7 +56,7 @@ def test_roughed_by_the_pm_and_finished_by_the_pf(machine):
     prog, text, result = program(job, machine)
     block = next(b for b in prog.blocks if b.title.startswith("COPY ROUGH ARC R12.5"))
     assert block.tool_position == 10
-    only_flat_edge_errors(result)  # was: clean (the flat edge of the insert, until its κr)
+    assert result.ok and result.complete, (result.errors, result.incomplete)
 
 
 def test_only_the_pf_roughs_it_too_with_a_warning(machine):
@@ -67,7 +68,7 @@ def test_only_the_pf_roughs_it_too_with_a_warning(machine):
     assert f"roughed with the finishing copying insert T11 (no roughing tool may go down at 37°): {rough.passes} " \
            f"passes of ap {rough.ap:g}" in rough.warning
     prog, text, result = program(job, machine)
-    only_flat_edge_errors(result)  # was: clean (the flat edge of the insert, until its κr)
+    assert result.ok and result.complete, (result.errors, result.incomplete)
 
 
 def test_without_a_copying_tool_it_is_an_error(machine):
@@ -113,3 +114,26 @@ def test_copy_roughing_without_t_is_warned_at_calculate(machine):
     rough = ops(hollow_job(), "turning_rough")
     assert rough.turret_position == 10
     assert "copy roughing needs the tip direction T of T10" in rough.warning
+
+
+def test_without_kr_the_flat_edge_goes_under_the_neck_and_says_why(machine):
+    # jobs/7's case (НД 012, N4): the VNMG going down the hollow; the flat edge (ap max at the nose's lowest point)
+    # goes under the Ø38.5 neck behind it, the real edge (52° to the axis) clears it
+    install(machine, 10, "VNMG160408-PM", kr=None)
+    install(machine, 11, "VNMG160404-PF")
+    db.session.commit()
+    _, _, result = program(hollow_job(), machine)
+    only_flat_edge_errors(result)
+    assert all("first cut by T10" in m and "κr of the holder is not set: enter it on the tool page" in m
+               for _, m in result.errors)
+
+
+def test_the_trailing_edge_of_a_vnmg_in_a_j_holder():
+    from turnpilot.gcode.simulate import ToolInfo
+    from turnpilot.planner import insert_shape
+    vnmg = ToolInfo("turning_rough", 4.0, nose_radius=0.8, tip_direction=3, insert_code="VNMG160408-PM",
+                    entering_angle=93.0, shape=insert_shape("VNMG160408-PM"))
+    assert vnmg.trailing == (52.0, 16.0)
+    cnmg = ToolInfo("turning_rough", 4.0, entering_angle=95.0, shape=insert_shape("CNMG120408-PM"))
+    assert cnmg.trailing == (5.0, 12.0)
+    assert ToolInfo("turning_rough", 4.0, shape=insert_shape("CNMG120408-PM")).trailing is None  # no κr: flat

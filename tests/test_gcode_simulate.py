@@ -164,3 +164,13 @@ def test_stock_left_below_the_finished_profile_by_the_edge_beside_the_tip(pin):
                               "beside the nose is taken as 5.5 mm along Z"), message  # Z-17.5 + ap max 5.5
     assert message.endswith("the drawing's tolerance there (for reference): D20. none given")
     assert not any(m.startswith("cuts below the finished profile") for m in messages(result))
+
+
+def test_a_cnmg_in_a_95_degree_holder_keeps_the_pin_clean(pin):
+    from turnpilot.models import Tool, db
+    for tool in db.session.execute(db.select(Tool)).scalars():
+        if tool.type in ("facing", "turning_rough", "turning_finish"):
+            tool.entering_angle_deg = 95.0
+    db.session.commit()
+    result = run(pin)
+    assert result.ok and result.complete, (result.errors, result.incomplete)

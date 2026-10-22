@@ -32,8 +32,9 @@ def dip_job():
 def machine(app):
     machine = ready_machine()
     tool("DNMG150604-PF").max_ramp_angle = 27.0
+    tool("DNMG150604-PF").entering_angle_deg = 93.0
     vnmg = tool("VNMG160404-PF")
-    vnmg.max_ramp_angle = 44.0
+    vnmg.max_ramp_angle, vnmg.entering_angle_deg = 44.0, 93.0
     machine.slots[9].tool = vnmg  # T10 (above T4: T4 stays the first finishing tool), in this test's database only
     db.session.commit()
     return machine
@@ -55,7 +56,7 @@ def test_one_contour_block_per_tool(machine):
     assert [p for p, _ in finishing] == [4, 10, 4]
     text = fanuc.render(program)
     result = services.gcode_simulation(job, machine, text)
-    only_flat_edge_errors(result)  # was: clean (the flat edge of the insert, until its κr)
+    assert result.ok and result.complete, (result.errors, result.incomplete)
 
 
 def test_without_a_tool_that_may_go_down_the_default_stays(app):

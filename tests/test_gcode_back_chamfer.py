@@ -21,9 +21,9 @@ def generate(job, machine):
     return program, text, services.gcode_simulation(job, machine, text)
 
 
-def finish_tool(ramp):
+def finish_tool(ramp, kr=93.0):
     tool = db.session.execute(db.select(Tool).filter_by(insert_code="DNMG150604-PF")).scalar_one()
-    tool.max_ramp_angle = ramp
+    tool.max_ramp_angle, tool.entering_angle_deg = ramp, kr
     db.session.commit()
 
 
@@ -48,14 +48,14 @@ def test_the_back_chamfer_is_cut_with_the_parting_inserts_corner(app):
 
 def test_a_finishing_tool_allowed_to_go_down_cuts_the_chamfer_itself(app):
     machine = ready_machine()
-    finish_tool(50)
+    finish_tool(50, kr=72.5)  # trailing edge 180 - 72.5 - 55 = 52.5° clears the 45° chamfer (a 93° holder: 32°)
     job = make_job(back_chamfer_part())
     program, text, result = generate(job, machine)
     finish = next(b for b in program.blocks if b.tool_type == "turning_finish")
     assert (26.0, -40.0) in [(c.x, c.z) for c in finish.commands if isinstance(c, Feed)]
     parting = next(b for b in program.blocks if b.tool_type == "parting")
     assert not any(isinstance(c, Comment) and "BACK CHAMFER" in c.text for c in parting.commands)
-    only_flat_edge_errors(result)  # was: clean (the flat edge of the insert, until its κr)
+    assert result.ok and result.complete, (result.errors, result.incomplete)
     finish_tool(30)  # the same program read for a holder that allows 30° only
     result = services.gcode_simulation(job, machine, text)
     assert any(m == "goes down at 45° towards the chuck, above the tool's max in-copying angle 30°"
@@ -72,7 +72,7 @@ def test_without_a_parting_operation_the_chamfer_is_left_and_said_so(app):
 
 def test_a_cut_down_in_material_without_the_angle_is_an_error(app):
     machine = ready_machine()
-    finish_tool(50)
+    finish_tool(50, kr=72.5)  # trailing edge 180 - 72.5 - 55 = 52.5° clears the 45° chamfer (a 93° holder: 32°)
     job = make_job(back_chamfer_part())
     _, text, _ = generate(job, machine)
     finish_tool(None)

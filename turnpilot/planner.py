@@ -261,6 +261,20 @@ def _lerp(lo: float, hi: float, t: float) -> float:
     return lo + (hi - lo) * t
 
 
+# ISO 1832: the shape letter of a turning insert is its point angle ε (the letter's definition)
+INSERT_POINT_ANGLE = {"C": 80.0, "D": 55.0, "E": 75.0, "K": 55.0, "M": 86.0, "S": 90.0, "T": 60.0, "V": 35.0, "W": 80.0}
+
+
+def insert_shape(insert_code: str | None) -> tuple[float, float] | None:
+    """(point angle ε, cutting edge length in mm) an ISO turning insert code gives ('VNMG 16 04 08' -> (35, 16): the
+    shape letter and the size digits, which are the edge length rounded); None for a round insert or another code."""
+    if insert_code:
+        match = re.match(r"([A-Z])[A-Z]{3}(\d{2})(?:\d{2}|T\d)\d{2}(?!\d)", re.sub(r"\s+", "", insert_code).upper())
+        if match and match.group(1) in INSERT_POINT_ANGLE:
+            return INSERT_POINT_ANGLE[match.group(1)], float(match.group(2))
+    return None
+
+
 def insert_nose_radius(insert_code: str | None) -> float | None:
     """The nose radius (mm) an ISO turning insert code gives; None when it gives none.
 
