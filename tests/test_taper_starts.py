@@ -49,3 +49,13 @@ def test_without_the_axial_order_every_taper_starts_from_the_bar():
     features = [F(1, "od_turn", diameter=40, length=10), F(2, "taper", start_diameter=38, diameter=30, length=8)]
     out = taper_starts(features, lambda f: f.diameter, STOCK, axial_order=False)
     assert (out[id(features[1])].diameter, out[id(features[1])].from_bar) == (STOCK, True)
+
+
+def test_a_convex_arc_topping_the_found_section_between_it_and_the_taper_means_the_bar():
+    # Ø40 | convex arc Ø38 -> Ø36, R5 (its top Ø41.1, above the Ø40) | taper Ø36 -> Ø30: the Ø40's passes cannot cut
+    # the arc down to Ø40, so neither the arc nor the taper is at that level
+    features = [F(1, "od_turn", diameter=40, length=10),
+                F(2, "arc", start_diameter=38, diameter=36, length=8, radius=5, arc_convex=True),
+                F(3, "taper", start_diameter=36, diameter=30, length=10), F(4, "od_turn", diameter=30, length=10)]
+    assert starts(features)[3] == (STOCK, True)
+    assert starts(features)[2] == (STOCK, True)

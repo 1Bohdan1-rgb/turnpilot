@@ -403,23 +403,27 @@ def taper_starts(features, turned_diameter, stock: float, axial_order: bool) -> 
     """The diameter each taper or arc (by id()) is roughed from: the nearest turned section on its larger end's side,
     past other tapers, arcs and grooves (they are cut down to that section's level first), when it is at least as
     large as the larger end (the order along the axis known); else the bar (nothing on that side, or a smaller
-    section there). So a taper roughs only its own metal, after its neighbours, and not theirs from the bar. An arc
-    may end on the axis (its Ø empty: 0)."""
+    section there, or a passed taper / arc higher than it: a convex arc's top above it cannot be cut down to its
+    level). So a taper roughs only its own metal, after its neighbours, and not theirs from the bar. An arc may end on
+    the axis (its Ø empty: 0)."""
     profile = [f for f in features if f.type in PROFILE_SECTION_TYPES or f.type == "groove"]
     starts = {}
     for k, f in enumerate(profile):
         end, start = f.diameter or 0.0, f.start_diameter or 0.0
         if f.type not in ("taper", "arc") or not max(end, start):
             continue
-        large = max(end, start)
+        large = arc_highest_diameter(f) if f.type == "arc" else max(end, start)  # its own top too
         step = -1 if start >= end else 1
-        j, found = k + step, None
+        j, found, passed = k + step, None, 0.0
         while axial_order and 0 <= j < len(profile):
             neighbour = profile[j]
             if neighbour.type in TURNED_SECTION_TYPES and turned_diameter(neighbour):
-                if turned_diameter(neighbour) >= large - 1e-9:
+                if turned_diameter(neighbour) >= max(large, passed) - 1e-9:
                     found = turned_diameter(neighbour)
                 break
+            if neighbour.type in ("taper", "arc"):
+                passed = max(passed, arc_highest_diameter(neighbour) if neighbour.type == "arc"
+                             else max(neighbour.diameter or 0.0, neighbour.start_diameter or 0.0))
             j += step
         starts[id(f)] = RoughStart(found, from_bar=False) if found else RoughStart(stock, from_bar=True)
     return starts
@@ -441,6 +445,23 @@ def arc_lowest_diameter(feature) -> float | None:
     nr = feature.length / (2 * half)  # the chord's normal, its radial part
     centre_r = mid + rise * nr
     return round(2 * (centre_r - feature.radius), 3)
+
+
+def arc_highest_diameter(feature) -> float:
+    """The largest Ø along an arc: a convex arc's top when it lies between its ends, else its larger end (also when its
+    shape or the circle through its ends with its radius is not known: only the ends are known then)."""
+    d0, d1 = feature.start_diameter or 0.0, feature.diameter or 0.0
+    if not feature.arc_convex or not feature.radius or not feature.length:
+        return max(d0, d1)
+    dr = (d1 - d0) / 2
+    half = math.hypot(feature.length, dr) / 2
+    if half > feature.radius:
+        return max(d0, d1)
+    rise = math.sqrt(feature.radius ** 2 - half ** 2)  # the centre on the axis' side of the chord
+    zc, rc = feature.length / 2 + rise * dr / (2 * half), (d0 + d1) / 4 - rise * feature.length / (2 * half)
+    if not 0.0 < zc < feature.length:
+        return max(d0, d1)
+    return round(2 * (rc + feature.radius), 3)
 
 
 def concave_arc_angle(feature) -> float | None:
