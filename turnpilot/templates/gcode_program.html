@@ -80,6 +80,21 @@
   </div>
 </div>
 
+<details class="card part3d" data-src="{{ url_for('main.gcode_part3d', program_id=record.id) }}" data-mode="program">
+  <summary><strong>Part in 3D</strong> <span class="small muted">— the stock after each operation, from this
+    program's simulation (opens the 3D view)</span></summary>
+  <div class="part3d-view"></div>
+  <div class="sim-controls">
+    <label class="small">Operation <input type="range" class="part3d-step" min="0" value="0"></label>
+    <span class="small muted part3d-where"></span>
+    <span class="small legend"><span class="key k3-done"></span> machined before <span class="key k3-current"></span>
+      this operation (transparent: the material it removes) <span class="key k3-bar"></span> not machined yet</span>
+  </div>
+  <p class="small muted">Лише зовнішній профіль — отвори й лиски не показано. Turn: drag with the mouse or one finger;
+    zoom: the wheel or two fingers; move: the right button or two fingers.</p>
+  <p class="small warning part3d-info"></p>
+</details>
+
 {% if sim.warnings or sim.program_warnings %}
 <h2>Checks</h2>
 <ul class="card checks">

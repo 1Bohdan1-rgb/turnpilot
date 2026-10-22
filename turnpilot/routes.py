@@ -873,6 +873,11 @@ def job_gcode(job_id):
                            demo=services.demo_settings(settings), programs=programs)
 
 
+@bp.route("/gcode/<int:program_id>/part3d.json")
+def gcode_part3d(program_id):
+    return services.part3d_data(db.get_or_404(GcodeProgram, program_id))
+
+
 @bp.route("/gcode/<int:program_id>")
 def gcode_program(program_id):
     from .gcode import svg

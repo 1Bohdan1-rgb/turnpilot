@@ -10,6 +10,12 @@
   --warn-bg: #fff4e5;
   --warn: #9a4d00;
   --error-bg: #fde8e8;
+  --p3d-done: #9db0c4;  /* the 3D part: machined */
+  --p3d-current: #e8892b;  /* removed by the operation shown */
+  --p3d-next: #e8892b;  /* the next operation (shop card) */
+  --p3d-bar: #7a6a58;  /* the bar, not machined yet */
+  --p3d-final: #2f5fd0;  /* the finished part (drawing) */
+  --p3d-bg: #f3f5f8;
 }
 
 * { box-sizing: border-box; }
@@ -323,3 +329,18 @@ main:has(.shop-floor) { max-width:none; }  /* the shop page uses the window's wi
 .shop-panel { max-width:min(760px, calc(100vw - 32px)); width:100%; border:1px solid var(--border); border-radius:10px;
   background:var(--card); color:var(--text); }
 .order-drawing { max-width:100%; max-height:320px; border:1px solid var(--border); }
+
+/* the part in 3D (static/part3d.js) */
+.part3d summary { cursor: pointer; }
+.part3d-view { width: 100%; min-height: 40px; margin-top: 8px; touch-action: none; }
+.part3d-view canvas { display: block; border-radius: 4px; }
+.part3d-info:empty { display: none; }
+.legend .key.k3-done, .legend .key.k3-current, .legend .key.k3-next, .legend .key.k3-bar, .legend .key.k3-final {
+  border: 0; height: 10px; }
+.legend .key.k3-done { background: var(--p3d-done); }
+.legend .key.k3-current { background: var(--p3d-current); }
+.legend .key.k3-next { background: var(--p3d-next); }
+.legend .key.k3-bar { background: var(--p3d-bar); }
+.legend .key.k3-final { background: transparent; border: 2px solid var(--p3d-final); height: 10px; }
+@media (prefers-color-scheme: dark) { .shop-floor:not([data-theme="light"]) .part3d { --p3d-bg: #141D22; } }
+.shop-floor[data-theme="dark"] .part3d { --p3d-bg: #141D22; }

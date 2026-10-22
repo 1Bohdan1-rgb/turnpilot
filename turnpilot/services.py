@@ -871,6 +871,19 @@ def stock_states(record):
     return sim["stock_by_block"], sim.get("stock_by_block_computed_at")
 
 
+def part3d_data(record):
+    """What the 3D view of a program needs: the states, the finished profile, the bar and the jaws."""
+    job = record.job
+    machine = record.machine or job_machine(job)
+    states, computed_at = stock_states(record)
+    settings = {row["name"]: row["value"] for row in json.loads(record.settings)}
+    _, _, profile, _ = gcode_inputs(job, machine)
+    return {"program": record.id, "states": states, "computed_at": computed_at,
+            "final": [[round(z, 3), round(r, 3)] for z, r in profile.final_points],
+            "bar_radius": planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
+            "z_jaws": -float(settings.get("stickout_mm") or 0), "stale": gcode_stale(record, machine)}
+
+
 def gcode_stale(record, machine):
     """Why a program no longer matches the job and the machine (empty: it still does)."""
     job = record.job
