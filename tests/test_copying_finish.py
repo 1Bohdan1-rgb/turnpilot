@@ -1,7 +1,7 @@
 """A concave arc steeper than the finishing tool's RMPX is finished by a tool whose RMPX covers it (its own contour
 block); with no such tool the default stays and the simulation says what is not cut."""
 import pytest
-from gcode_jobs import make_job, ready_machine
+from gcode_jobs import make_job, only_flat_edge_errors, ready_machine
 
 from turnpilot import services
 from turnpilot.gcode import fanuc
@@ -55,7 +55,7 @@ def test_one_contour_block_per_tool(machine):
     assert [p for p, _ in finishing] == [4, 10, 4]
     text = fanuc.render(program)
     result = services.gcode_simulation(job, machine, text)
-    assert result.ok and result.complete, (result.errors, result.incomplete)
+    only_flat_edge_errors(result)  # was: clean (the flat edge of the insert, until its κr)
 
 
 def test_without_a_tool_that_may_go_down_the_default_stays(app):

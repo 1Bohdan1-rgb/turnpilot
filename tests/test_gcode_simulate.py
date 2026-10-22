@@ -148,3 +148,19 @@ def test_threading_above_the_machine_limit(app):
     fast = replace(text, f"G97 S{op.n} M04", "G97 S1000 M04")
     assert "n·P 1500 mm/min above the machine's threading limit 1000" in messages(
         services.gcode_simulation(job, machine, fast))
+
+
+def test_stock_left_below_the_finished_profile_by_the_edge_beside_the_tip(pin):
+    # a radial plunge into the groove (Z-15 to Z-18, D16): the tip stays above its bottom, but the insert's edge
+    # beside it (ap max along +Z) is taken as flat at the tip's level and goes under the D20 section
+    text = replace(pin[2], "G01 Z-63. F0.3\n", "G01 Z-63. F0.3\nG00 X33.\nG00 Z-17.5\nG01 X17. F0.2\nG01 X33.\n")
+    result = run(pin, text)
+    line = text.splitlines().index("G01 X17. F0.2") + 1
+    found = [(n, m) for n, m in result.errors if m.startswith("the stock is left below the finished profile")]
+    assert len(found) == 1 and found[0][0] == line, result.errors
+    message = found[0][1]
+    assert message.startswith("the stock is left below the finished profile from Z-12. to Z-14.98, up to 1.50 mm per "
+                              "side (more than 0.01), first cut by T02 Rough turning CNMG (P) (the insert's edge "
+                              "beside the nose is taken as 5.5 mm along Z"), message  # Z-17.5 + ap max 5.5
+    assert message.endswith("the drawing's tolerance there (for reference): D20. none given")
+    assert not any(m.startswith("cuts below the finished profile") for m in messages(result))

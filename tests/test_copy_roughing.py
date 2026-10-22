@@ -1,7 +1,7 @@
 """НД 012's hollow: a concave R12.5 between Ø38.5 ends (36.9° at its rims), behind a larger Ø: roughed by copying
 along concentric arcs with a tool that may go down at that angle, finished by one too."""
 import pytest
-from gcode_jobs import make_job, ready_machine
+from gcode_jobs import make_job, only_flat_edge_errors, ready_machine
 
 from turnpilot import services
 from turnpilot.gcode import fanuc
@@ -55,7 +55,7 @@ def test_roughed_by_the_pm_and_finished_by_the_pf(machine):
     prog, text, result = program(job, machine)
     block = next(b for b in prog.blocks if b.title.startswith("COPY ROUGH ARC R12.5"))
     assert block.tool_position == 10
-    assert result.ok and result.complete, (result.errors, result.incomplete)
+    only_flat_edge_errors(result)  # was: clean (the flat edge of the insert, until its κr)
 
 
 def test_only_the_pf_roughs_it_too_with_a_warning(machine):
@@ -67,7 +67,7 @@ def test_only_the_pf_roughs_it_too_with_a_warning(machine):
     assert f"roughed with the finishing copying insert T11 (no roughing tool may go down at 37°): {rough.passes} " \
            f"passes of ap {rough.ap:g}" in rough.warning
     prog, text, result = program(job, machine)
-    assert result.ok and result.complete, (result.errors, result.incomplete)
+    only_flat_edge_errors(result)  # was: clean (the flat edge of the insert, until its κr)
 
 
 def test_without_a_copying_tool_it_is_an_error(machine):

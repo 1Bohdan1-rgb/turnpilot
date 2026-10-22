@@ -15,7 +15,9 @@ change, G28, G92 or the program's end under compensation, two blocks without a m
 T, an arc or a corner the nose does not fit (an interference), the nose centre below the axis under compensation;
 a tip direction the simulation does not know (T5 to T8).
 Warnings: parting to the axis in G96, n·P unknown, speeds below the min, an inner corner left with the nose radius.
-Material left on the part makes the program incomplete ("part not complete"), apart from the warnings.
+Material left on the part makes the program incomplete ("part not complete"), apart from the warnings. Stock left
+below the finished profile by more than BELOW_FINAL_MM, by any part of a tool (the insert's edge beside its nose too),
+is an error naming the line that first cut there.
 The stock at the end of every block N is kept (SimResult.blocks): the part after each operation, for the 3D view.
 """
 from __future__ import annotations
@@ -28,6 +30,7 @@ from .nose import TIP_FROM_CENTRE, Move, centre_of_tip, compensated_paths
 from .profile import Profile
 
 DZ = 0.01  # mm, the stock grid
+BELOW_FINAL_MM = 0.01  # stock below the finished profile by more than this, whatever cut it: an error (the user)
 TOL = 0.002  # mm
 HOME = (1e6, 1e6)  # the reference point: far beyond the part in +X and +Z
 NOSE_TYPES = ("facing", "turning_rough", "turning_finish")  # simulated as a nose circle when rε and T are known
@@ -111,6 +114,8 @@ class _Sim:
         count = int(round((self.z_top - self.z_jaws) / DZ)) + 1
         self.stock = [data.stock_radius] * count
         self.block: tuple[int, str] | None = None  # the block running: (N, its comment)
+        self.below: dict[int, tuple[int, int | None]] = {}  # cell -> (line, tool) that first cut it below the profile
+        self.gouge_lines: set[int] = set()  # lines already reported as cutting below the finished profile
         self.final = [data.profile.final(self.z(i)) for i in range(count)]
         self.hole = 0.0  # the drilled depth on the axis (z of the bottom)
         self.r = SimResult(z_top=self.z_top)
@@ -410,14 +415,16 @@ class _Sim:
             for i, low in self._disc(zz, rr, radius):
                 low = max(low, 0.0)
                 if self.stock[i] > low:
-                    self.stock[i] = low
+                    self._lower(i, low, line)
                 if low < self.final[i] - TOL and low < gouged.get(i, math.inf):
                     gouged[i] = low  # the deepest per cell, reported after the move (one message per cell)
             if edge:  # the insert's edge beside the nose, as for the tip point
                 for i in self.indices(zz, zz + edge):
-                    self.stock[i] = min(self.stock[i], max(rr - radius, 0.0))
+                    if self.stock[i] > max(rr - radius, 0.0):
+                        self._lower(i, max(rr - radius, 0.0), line)
         for i, low in sorted(gouged.items()):
             if -length + TOL < self.z(i) < -TOL:
+                self.gouge_lines.add(line)
                 self.error(line, f"cuts below the finished profile at Z{fanuc.number(self.z(i))} "
                                  f"(D{fanuc.number(2 * low)} < D{fanuc.number(2 * self.final[i])})")
         self._check_depth(line, excess, x0, z0, x, z)
@@ -562,11 +569,58 @@ class _Sim:
         for i in cells:
             zi = self.z(i)
             if self.stock[i] > r:
-                self.stock[i] = r
+                self._lower(i, r, line)
             on_tool = (lo + TOL < zi < hi - TOL) if wide else abs(zi - z) < DZ / 2
             if on_tool and -length + TOL < zi < -TOL and r < self.final[i] - TOL:
+                self.gouge_lines.add(line)
                 self.error(line, f"cuts below the finished profile at Z{fanuc.number(zi)} "
                                  f"(D{fanuc.number(2 * r)} < D{fanuc.number(2 * self.final[i])})")
+
+    def _lower(self, i: int, r: float, line: int) -> None:
+        """The stock at cell i cut down to r; the first line that takes it below the finished profile is kept."""
+        self.stock[i] = r
+        if i not in self.below and r < self._final_low(i) - BELOW_FINAL_MM \
+                and -self.d.profile.length + TOL < self.z(i) < -TOL:
+            self.below[i] = (line, self.tool)
+
+    def _final_low(self, i: int) -> float:
+        """The finished profile at cell i, the lower of its neighbours too (a step face falls between two cells)."""
+        return min(self.final[j] for j in (i - 1, i, i + 1) if 0 <= j < len(self.final))
+
+    def _below_final(self) -> None:
+        """Stock left below the finished profile (by any part of a tool) and not reported at its move: one error per
+        run of cells first cut by the same line."""
+        runs = []
+        for i in sorted(self.below):
+            line, tool = self.below[i]
+            if line in self.gouge_lines:
+                continue
+            depth = self._final_low(i) - self.stock[i]
+            if runs and runs[-1][0] == line and runs[-1][3] == i - 1:
+                runs[-1][3], runs[-1][4] = i, max(runs[-1][4], depth)
+            else:
+                runs.append([line, tool, i, i, depth])
+        for line, tool, first, last, depth in runs:
+            z0, z1 = self.z(first), self.z(last)
+            message = (f"the stock is left below the finished profile from Z{fanuc.number(z0)} to Z{fanuc.number(z1)}, "
+                       f"up to {depth:.2f} mm per side (more than {BELOW_FINAL_MM:g})")
+            info = self.d.tools.get(tool)
+            if tool is not None:
+                message += f", first cut by T{tool:02d}" + (f" {info.name}" if info and info.name else "")
+            if info and info.edge and info.tool_type in NOSE_TYPES:
+                message += (f" (the insert's edge beside the nose is taken as {info.edge:g} mm along Z at the "
+                            "nose's lowest point)")
+            sections = []
+            for z in (z0, z1):
+                section = self.d.profile.section_at(z)
+                if section is not None and section not in sections:
+                    sections.append(section)
+            tolerances = list(dict.fromkeys(
+                f"D{fanuc.number(s.d_free)}" + (f"-D{fanuc.number(s.d_chuck)}" if s.d_chuck != s.d_free else "")
+                + f" {s.tolerance or 'none given'}" for s in sections))
+            if tolerances:
+                message += "; the drawing's tolerance there (for reference): " + "; ".join(tolerances)
+            self.error(line, message)
 
     def check_bounds(self, line: int, x: float, z: float, jaws: bool = True) -> None:
         lo, _ = self.footprint(z)
@@ -767,6 +821,7 @@ class _Sim:
     def finish(self) -> None:
         length = self.d.profile.length
         self.r.final_stock = list(self.stock)
+        self._below_final()
         # the material a nose circle leaves in an inner corner (within rε·√2 of it, at most rε thick): a warning,
         # not a part left unfinished
         nose = min(self.nose_used) if self.nose_used else None

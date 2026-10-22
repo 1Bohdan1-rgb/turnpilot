@@ -1,7 +1,7 @@
 """Arcs G02/G03, commit 7: the simulation follows the nose circle of a turning insert whose rε and tip direction T
 are known (with and without compensation), and catches the errors of G41 / G42."""
 import pytest
-from gcode_jobs import make_job, ready_machine
+from gcode_jobs import make_job, only_flat_edge_errors, ready_machine
 from test_gcode_arc_program import sphere_job
 from test_gcode_compensation import finishing_tool, program
 
@@ -241,4 +241,4 @@ def test_a_groove_bridged_before_a_rising_section(app):
                    blank=32, length=30, stickout=35)
     _, text, result = program(job, machine)
     assert "G01 X20. Z-10. F0.15\nG01 X18.869 Z-12.434 F0.15\nG01 X20. Z-13. F0.15\nG01 X30. Z-18." in text
-    assert result.ok and result.complete, (result.errors, result.incomplete)
+    only_flat_edge_errors(result)  # was: clean (the flat edge of the insert, until its κr)

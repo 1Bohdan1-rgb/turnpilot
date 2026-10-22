@@ -38,6 +38,7 @@ class FeatureData:
     across_flats: float | None = None
     arc_convex: bool | None = None  # arc / fillet: bulging away from the axis
     drawn_radius: float | None = None  # arc from a DXF: the radius drawn (it may differ from the dimension)
+    tolerance: str | None = None  # the drawing's tolerance of the row (shown in the messages, not used to cut)
 
 
 @dataclass(frozen=True)
@@ -125,6 +126,7 @@ class Section:
     arc: Arc | None = None  # arc: the circle, when it can be programmed
     arc_problem: str | None = None  # arc: why it cannot
     fillet: bool = False  # a transition radius not modelled
+    tolerance: str | None = None  # the drawing's tolerance of its Ø (for the messages)
 
     @property
     def turned_d(self) -> float:
@@ -190,6 +192,9 @@ class Profile:
     def section_of(self, feature_id: int) -> Section | None:
         return next((s for s in self.sections if feature_id in (s.feature_id, s.thread_feature_id)), None)
 
+    def section_at(self, z: float) -> Section | None:
+        return next((s for s in self.sections if s.z_chuck - EPS <= z <= s.z_free + EPS), None)
+
     def turned(self, z: float) -> float:
         return _radius_at(self.turned_points, z)
 
@@ -232,7 +237,7 @@ def build(features: list[FeatureData], free_end: str) -> Profile:
                 warnings.append(f"{f.type} (row {f.id}): no length or diameter: the profile stops before it")
                 break
             section = Section(len(sections), f.type, f.id, f.length, d_left, d_right if d_right is not None else 0.0,
-                              groove_from=f.start_diameter if f.type == "groove" else None)
+                              groove_from=f.start_diameter if f.type == "groove" else None, tolerance=f.tolerance)
             if f.type == "arc":
                 section.radius, section.convex = f.radius, f.arc_convex
                 if f.drawn_radius is not None and f.radius is not None \

@@ -1,6 +1,6 @@
 """The operator's remarks on the Zavisa 36 pin: no finishing cut down towards the chuck steeper than the insert's
 in-copying angle; the back chamfer with the parting insert's corner; parting past the axis; a dwell in grooves."""
-from gcode_jobs import chamfer, make_job, ready_machine
+from gcode_jobs import chamfer, make_job, only_flat_edge_errors, ready_machine
 
 from turnpilot import services
 from turnpilot.gcode import fanuc
@@ -55,7 +55,7 @@ def test_a_finishing_tool_allowed_to_go_down_cuts_the_chamfer_itself(app):
     assert (26.0, -40.0) in [(c.x, c.z) for c in finish.commands if isinstance(c, Feed)]
     parting = next(b for b in program.blocks if b.tool_type == "parting")
     assert not any(isinstance(c, Comment) and "BACK CHAMFER" in c.text for c in parting.commands)
-    assert result.ok and result.complete
+    only_flat_edge_errors(result)  # was: clean (the flat edge of the insert, until its κr)
     finish_tool(30)  # the same program read for a holder that allows 30° only
     result = services.gcode_simulation(job, machine, text)
     assert any(m == "goes down at 45° towards the chuck, above the tool's max in-copying angle 30°"

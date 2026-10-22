@@ -46,3 +46,13 @@ def make_job(features=None, free_end="left", blank=32, length=70, stickout=75, f
             op.status = "approved"
         db.session.commit()
     return job
+
+
+def only_flat_edge_errors(result):
+    """Until the tools have their entering angle κr (stage 7.3 fix, commit 3): the insert's edge beside the nose is a
+    flat ap max long at the nose's lowest point, which goes under a profile going up behind a tool going down (a V / D
+    insert's edge really rises there). The program is complete; its only errors are that stock below the profile."""
+    assert result.complete, result.incomplete
+    assert result.errors and all(m.startswith("the stock is left below the finished profile") and
+                                 "the insert's edge beside the nose is taken as" in m for _, m in result.errors), \
+        result.errors

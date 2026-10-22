@@ -559,7 +559,7 @@ def job_profile(job, radius_of=None):
                                      length=f.length, pitch=f.pitch, radius=radius_of.get(f.id, f.radius),
                                      face=f.face, location=f.location, across_flats=f.across_flats,
                                      arc_convex=f.arc_convex,
-                                     drawn_radius=radius_of.get(f.id, f.drawn_radius))
+                                     drawn_radius=radius_of.get(f.id, f.drawn_radius), tolerance=f.tolerance)
                 for f in job.active_features]
     return gprofile.build(features, job.free_end or "left")
 
