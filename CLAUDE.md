@@ -1074,6 +1074,30 @@ DB backup `instance/turnpilot.db.bak-2026-10-22-before-entering-angle`, the serv
 - In the user's DB κr waits for the operator: tools 19 / 18 (VNMG PM / PF, DVJNR) and 4 (DNMG, DDJNR) have the J
   suggestion; 1 (SCMT), 2 and 3 (CNMG), 5 (VCGT) have no holder code.
 
+## Turret set-up from the library (built 2026-10-22)
+The operator-technologist's decision: the program composes the job's turret set-up from the library, the operator sets
+it up by the card. Plan 1–6 agreed with the user (answers: empty turret in the operations' order; jobs/7's earlier
+changes need the marks too; accepting calculates again; a tool on Lathe 1 may be proposed for Lathe 2: the library is
+tool types, not stock), plus "installed, X / Z offsets measured" and the "also on Lathe 1" hint. Commits 8e0b12c
+(proposal), 2db3f43 (models), 5599545 (card), 3fb08c4 (marks), b9f1ead (copy) and the docs commit. Migration
+b3e7c9d1f5a4 (TurretSetup, JobTurretChange.setup_id, TurretInstall, MachineTurretCopy; DB backup
+`instance/turnpilot.db.bak-2026-10-22-before-turret-setup`, the server stopped). The files frozen by `dxf-blind-freeze`
+untouched; the G-code generator untouched.
+- `services.turret_setup_proposal`: three planner runs (the job's turret; + the checked library tools at positions from
+  1000; the check with the set-up), nothing written. Needs per (feature, tool type): no tool, a bore not drilled to size,
+  a concave arc steeper than the tool's RMPX; skipped operations need none. Missing: "the library has no X tool for ISO P
+  checked by the catalogue for P1.2: …" or "X: in the library, but its cutting data are not from a confirmed catalogue
+  row …". `accept_turret_setup` checks the signature of the set-up shown ("1:5,2:7").
+- `_turret_setup.html` (job page, process sheet), `_turret_installs.html` (job page, program page, order panel), copy on
+  the machine page. The one-by-one suggestions (`turret_suggestions`, Apply) are gone.
+- Checked on copies of the user's DB (scratchpad `setup_bytes.py`, `job9_check.py`): jobs/7 and jobs/8 on Lathe 1,
+  Calculate + G-code (approved in the copy) at 239528c and at HEAD: 507 lines, byte for byte the same (480 G-code lines);
+  jobs/9 (Завіса 36 part 1) on Lathe 2: 10 operations without a tool → proposal T1 SCMT, T2 CNMG (P), T3 DNMG (T0303,
+  offset page R0.4 T3), T4 grooving 3 mm, T5 parting 3 mm, each "also on Lathe 1"; accepted → v2, 0 without a tool,
+  0 "No tool" warnings, 5 waiting for "installed".
+- In the user's DB nothing was accepted or copied; jobs/7's two earlier changes (T3, T12) now wait for the marks before
+  Ready to run.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -1083,7 +1107,7 @@ DB backup `instance/turnpilot.db.bak-2026-10-22-before-entering-angle`, the serv
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1159 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1172 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

@@ -432,9 +432,21 @@ presses Start after the machine check.
 The machine's turret is its standing set-up, and a job uses it by default. A job that needs another tool gets its
 own changes over it ("T12: Drill 860-GM Ø10 -> Copy finishing VNMG (P)"), with the operator's name and the date; the
 machine's turret and the other jobs keep theirs. Undoing a change keeps it in the history.
-- From the job's calculation the page suggests the smallest change: a drill of a bore's size, a tool whose RMPX covers
-  a concave arc, a tool type the turret lacks, a narrow enough grooving insert, from the library; it goes on an empty
-  position, else one whose tool the job does not use. One click applies it, or the operator picks another position.
+- **The set-up from the library:** once the job is calculated, the job page and the process sheet propose its full
+  set-up by the planner's own rules (a dry run with the library's tools added): what is in the turret and fits stays;
+  a library tool (not retired, the material's ISO group, cutting data from a confirmed catalogue row) is taken only
+  for an operation whose tool is missing or does not fit (no tool, a bore not drilled to size, a concave arc steeper
+  than the tool's RMPX); empty positions first, else one whose tool the job does not use, in the operations' order.
+  The card gives per position what comes out and goes in (insert, holder, grade), the T word, the offset page's R and
+  T for a tool whose contour goes with G42, the source of its cutting data, and the other machines holding that tool
+  now (a hint). What the library cannot give is said in words. "Accept the set-up" (the operator's name) writes the
+  changes and calculates the job again; the operator may still change a position by hand.
+- **At the machine:** each tool the set-up puts in is marked "installed, X / Z offsets measured" (one by one or all;
+  the name and the time; a mark cancelled is kept) on the job page, the program page and the order panel of the shop
+  page. Ready to run is refused while one is not marked.
+- **Copy a turret:** the machine page copies another machine's turret (the operator's name; refused when the other
+  holds tools at positions this one lacks); both turrets as they were are kept. Programs made before are out of date,
+  calculations made before block the G-code until the job is calculated again.
 - The calculation, the G-code and its simulation take the job's turret; the program's header, its page and the
   operator's checklist list the changes for the setter; a program made before a change is out of date. Calculations
   made before keep their operations.
