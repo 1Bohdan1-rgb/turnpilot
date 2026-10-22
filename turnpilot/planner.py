@@ -400,9 +400,11 @@ ARC_STEPS_NOTE = "arc: stepped roughing passes, then one along the arc; the fini
 
 
 def taper_starts(features, turned_diameter, stock: float, axial_order: bool) -> dict[int, RoughStart]:
-    """The diameter each taper or arc (by id()) is roughed from: its neighbour on the larger end's side when that is
-    a turned section at least as large (the order along the axis known), else the bar. An arc may end on the axis
-    (its Ø empty: 0)."""
+    """The diameter each taper or arc (by id()) is roughed from: the nearest turned section on its larger end's side,
+    past other tapers, arcs and grooves (they are cut down to that section's level first), when it is at least as
+    large as the larger end (the order along the axis known); else the bar (nothing on that side, or a smaller
+    section there). So a taper roughs only its own metal, after its neighbours, and not theirs from the bar. An arc
+    may end on the axis (its Ø empty: 0)."""
     profile = [f for f in features if f.type in PROFILE_SECTION_TYPES or f.type == "groove"]
     starts = {}
     for k, f in enumerate(profile):
@@ -410,12 +412,16 @@ def taper_starts(features, turned_diameter, stock: float, axial_order: bool) -> 
         if f.type not in ("taper", "arc") or not max(end, start):
             continue
         large = max(end, start)
-        j = k - 1 if start >= end else k + 1
-        neighbour = profile[j] if axial_order and 0 <= j < len(profile) else None
-        if neighbour is not None and neighbour.type in TURNED_SECTION_TYPES and turned_diameter(neighbour)                 and turned_diameter(neighbour) >= large - 1e-9:
-            starts[id(f)] = RoughStart(turned_diameter(neighbour), from_bar=False)
-        else:
-            starts[id(f)] = RoughStart(stock, from_bar=True)
+        step = -1 if start >= end else 1
+        j, found = k + step, None
+        while axial_order and 0 <= j < len(profile):
+            neighbour = profile[j]
+            if neighbour.type in TURNED_SECTION_TYPES and turned_diameter(neighbour):
+                if turned_diameter(neighbour) >= large - 1e-9:
+                    found = turned_diameter(neighbour)
+                break
+            j += step
+        starts[id(f)] = RoughStart(found, from_bar=False) if found else RoughStart(stock, from_bar=True)
     return starts
 
 

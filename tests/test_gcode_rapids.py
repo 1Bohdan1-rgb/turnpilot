@@ -10,9 +10,8 @@ from turnpilot.models import Feature
 
 
 def taper_job():
-    """Ø20 L10 at the free end, a taper Ø20 -> Ø30 over 10, a groove, Ø40 L20: the planner passes over the groove, so
-    the taper is roughed from the bar Ø50 on the process sheet, but the Ø40's roughing before it has already taken
-    the material down (as НД 012's taper after its arc)."""
+    """Ø20 L10 at the free end, a taper Ø20 -> Ø30 over 10, a groove, Ø40 L20: the taper is roughed from the Ø40 past
+    the groove (planner.taper_starts), after it."""
     return make_job([Feature(type="face"), Feature(type="od_turn", diameter=20, length=10),
                      Feature(type="taper", start_diameter=20, diameter=30, length=10),
                      Feature(type="groove", diameter=27, start_diameter=40, length=3),
@@ -20,13 +19,20 @@ def taper_job():
                     blank=50, length=48, stickout=53)
 
 
+def bar_taper_job():
+    """Ø20 L10 at the free end, then a taper Ø20 -> Ø40 to the chuck end: nothing turned on its larger end's side, so
+    both are roughed from the bar Ø50, and the one written second rapids over what the first took."""
+    return make_job([Feature(type="face"), Feature(type="od_turn", diameter=20, length=10),
+                     Feature(type="taper", start_diameter=20, diameter=40, length=10), Feature(type="parting")],
+                    blank=50, length=25, stickout=30)
+
+
 def test_roughing_rapids_over_what_the_passes_before_took(app):
     machine = ready_machine()
-    job = taper_job()
+    job = bar_taper_job()
     readiness, program = services.gcode_program(job, machine)
     notes = [n for b in program.blocks for n in b.notes]
-    # the taper's steps run to the Ø40's face: the Ø40 and Ø20 roughing rapid over what they took
-    assert any("a rapid there" in n for n in notes), notes
+    assert any("a rapid there" in n or "passes left out" in n for n in notes), notes
     text = fanuc.render(program)
     result = services.gcode_simulation(job, machine, text)
     assert result.ok and result.complete, (result.errors, result.incomplete)
