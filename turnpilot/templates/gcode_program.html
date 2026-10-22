@@ -112,6 +112,8 @@
 <ul class="card checks">{% for line in sim.turret_setup %}<li>{{ line }}</li>{% endfor %}</ul>
 {% endif %}
 
+{% with back = url_for('main.gcode_program', program_id=record.id) ~ '#installs', in_form = False %}{% include "_turret_installs.html" %}{% endwith %}
+
 <h2>Operator's check</h2>
 <form method="post" action="{{ url_for('main.gcode_ready', program_id=record.id) }}" class="card">
   {% for key, text in checklist %}
@@ -119,12 +121,14 @@
       {% if record.status == "ready" %}disabled{% endif %}> {{ text }}</label>
   {% endfor %}
   <label>Operator <input name="confirmed_by" value="{{ record.confirmed_by or '' }}" maxlength="100" {% if record.status == "ready" %}disabled{% endif %}></label>
-  {% set blocked = sim.errors or sim.incomplete or demo or stale %}
+  {% set blocked = sim.errors or sim.incomplete or demo or stale or not_installed %}
   {% if record.status != "ready" %}
   <button type="submit" class="primary" {% if blocked %}disabled{% endif %}>Ready to run</button>
   {% if blocked %}<p class="small warning">Not possible:
     {% if sim.errors %}the simulation found errors; {% endif %}{% if sim.incomplete %}the part is not complete; {% endif %}
-    {% if demo %}DEMO values are used; {% endif %}{% if stale %}the program is out of date{% endif %}</p>{% endif %}
+    {% if demo %}DEMO values are used; {% endif %}{% if stale %}the program is out of date; {% endif %}
+    {% if not_installed %}the turret set-up is not marked installed with its offsets measured:
+    {% for c in not_installed %}T{{ c.position }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</p>{% endif %}
   {% endif %}
 </form>
 

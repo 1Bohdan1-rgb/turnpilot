@@ -160,6 +160,7 @@
   {% if job.archived_operations %}<a href="{{ url_for('main.history', job_id=job.id) }}">Calculation history</a>{% endif %}
 </form>
 {% include "_turret_setup.html" %}
+{% with back = url_for('main.job_detail', job_id=job.id) ~ '#installs', in_form = False %}{% include "_turret_installs.html" %}{% endwith %}
 {% if job.axial_order_known %}
 <h2 id="turret">Turret set-up for this job</h2>
 <p class="muted small">The machine's turret, with this job's own changes (the machine and the other jobs keep theirs).

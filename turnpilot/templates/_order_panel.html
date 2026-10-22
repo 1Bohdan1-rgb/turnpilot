@@ -25,6 +25,7 @@ one operator field for the whole panel (in_form: the page around it holds the fo
       job's <a href="{{ url_for('main.job_gcode', job_id=order.job_id) }}">G-code page</a>, then take it here.</p>
   {% else %}
     {% if p.stale %}<p class="warning small">Program {{ p.program.id }} is out of date: {{ p.stale|join("; ") }}.</p>{% endif %}
+    {% with job = order.job, installs = turret_installs(order.job, order.machine), in_form = True %}{% include "_turret_installs.html" %}{% endwith %}
     <div class="part3d" data-src="{{ url_for('main.order_part3d', order_id=order.id) }}" data-mode="order">
       <p class="small"><strong>The part on the machine now</strong> (program {{ p.program.id }}, the order's):
         за відмітками оператора, не з верстата.

@@ -54,6 +54,12 @@ from .models import (
 bp = Blueprint("main", __name__)
 
 
+@bp.app_context_processor
+def _turret_helpers():
+    """For the turret set-up partials (job page, program page, the order panel on the shop page)."""
+    return {"offset_details": services.offset_details, "turret_installs": services.turret_installs}
+
+
 @bp.app_template_filter("fromjson")
 def _fromjson(text):
     return json.loads(text) if text else {}
@@ -823,6 +829,7 @@ def job_detail(job_id):
                            conflicts=services.radius_conflicts(job) if job.axial_order_known else {},
                            turret=services.job_turret(job, services.job_machine(job)),
                            setup=_setup_view(job),
+                           installs=services.turret_installs(job, services.job_machine(job)),
                            job_machine=services.job_machine(job), machines=services.machines(),
                            job_orders=db.session.execute(db.select(Order).filter_by(job_id=job.id)
                                                          .order_by(Order.id)).scalars().all(),
@@ -889,6 +896,41 @@ def accept_turret_setup(job_id):
     flash(f"Set-up accepted by {setup.accepted_by}: {len(setup.changes)} position(s) for this job; calculated again "
           f"(v{job.last_calculation_version}). Install the tools and measure their offsets at the machine.")
     return redirect(url_for("main.operations", job_id=job.id))
+
+
+@bp.route("/jobs/<int:job_id>/turret/installed", methods=["POST"])
+def turret_installed(job_id):
+    """The operator at the machine: a position's tool (change_id), or every one not marked yet, is in and its X / Z
+    offsets are measured."""
+    job = db.get_or_404(Job, job_id)
+    back = _local(request.form.get("back")) or url_for("main.job_detail", job_id=job.id) + "#installs"
+    try:
+        change_id = _number(request.form, "change_id", int)
+        marked = services.mark_turret_installed(job, services.job_machine(job), request.form.get("decided_by"),
+                                                change_id)
+    except (FormError, services.TurretChangeError) as e:
+        flash(str(e), "error")
+    else:
+        flash("Installed, X / Z offsets measured: " + ", ".join(f"T{c.position} {c.tool.name}" for c in marked)
+              + f" ({marked[0].install.installed_by}).")
+    return redirect(back)
+
+
+@bp.route("/jobs/<int:job_id>/turret/installed/<int:install_id>/undo", methods=["POST"])
+def undo_turret_installed(job_id, install_id):
+    from .models import TurretInstall
+
+    install = db.get_or_404(TurretInstall, install_id)
+    if install.change.job_id != job_id:
+        abort(404)
+    back = _local(request.form.get("back")) or url_for("main.job_detail", job_id=job_id) + "#installs"
+    try:
+        services.undo_turret_install(install, request.form.get("decided_by"))
+    except services.TurretChangeError as e:
+        flash(str(e), "error")
+    else:
+        flash(f"T{install.change.position}: the mark is cancelled ({install.undone_by}).")
+    return redirect(back)
 
 
 @bp.route("/jobs/<int:job_id>/turret/<int:change_id>/undo", methods=["POST"])
@@ -959,7 +1001,9 @@ def gcode_program(program_id):
         errors=greport.group(sim["errors"]), warnings=greport.group(sim["warnings"]), lines=lines,
         flagged=flagged, demo=services.demo_settings(settings), checklist=services.gcode_checklist(record),
         cycle=services.cycle_time(record, machine),
-        ticked=json.loads(record.checklist) if record.checklist else {})
+        ticked=json.loads(record.checklist) if record.checklist else {},
+        installs=services.turret_installs(job, machine), not_installed=services.not_installed(job, machine),
+        install_machine=machine)
 
 
 @bp.route("/gcode/<int:program_id>/ready", methods=["POST"])

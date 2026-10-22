@@ -371,16 +371,59 @@ def setup_signature(proposal) -> str:
     return ",".join(f"{r.position}:{r.install.id}" for r in proposal.rows)
 
 
-def setup_row_details(row, material):
-    """For the set-up card: the offset (T word), the nose radius R and tip T for the offset page when the tool's
-    contour goes with G42, and where its cutting data come from."""
-    tool = row.install
+def offset_details(tool, position):
+    """The T word of a position, and the nose radius R and tip T for the offset page when the tool's finishing contour
+    goes with G42 (a finishing tool with rε and T, as the generator writes it)."""
     nose = tool.nose_radius or planner.insert_nose_radius(tool.insert_code)
     g42 = tool.type == "turning_finish" and nose is not None and tool.tip_direction is not None
-    spec = tool_spec(tool, material, confirmed_rows())
-    return {"t_word": f"T{row.position:02d}{row.position:02d}",
-            "offset_page": f"R{nose:g} T{tool.tip_direction}" if g42 else None,
-            "source": spec.catalogue_note or tool.source}
+    return {"t_word": f"T{position:02d}{position:02d}",
+            "offset_page": f"R{nose:g} T{tool.tip_direction}" if g42 else None}
+
+
+def setup_row_details(row, material):
+    """For the set-up card: offset_details and where the tool's cutting data come from."""
+    spec = tool_spec(row.install, material, confirmed_rows())
+    return {**offset_details(row.install, row.position), "source": spec.catalogue_note or row.install.source}
+
+
+def turret_installs(job, machine):
+    """The job's active turret changes on this machine that put a tool in (each needs the operator's "installed,
+    offsets measured"), by position."""
+    return sorted((c for c in job.turret_changes if c.active and c.machine_id in (None, machine.id)
+                   and c.tool is not None), key=lambda c: c.position)
+
+
+def not_installed(job, machine):
+    return [c for c in turret_installs(job, machine) if c.install is None]
+
+
+def mark_turret_installed(job, machine, name, change_id=None):
+    """The operator at the machine: the tool of one change (or of every change not marked yet) is in and its X / Z
+    offsets are measured. Returns the changes marked."""
+    from .models import TurretInstall
+
+    name = (name or "").strip()[:100]
+    if not name:
+        raise TurretChangeError("The operator's name is required: installed, X / Z offsets measured")
+    pending = not_installed(job, machine)
+    if change_id is not None:
+        pending = [c for c in pending if c.id == change_id]
+        if not pending:
+            raise TurretChangeError("This position is not waiting for the mark")
+    for change in pending:
+        db.session.add(TurretInstall(change=change, installed_by=name))
+    db.session.commit()
+    return pending
+
+
+def undo_turret_install(install, name):
+    name = (name or "").strip()[:100]
+    if not name:
+        raise TurretChangeError("The operator's name is required to cancel the mark")
+    if install.undone_at is not None:
+        raise TurretChangeError("This mark is already cancelled")
+    install.undone_by, install.undone_at = name, datetime.now(timezone.utc)
+    db.session.commit()
 
 
 def accept_turret_setup(job, machine, name, signature):
@@ -1080,6 +1123,10 @@ def mark_gcode_ready(record, machine, form):
     if demo:
         problems.append("DEMO values are used: " + ", ".join(row["label"] for row in demo))
     problems += gcode_stale(record, machine)
+    pending = not_installed(record.job, machine)
+    if pending:
+        problems.append("the job's turret set-up is not marked installed with its X / Z offsets measured: "
+                        + ", ".join(f"T{c.position} {c.tool.name}" for c in pending))
     ticked = {key: bool(form.get(f"check-{key}")) for key, _ in gcode_checklist(record)}
     if not all(ticked.values()):
         problems.append("not every item of the checklist is ticked")
