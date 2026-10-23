@@ -1251,9 +1251,11 @@ class StickoutError(ValueError):
 
 
 def stickout_hint(job, machine):
-    """The stick-out from the drawing: the part's length (its turned sections) + the parting insert's width + the
-    machine's margin (the operator's programming value). Never filled in by itself: the operator takes it. Returns
-    {"value", "length", "parting", "margin"} or {"missing": [what is not known, in words]}."""
+    """The stick-out from the drawing, measured from the jaws to the raw end face: the part's length (its turned
+    sections) + the stock beyond Z0 + the parting insert's width + max(the machine's margin, the safety distance to
+    the jaws), so the parting insert is never nearer the jaws than the safety distance. All of them the operator's
+    values; never filled in by itself: the operator takes it. Returns {"value", "length", "face_stock", "parting",
+    "margin", "safety", "clearance", "from_safety"} or {"missing": [what is not known, in words]}."""
     missing = []
     length = sum(f.length or 0 for f in job.active_features if f.type in PROFILE_TYPES)
     if not job.axial_order_known or length <= 0:
@@ -1267,13 +1269,21 @@ def stickout_hint(job, machine):
         parting = widths[0] if widths else None
     if parting is None:
         missing.append("the parting insert's width (no parting tool with a width in the job's turret)")
+    face_stock = job.face_stock_mm
+    if face_stock is None:
+        missing.append("the stock beyond Z0 to face off (the job's G-code set-up)")
     margin = machine.stickout_margin_mm
     if margin is None:
         missing.append("the stick-out margin beyond the parting cut (Machine page, programming values)")
+    safety = machine.chuck_safety_mm
+    if safety is None:
+        missing.append("the safety distance to the chuck jaws (Machine page, programming values)")
     if missing:
         return {"missing": missing}
-    return {"value": round(length + parting + margin, 3), "length": round(length, 3), "parting": parting,
-            "margin": margin}
+    clearance = max(margin, safety)
+    return {"value": round(length + face_stock + parting + clearance, 3), "length": round(length, 3),
+            "face_stock": face_stock, "parting": parting, "margin": margin, "safety": safety, "clearance": clearance,
+            "from_safety": safety > margin}
 
 
 def take_stickout_hint(job, machine, name, value):
@@ -1287,7 +1297,8 @@ def take_stickout_hint(job, machine, name, value):
         raise StickoutError("The hint changed since the page was shown: look at it again")
     job.stickout_mm = hint["value"]
     job.gcode_setup_demo = False
-    job.stickout_note = (f"{hint['length']:g} + {hint['parting']:g} + {hint['margin']:g} = {hint['value']:g} mm, "
+    job.stickout_note = (f"{hint['length']:g} + {hint['face_stock']:g} + {hint['parting']:g} + {hint['clearance']:g}"
+                         f"{' (safety)' if hint['from_safety'] else ''} = {hint['value']:g} mm, "
                          f"{name} {datetime.now(timezone.utc):%Y-%m-%d %H:%M}")[:200]
     db.session.commit()
     return hint

@@ -216,7 +216,9 @@
   {% if stickout_hint.missing %}
   <p class="small muted">{{ _("No hint: not known") }}: {{ stickout_hint.missing|join("; ") }}.</p>
   {% else %}{% set h = stickout_hint %}
-  <p class="small">{{ _("part length {length} + parting width {parting} + margin {margin} = {value} mm", length="%g"|format(h.length), parting="%g"|format(h.parting), margin="%g"|format(h.margin), value="%g"|format(h.value)) }}</p>
+  <p class="small">{{ _("part length {length} + stock beyond Z0 {stock} + parting width {parting} + {clearance} = {value} mm", length="%g"|format(h.length), stock="%g"|format(h.face_stock), parting="%g"|format(h.parting), clearance="%g"|format(h.clearance), value="%g"|format(h.value)) }}</p>
+  <p class="small muted">{% if h.from_safety %}{{ _("The margin {margin} mm is less than the safety distance to the jaws {safety} mm: {safety} mm is taken, so the parting insert stays that far from the jaws.", margin="%g"|format(h.margin), safety="%g"|format(h.safety)) }}{% else %}{{ _("{clearance} mm: the margin (not less than the safety distance to the jaws {safety} mm).", clearance="%g"|format(h.clearance), safety="%g"|format(h.safety)) }}{% endif %}
+    {{ _("The stick-out is measured from the jaws to the raw end face.") }}</p>
   <form method="post" action="{{ url_for('main.take_stickout_hint', job_id=job.id) }}" class="inline-form">
     <input type="hidden" name="value" value="{{ h.value }}">
     <input name="decided_by" maxlength="100" placeholder="{{ _("operator's name (required)") }}" aria-label="{{ _("Operator's name") }}" required>

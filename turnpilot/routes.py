@@ -1089,9 +1089,8 @@ def take_stickout_hint(job_id):
     except (FormError, services.StickoutError) as e:
         flash(str(e), "error")
     else:
-        flash(_("Stick-out {value} mm taken from the drawing ({length} + {parting} + {margin}).",
-                value=f"{hint['value']:g}", length=f"{hint['length']:g}", parting=f"{hint['parting']:g}",
-                margin=f"{hint['margin']:g}"))
+        flash(_("Stick-out {value} mm taken from the drawing ({sum}).", value=f"{hint['value']:g}",
+                sum=f"{hint['length']:g} + {hint['face_stock']:g} + {hint['parting']:g} + {hint['clearance']:g}"))
     return redirect(url_for("main.job_detail", job_id=job.id) + "#gcode-setup")
 
 

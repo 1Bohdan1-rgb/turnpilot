@@ -1008,10 +1008,8 @@ UK = {
     "Stick-out taken from the drawing: {note}": "Виліт узято з креслення: {note}",
     "Stick-out from the drawing": "Виліт з креслення",
     "No hint: not known": "Підказки немає: невідомо",
-    "part length {length} + parting width {parting} + margin {margin} = {value} mm": "довжина деталі {length} + ширина відрізки {parting} + запас {margin} = {value} мм",
     "Take {value} mm": "Взяти {value} мм",
     "A hint only: it is never filled in by itself. Measure the stick-out on the machine.": "Лише підказка: сама вона ніколи не вписується. Виміряйте виліт на верстаті.",
-    "Stick-out {value} mm taken from the drawing ({length} + {parting} + {margin}).": "Виліт {value} мм узято з креслення ({length} + {parting} + {margin}).",
     "Stick-out margin beyond the parting cut": "Запас вильоту за різом відрізки",
     "the stick-out hint on the job page: part length + parting width + this; empty: no hint": "підказка вильоту на сторінці завдання: довжина деталі + ширина відрізки + це значення; порожньо: без підказки",
     # stick-out to the raw end
@@ -1019,6 +1017,12 @@ UK = {
     "Stick-out measured to": "Виліт міряється до",
     "the raw end face": "сирого торця",
     "TurnPilot's rule": "правило TurnPilot",
+    # stick-out hint, raw end
+    "part length {length} + stock beyond Z0 {stock} + parting width {parting} + {clearance} = {value} mm": "довжина деталі {length} + припуск за Z0 {stock} + ширина відрізки {parting} + {clearance} = {value} мм",
+    "The margin {margin} mm is less than the safety distance to the jaws {safety} mm: {safety} mm is taken, so the parting insert stays that far from the jaws.": "Запас {margin} мм менший за безпечну відстань до кулачків {safety} мм: узято {safety} мм, щоб відрізна пластина була не ближче до кулачків.",
+    "{clearance} mm: the margin (not less than the safety distance to the jaws {safety} mm).": "{clearance} мм: запас (не менший за безпечну відстань до кулачків {safety} мм).",
+    "The stick-out is measured from the jaws to the raw end face.": "Виліт міряється від кулачків до сирого торця.",
+    "Stick-out {value} mm taken from the drawing ({sum}).": "Виліт {value} мм узято з креслення ({sum}).",
 }
 
 
