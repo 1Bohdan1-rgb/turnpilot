@@ -1098,6 +1098,34 @@ untouched; the G-code generator untouched.
 - In the user's DB nothing was accepted or copied; jobs/7's two earlier changes (T3, T12) now wait for the marks before
   Ready to run.
 
+## Design package (built 2026-10-23)
+Plan 1–11 agreed with the user (10: only the filled-in values are copied; 1: generated messages in English without a
+mark). Commits 3ce4451 … and the docs commit; migrations c4d8e2f6a3b7, d5e9f3a7b4c8 (DB backups
+`instance/turnpilot.db.bak-2026-10-23-before-copy-programming`, `…-before-stickout-hint`, `…-before-stock-states`).
+G-code text and golden files unchanged; the files frozen by `dxf-blind-freeze` untouched. Not checked in a browser.
+- Language: `turnpilot/i18n.py`, one dictionary (English key → `UK`), `LABELS` for stored codes (English shows the code
+  as before), `JS_KEYS` for the scripts (`t(key, {name: value})` in base.html). Default Ukrainian (cookie `lang`, the
+  UA / EN switch). Templates call `_()` (the text is markup, values escaped; `link()`, `strong()` for markup values).
+  Generated messages stay English. Tests run in English (`conftest.client` sets the cookie); `tests/test_i18n.py`
+  checks every text asked for, the scripts' keys, the codes, no `"` added in a translation, the glossary.
+- One style: the shop plan's palette as root tokens, dark under the system preference and `html[data-theme]`; the
+  theme button in the top bar (localStorage `tp-theme`, the old `sf-theme` read once).
+- Process sheet: notes in a popover (ⓘ), 11 columns. Touch buttons: class `touch` (44 × 44 px).
+- `services.next_step(job)` (`NEXT_STEP_LABELS`): job page, process sheet, G-code page, program page.
+- 3D (`static/part3d.js`): one WebGL renderer per page, each view copies into its own canvas; `fitCamera` to the
+  part's length and the bar's Ø; "Вмістити" button; the shop card mounts the running order's view; views whose
+  element left the page are freed.
+- Drawing review: the planned-for line inside the form.
+- `flask stock-states [--dry-run] [--program ID]`. Run on the user's DB 2026-10-23: 15 programs, 9 without states,
+  all 9 computed (jobs/7: 10–15 states, 9.5–18.2 s each; jobs/8: 7 states, 1.2–1.3 s).
+- Turret copy: the other machine's filled-in programming values too (source `copied`, quote "<machine> (<name>)";
+  DEMO stays DEMO); `MachineTurretCopy.programming` keeps {name: [before, taken]}.
+- Stick-out hint (`services.stickout_hint`): length of the profile sections + the parting insert's width (the job's
+  parting operation, else the job's turret) + `Machine.stickout_margin_mm` (a programming value with
+  `in_program=False`: not in a program's settings, so no program goes out of date). The operator takes it with the
+  name (`Job.stickout_note` keeps the sum, name, time; typing the stick-out clears it). In the user's DB the margin is
+  empty: no hint until the operator enters it.
+
 ## Deferred
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
@@ -1107,7 +1135,7 @@ untouched; the G-code generator untouched.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1172 tests pass (2026-10-22). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1196 tests pass (2026-10-23). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

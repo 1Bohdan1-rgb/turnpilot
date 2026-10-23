@@ -508,7 +508,7 @@ as not set; unless all three are from the passport the time is marked "without t
   removed by this operation (with a transparent ghost of what it removes) / not machined yet.
 - Shop panel and the order page: the part on the machine now, from the order's own program, after the blocks the
   operator marked done from the first on without a gap (a gap is named); the next operation's material highlighted;
-  the drawing's finished part transparent, with its outline. "За відмітками оператора, не з верстата."
+  the drawing's finished part transparent, with its outline: by the operator's marks, not from the machine.
 - Only the outer profile: holes and flats are not shown (the simulation keeps no inner radius).
 - three.js 0.160.0 (MIT) is a file of the project (`turnpilot/static/vendor/three`, ≈ 0.7 MB, sha256 in its
   `VERSION.txt`): no internet needed. Loaded only when a 3D view is open; drawn only when it changes, pixel ratio
@@ -532,6 +532,36 @@ on the process sheet with the operator's name and a note, both required; "Unskip
 blocks nothing, is not in the G-code, and the program lists it under "NOT IN THIS PROGRAM" with the reason; a cutting
 operation skipped leaves its material, which the simulation reports. The skip and its undoing are in the operation's
 edit log, and a new calculation carries the skip to the same operation (feature, type, mode), marked "carried from vN".
+
+## The interface: language, style, next step
+
+- Language: Ukrainian (the default) or English, the UA / EN switch in the top bar (a cookie). One dictionary,
+  `turnpilot/i18n.py`: the key is the English text, `UK` its Ukrainian; stored codes (feature and tool types,
+  statuses) are shown as words through `LABELS`. Generated messages (the planner's notes and warnings, the
+  simulation's errors, the services' error messages) stay in English for now; the G-code is ASCII. A test checks that
+  every text a page, a route or a script asks for has its Ukrainian. Glossary: job — завдання, holder — державка,
+  facing — торцювання, turret — револьверна головка, insert — пластина, roughing / finishing — чорнова / чистова,
+  grooving — канавка, parting — відрізання, threading — нарізання різьби, blank — заготовка, stick-out — виліт,
+  process sheet — технологічний лист, order — замовлення, approve — затвердити, ready to run — готово до запуску,
+  cutting data — режими різання, operator — оператор.
+- One style for every page, the shop plan's palette; light / dark theme: the system's, or the top bar's button
+  (remembered in the browser).
+- Process sheet: the notes behind ⓘ (the catalogue text, no links yet); a warning stays in sight; the table fits the
+  screen. Buttons pressed at the machine are at least 44 × 44 px.
+- Next step: the job page, the process sheet and the G-code pages show one button for the first step not done
+  (features → calculate → accept the turret set-up → approve → G-code → installed → ready to run → order →
+  progress), on the page where it is done.
+- 3D: one WebGL renderer per page (each view copies its picture), the camera set to the part's length and Ø, a Fit
+  button; the shop page's machine card shows the running order's part at once.
+- `flask --app turnpilot stock-states [--dry-run] [--program ID]`: the 3D states of programs made before they were
+  kept (each simulated again from its text, once).
+- Copying a turret from another machine also takes its filled-in programming values (an empty one there leaves
+  this machine's; a DEMO value stays DEMO), with the source "copied from <machine> (<name>)" and both values in the
+  history.
+- Stick-out hint on the job page: the part's length (its turned sections) + the parting insert's width + the
+  machine's "stick-out margin beyond the parting cut" (a programming value, the operator's, no default; not in a
+  program's settings). Without one of them the page says what is missing; the operator takes the hint with the name
+  (the sum and the name are kept), it is never filled in by itself.
 
 ## Planned: probing the blank, sending the program (stage 7)
 
