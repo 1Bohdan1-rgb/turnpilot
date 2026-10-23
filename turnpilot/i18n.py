@@ -1036,6 +1036,10 @@ UK = {
     "A DXF is read by the program at once: no model, no paid call.": "DXF читає програма одразу: без моделі й без платного виклику.",
     "A PNG, JPG or PDF is read by Claude (3–7 minutes; for a PDF only the first page); a file already read by the same model is not sent again.": "PNG, JPG або PDF читає Claude (3–7 хвилин; у PDF — лише перша сторінка); файл, уже прочитаний тією самою моделлю, повторно не надсилається.",
     "Then you check every value before the job is created.": "Потім ви перевіряєте кожне значення, перш ніж завдання буде створено.",
+    # machine page
+    "Cutting data ranges": "Діапазони режимів",
+    "Insert and holder": "Пластина й державка",
+    "Sources of {name}": "Джерела: {name}",
 }
 
 

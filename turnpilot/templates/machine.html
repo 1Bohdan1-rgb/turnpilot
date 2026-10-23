@@ -72,7 +72,7 @@
 <h2>{{ _("Materials") }}</h2>
 <form method="post" class="card">
   <input type="hidden" name="action" value="materials">
-  <table>
+  <table class="machine-materials">
     <thead><tr><th>{{ _("Material") }}</th><th>ISO</th><th>kc1, {{ _("N/mm²") }}</th><th>mc</th><th>{{ _("Source of kc1") }}</th><th>{{ _("Source of mc") }}</th><th>{{ _("Catalogue group") }}</th></tr></thead>
     <tbody>
     {% for m in materials %}
@@ -81,8 +81,8 @@
         <td>{{ m.iso_group }}</td>
         <td><input name="m{{ m.id }}-kc1" type="number" step="any" min="0" value="{{ m.kc1 if m.kc1 is not none else '' }}"></td>
         <td><input name="m{{ m.id }}-mc" type="number" step="any" min="0" max="1" value="{{ m.mc if m.mc is not none else '' }}"></td>
-        <td><input name="m{{ m.id }}-kc1_source" value="{{ m.kc1_source or '' }}" size="40"></td>
-        <td><input name="m{{ m.id }}-mc_source" value="{{ m.mc_source or '' }}" size="30"></td>
+        <td><input name="m{{ m.id }}-kc1_source" value="{{ m.kc1_source or '' }}" class="fill"></td>
+        <td><input name="m{{ m.id }}-mc_source" value="{{ m.mc_source or '' }}" class="fill"></td>
         <td><input name="m{{ m.id }}-catalogue_group" value="{{ m.catalogue_group or '' }}" size="6" maxlength="20" placeholder="{{ _("e.g. P1.2") }}"></td>
       </tr>
     {% endfor %}
@@ -95,23 +95,21 @@
 <h2>{{ _("Turret") }}</h2>
 <form method="post" class="card">
   <input type="hidden" name="action" value="turret">
-  <table>
-    <thead><tr><th>{{ _("Pos.") }}</th><th>{{ _("Tool") }}</th><th>{{ _("Type") }}</th><th>ISO</th><th>{{ _("Insert") }}</th><th>{{ _("Holder · RMPX · T") }}</th><th></th></tr></thead>
+  <table class="machine-turret">
+    <thead><tr><th>{{ _("Pos.") }}</th><th>{{ _("Tool") }}</th><th>{{ _("Type") }} · ISO · {{ _("Insert") }}</th><th>{{ _("Holder · RMPX · T") }}</th><th></th></tr></thead>
     <tbody>
     {% for slot in machine.slots %}
       <tr>
         <td><strong>{{ slot.label }}</strong></td>
         <td>
-          <select name="slot_{{ slot.position }}">
+          <select name="slot_{{ slot.position }}" class="fill">
             <option value="">{{ _("— empty —") }}</option>
             {% for tool in tools %}
               <option value="{{ tool.id }}" {% if slot.tool_id == tool.id %}selected{% endif %}>{{ tool.name }}</option>
             {% endfor %}
           </select>
         </td>
-        <td>{{ slot.tool.type|label if slot.tool else "" }}</td>
-        <td>{{ slot.tool.iso_group if slot.tool else "" }}</td>
-        <td>{{ slot.tool.insert_code if slot.tool else "" }}</td>
+        <td class="small">{% if slot.tool %}{{ slot.tool.type|label }} · {{ slot.tool.iso_group }}<br>{{ slot.tool.insert_code or "" }}{% endif %}</td>
         <td class="small">{% if slot.tool %}{{ slot.tool.holder_code or _("holder —") }} ·
           {{ ("RMPX " ~ slot.tool.max_ramp_angle ~ "°") if slot.tool.max_ramp_angle is not none else "RMPX —" }} ·
           {{ ("T" ~ slot.tool.tip_direction) if slot.tool.tip_direction is not none else "T —" }}{% if slot.tool.type in ("boring", "boring_rough") %} ·
@@ -144,27 +142,34 @@
 
 <h2>{{ _("Tool library") }}</h2>
 <div class="card">
-  <table>
+  <table class="tool-library">
     <thead>
-      <tr><th>{{ _("Name") }}</th><th>{{ _("Type") }}</th><th>{{ _("Insert") }}</th><th>{{ _("Grade") }}</th><th>ISO</th>
-          <th>Vc, {{ _("m/min") }}</th><th>f, {{ _("mm/rev") }}</th><th>ap, {{ _("mm") }}</th><th>{{ _("Recommended") }}</th><th>{{ _("Width, mm") }}</th><th>{{ _("Ø, mm") }}</th><th>{{ _("Source") }}</th><th>{{ _("Catalogue rows") }}</th><th></th></tr>
+      <tr><th>{{ _("Tool") }}</th><th>{{ _("Cutting data ranges") }}</th><th>{{ _("Insert and holder") }}</th>
+          <th>{{ _("Catalogue rows") }}</th><th></th></tr>
     </thead>
     <tbody>
     {% for tool in tools %}
       <tr>
-        <td>{{ tool.name }}</td><td>{{ tool.type|label }}</td><td>{{ tool.insert_code }}</td><td>{{ tool.grade }}</td>
-        <td>{{ tool.iso_group }}</td>
-        <td>{{ tool.vc_min|round(0)|int }}–{{ tool.vc_max|round(0)|int }}</td>
-        <td>{{ tool.f_min }}–{{ tool.f_max }}</td>
-        <td>{{ tool.ap_min }}–{{ tool.ap_max }}</td>
-        <td class="small">
-          {% if tool.f_rec is not none %}f {{ tool.f_rec }}{% endif %}
-          {% if tool.ap_rec is not none %} · ap {{ tool.ap_rec }}{% endif %}
-          {% if tool.vc_points %}<br>Vc(f) {{ tool.vc_points }}{% endif %}
-        </td>
-        <td>{{ tool.insert_width if tool.insert_width is not none else "" }}</td>
-        <td>{{ tool.diameter if tool.diameter is not none else "" }}{% if tool.max_depth %}<br><span class="small">{{ _("max depth") }} {{ tool.max_depth }}</span>{% endif %}{% if tool.point_angle_deg %}<br><span class="small">{{ _("point") }} {{ tool.point_angle_deg }}°{% if tool.point_angle_source %} ({{ tool.point_angle_source }}){% endif %}</span>{% endif %}{% if tool.holder_code %}<br><span class="small">{{ _("holder") }} {{ tool.holder_code }}</span>{% endif %}{% if tool.max_ramp_angle is not none %}<br><span class="small">RMPX {{ tool.max_ramp_angle }}°{% if tool.max_ramp_source %} ({{ tool.max_ramp_source }}){% endif %}</span>{% endif %}{% if tool.entering_angle_deg is not none %}<br><span class="small">κr {{ tool.entering_angle_deg }}°{% if tool.entering_angle_source %} ({{ tool.entering_angle_source }}){% endif %}</span>{% endif %}{% if tool.nose_radius is not none %}<br><span class="small">rε {{ tool.nose_radius }}</span>{% endif %}{% if tool.tip_direction is not none %}<br><span class="small">T{{ tool.tip_direction }}</span>{% endif %}</td>
-        <td class="small">{{ tool.source or "" }}</td>
+        <td><strong>{{ tool.name }}</strong>
+          <div class="small muted">{{ tool.type|label }} · ISO {{ tool.iso_group }}</div>
+          <div class="small">{{ tool.insert_code or "" }}{% if tool.grade %} · {{ tool.grade }}{% endif %}</div></td>
+        <td class="small">Vc {{ tool.vc_min|round(0)|int }}–{{ tool.vc_max|round(0)|int }} {{ _("m/min") }}<br>
+          f {{ tool.f_min }}–{{ tool.f_max }} {{ _("mm/rev") }}<br>ap {{ tool.ap_min }}–{{ tool.ap_max }} {{ _("mm") }}
+          {% if tool.f_rec is not none or tool.ap_rec is not none or tool.vc_points %}<div class="muted">{{ _("Recommended") }}:
+            {% if tool.f_rec is not none %}f {{ tool.f_rec }}{% endif %}{% if tool.ap_rec is not none %} · ap {{ tool.ap_rec }}{% endif %}
+            {% if tool.vc_points %}<br>Vc(f) {{ tool.vc_points }}{% endif %}</div>{% endif %}</td>
+        <td class="small">{% if tool.insert_width is not none %}{{ _("width") }} {{ tool.insert_width }} {{ _("mm") }}<br>{% endif %}
+          {% if tool.diameter is not none %}Ø{{ tool.diameter }}<br>{% endif %}{% if tool.max_depth %}{{ _("max depth") }} {{ tool.max_depth }}<br>{% endif %}
+          {% if tool.point_angle_deg %}{{ _("point") }} {{ tool.point_angle_deg }}°<br>{% endif %}
+          {% if tool.holder_code %}{{ _("holder") }} {{ tool.holder_code }}<br>{% endif %}
+          {% if tool.max_ramp_angle is not none %}RMPX {{ tool.max_ramp_angle }}° {% endif %}{% if tool.entering_angle_deg is not none %}κr {{ tool.entering_angle_deg }}° {% endif %}{% if tool.nose_radius is not none %}rε {{ tool.nose_radius }} {% endif %}{% if tool.tip_direction is not none %}T{{ tool.tip_direction }}{% endif %}
+          {% set sources = [tool.source, tool.point_angle_source, tool.max_ramp_source, tool.entering_angle_source]|select|list %}
+          {% if sources %}<button type="button" class="info" popovertarget="tool-src-{{ tool.id }}" aria-label="{{ _("Sources of {name}", name=tool.name) }}" title="{{ _("Source") }}">ⓘ</button>
+          <div popover id="tool-src-{{ tool.id }}" class="note-pop"><strong>{{ tool.name }}</strong>
+            {% if tool.source %}<div class="notes">Vc / f / ap: {{ tool.source }}</div>{% endif %}
+            {% if tool.point_angle_source %}<div class="notes">{{ _("point") }}: {{ tool.point_angle_source }}</div>{% endif %}
+            {% if tool.max_ramp_source %}<div class="notes">RMPX: {{ tool.max_ramp_source }}</div>{% endif %}
+            {% if tool.entering_angle_source %}<div class="notes">κr: {{ tool.entering_angle_source }}</div>{% endif %}</div>{% endif %}</td>
         <td class="small">{% for group, geometry, vc in catalogue_status.get(tool.id, []) %}
           {{ group }}: ap/f {{ "✓" if geometry else "—" }}, Vc {{ "✓" if vc else "—" }}<br>
         {% else %}<span class="muted">—</span>{% endfor %}</td>

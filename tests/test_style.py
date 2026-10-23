@@ -26,3 +26,14 @@ def test_colours_come_from_the_palette():
     found = [line for line in body.splitlines() if re.search(r"#[0-9a-fA-F]{3,6}\b", line)
              and "--p3d" not in line and ".drawing-preview img" not in line and "color:#fff" not in line]
     assert found == []
+
+
+def test_the_machine_page_has_no_wide_tables(client):
+    """The tool library in five columns (the sources behind ⓘ), the turret in five, inputs that take the cell's width."""
+    page = client.get("/machines/1").get_data(as_text=True)
+    library = page.split('<table class="tool-library">', 1)[1].split("</thead>", 1)[0]
+    assert len(re.findall(r"<th[ >]", library)) == 5
+    turret = page.split('<table class="machine-turret">', 1)[1].split("</thead>", 1)[0]
+    assert len(re.findall(r"<th[ >]", turret)) == 5
+    assert 'popovertarget="tool-src-' in page and 'size="40"' not in page
+    assert 'class="fill"' in page and "input.fill, select.fill { width: 100%; min-width: 0; }" in CSS

@@ -399,3 +399,10 @@ details.skip[open] form { display: flex; flex-direction: column; gap: 6px; margi
 .next-step-label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .next-step-form { margin: 0; }
 a.button.touch { min-height: 44px; display: inline-flex; align-items: center; padding: 10px 16px; font-size: 15px; }
+
+/* the machine page fits a tablet: no table wider than the screen */
+input.fill, select.fill { width: 100%; min-width: 0; }
+.machine-materials input[type=number] { width: 90px; }
+.tool-library td { overflow-wrap: anywhere; }
+.tool-library td:first-child { min-width: 160px; }
+.machine-turret td:nth-child(2) { width: 40%; }

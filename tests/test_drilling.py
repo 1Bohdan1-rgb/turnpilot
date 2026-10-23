@@ -16,7 +16,7 @@ def test_tool_form_saves_a_drill_diameter(client):
     drill = db.session.execute(db.select(Tool).filter_by(name="Drill 20")).scalar_one()
     assert drill.diameter == 20
     page = client.get("/machine").get_data(as_text=True)
-    assert 'name="diameter"' in page and "<td>20.0</td>" in page
+    assert 'name="diameter"' in page and "Ø20.0<br>" in page  # the library's "Insert and holder" cell
     assert services.tool_spec(drill).diameter == 20
 
 
