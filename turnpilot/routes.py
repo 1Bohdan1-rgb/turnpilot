@@ -171,7 +171,8 @@ def machine(machine_id=None):
                 except services.TurretChangeError as e:
                     raise FormError(str(e)) from None
                 flash(_("{machine}'s turret copied from {source} by {name}. Jobs calculated for it before: calculate "
-                        "them again.", machine=machine.name, source=copy.from_machine.name, name=copy.copied_by))
+                        "them again.", machine=machine.name, source=copy.from_machine.name, name=copy.copied_by)
+                      + " " + _("Programming values taken: {n}.", n=len(json.loads(copy.programming))))
             elif request.form.get("action") == "kind":
                 kind = request.form.get("machine_kind") or None
                 if kind is not None and kind not in MACHINE_KINDS:
@@ -221,6 +222,7 @@ def machine(machine_id=None):
         programming_fields=PROGRAMMING_FIELDS,
         hex_bar_sizes=", ".join(f"{s:g}" for s in hex_sizes),
         machines=services.machines(), turret_copies=services.turret_copies(machine),
+        field_labels={f.name: f.label for f in PROGRAMMING_FIELDS},
         tool_names={t.id: t.name for t in db.session.execute(db.select(Tool)).scalars()},
     )
 

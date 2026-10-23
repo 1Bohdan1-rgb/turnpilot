@@ -79,6 +79,7 @@ FIELDS_BY_NAME = {f.name: f for f in MACHINE_FIELDS + PROGRAMMING_FIELDS}
 
 SOURCE_PASSPORT = "passport"
 SOURCE_OPERATOR = "operator"
+SOURCE_COPIED = "copied"  # a programming value taken with a turret copy from another machine (quote: which, who)
 SOURCE_NOT_IN_PASSPORT = "not in passport"
 SOURCE_DEMO = "demo"  # typed by the demo command (`flask gcode-demo`), not from the machine: never ready to run
 

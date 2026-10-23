@@ -160,6 +160,8 @@ class MachineSpecSource(db.Model):
             return f"entered by the operator {self.confirmed_at:%Y-%m-%d}"
         if self.source == "demo":
             return "DEMO value, not from the machine"
+        if self.source == "copied":
+            return f"copied from {self.quote} {self.confirmed_at:%Y-%m-%d}"
         return self.source
 
 
@@ -288,6 +290,9 @@ class MachineTurretCopy(db.Model):
     copied_at = db.Column(db.DateTime, nullable=False, default=_now)
     before = db.Column(db.Text, nullable=False)  # JSON {position: tool id or null} of this machine before the copy
     after = db.Column(db.Text, nullable=False)  # JSON, the same after it
+    # JSON {name: [this machine's value before, the value taken]} of the programming values copied (only the other
+    # machine's filled ones); null: a copy made before they were carried
+    programming = db.Column(db.Text)
 
     machine = db.relationship("Machine", foreign_keys=[machine_id])
     from_machine = db.relationship("Machine", foreign_keys=[from_machine_id])

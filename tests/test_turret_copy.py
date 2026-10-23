@@ -56,3 +56,40 @@ def test_a_copy_makes_earlier_programs_and_calculations_out_of_date(app, client)
     blockers = services.gcode_readiness(job, lathe1).blockers
     assert blockers[0].startswith("Lathe 1's turret was copied from Lathe 2 by Bohdan on ")
     assert blockers[0].endswith("after the calculation: calculate the job again")
+
+
+def test_the_copy_carries_the_filled_programming_values_only(app, client):
+    from turnpilot.machine_spec import PROGRAMMING_FIELDS, SOURCE_COPIED
+
+    lathe1 = ready_machine()
+    machine = lathe2(client)
+    lathe1.groove_dwell_s = None  # empty on the other machine: this machine keeps its own
+    machine.groove_dwell_s = 0.5
+    machine.clearance_x = 9.0
+    db.session.commit()
+    filled = [f.name for f in PROGRAMMING_FIELDS if getattr(lathe1, f.name) not in (None, "")]
+    assert filled and "groove_dwell_s" not in filled
+    client.post(f"/machines/{machine.id}", data={"action": "copy_turret", "from_machine_id": lathe1.id,
+                                                 "copied_by": "Bohdan"})
+    for name in filled:
+        assert getattr(machine, name) == getattr(lathe1, name), name
+        source = machine.source_of(name)
+        assert source.source == SOURCE_COPIED and source.quote == "Lathe 1 (Bohdan)"
+        assert source.label.startswith("copied from Lathe 1 (Bohdan) ")
+    assert machine.groove_dwell_s == 0.5  # not overwritten by an empty value
+    (copy,) = db.session.execute(db.select(MachineTurretCopy)).scalars().all()
+    values = json.loads(copy.programming)
+    assert set(values) == set(filled) and values["clearance_x"] == [9.0, lathe1.clearance_x]
+    page = client.get(f"/machines/{machine.id}").get_data(as_text=True)
+    assert "programming values taken:" in page and "Approach clearance in X (per side) 9.0 →" in page
+
+
+def test_a_demo_value_stays_demo_when_copied(app, client):
+    from turnpilot.machine_spec import SOURCE_DEMO
+
+    lathe1 = ready_machine()
+    services.set_machine_value(lathe1, "clearance_x", 2.0, SOURCE_DEMO)
+    db.session.commit()
+    machine = lathe2(client)
+    services.copy_turret(machine, lathe1, "Bohdan")
+    assert machine.clearance_x == 2.0 and machine.source_of("clearance_x").source == SOURCE_DEMO

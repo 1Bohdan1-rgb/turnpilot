@@ -998,6 +998,12 @@ UK = {
     "Create an order": "Створити замовлення",
     "Order {n}: take the latest program": "Замовлення {n}: взяти останню програму",
     "Order {n}: mark the progress at the machine": "Замовлення {n}: відмічайте хід роботи на верстаті",
+    # turret copy with programming values
+    "programming values taken:": "значення програмування взято:",
+    "none (the other machine has none filled in)": "жодного (на іншому верстаті жодне не заповнено)",
+    "every position of this machine takes the other's tool (or empty), and the programming values the other has filled in (an empty one there leaves this machine's); kept in the history": "кожна позиція цього верстата бере інструмент іншого (або порожньо), а також заповнені на іншому значення програмування (порожнє там лишає значення цього верстата); зберігається в історії",
+    "Programming values taken: {n}.": "Взято значень програмування: {n}.",
+    "copied from {machine}": "скопійовано з {machine}",
 }
 
 

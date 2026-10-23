@@ -450,8 +450,8 @@ def accept_turret_setup(job, machine, name, signature):
 
 
 def copy_turret(machine, source, name):
-    """The machine's turret becomes `source`'s, position by position, by the operator (name required); both turrets
-    as they were are kept (MachineTurretCopy). Refused when `source` holds a tool at a position this machine lacks."""
+    """The machine's turret becomes `source`'s, position by position, by the operator (name required), with the
+    programming values `source` has filled in; both turrets and the values as they were are kept (MachineTurretCopy). Refused when `source` holds a tool at a position this machine lacks."""
     from .models import MachineTurretCopy
 
     name = (name or "").strip()[:100]
@@ -468,8 +468,21 @@ def copy_turret(machine, source, name):
     for position, slot in mine.items():
         slot.tool = theirs.get(position)
     after = {str(p): s.tool.id if s.tool else None for p, s in sorted(mine.items())}
+    # the programming values go with the tools (they are how the tools are mounted and touched off): only the ones the
+    # other machine has; an empty one there leaves this machine's as it is
+    programming = {}
+    for f in machine_spec.PROGRAMMING_FIELDS:
+        value = getattr(source, f.name)
+        if value is None or value == "":
+            continue
+        programming[f.name] = [getattr(machine, f.name), value]
+        theirs_source = source.source_of(f.name)
+        if theirs_source and theirs_source.source == machine_spec.SOURCE_DEMO:  # a DEMO value stays DEMO
+            set_machine_value(machine, f.name, value, machine_spec.SOURCE_DEMO)
+        else:
+            set_machine_value(machine, f.name, value, machine_spec.SOURCE_COPIED, quote=f"{source.name} ({name})"[:200])
     copy = MachineTurretCopy(machine_id=machine.id, from_machine_id=source.id, copied_by=name,
-                             before=json.dumps(before), after=json.dumps(after))
+                             before=json.dumps(before), after=json.dumps(after), programming=json.dumps(programming))
     db.session.add(copy)
     db.session.commit()
     return copy
