@@ -1,21 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Review drawing{% endblock %}
+{% block title %}{{ _("Review drawing") }}{% endblock %}
 {% block content %}
-<h1>Check the drawing data</h1>
+<h1>{{ _("Check the drawing data") }}</h1>
 {% if extraction.is_dxf %}
 <p class="muted">
-  {{ extraction.original_filename }} · read from the DXF geometry by the code ({{ extraction.prompt_version }}), no model,
-  no API call · nothing is saved as a job until you press <strong>Confirm</strong>.
+  {{ extraction.original_filename }} · {{ _("read from the DXF geometry by the code ({version}), no model, no API call", version=extraction.prompt_version) }} · {{ _("nothing is saved as a job until you press {confirm}.", confirm=strong(_("Confirm"))) }}
 </p>
 {% if dxf_parts|length > 1 %}
-<nav class="card dxf-parts" aria-label="Parts on this sheet">
-  <strong>{{ dxf_parts|length }} parts on this sheet</strong>, each becomes its own job:
+<nav class="card dxf-parts" aria-label="{{ _("Parts on this sheet") }}">
+  <strong>{{ _("{n} parts on this sheet", n=dxf_parts|length) }}</strong>, {{ _("each becomes its own job:") }}
   <ul>
   {% for p, r in dxf_parts %}
-    {% set label = r.label if r else "Part " ~ p.dxf_part %}
+    {% set label = r.label if r else _("Part {n}", n=p.dxf_part) %}
     <li>
-    {% if p.id == extraction.id %}<strong>{{ label }}</strong> (this one)
-    {% elif p.status == "confirmed" and p.job_id %}<a href="{{ url_for('main.job_detail', job_id=p.job_id) }}">{{ label }}</a> (job created)
+    {% if p.id == extraction.id %}<strong>{{ label }}</strong> ({{ _("this one") }})
+    {% elif p.status == "confirmed" and p.job_id %}<a href="{{ url_for('main.job_detail', job_id=p.job_id) }}">{{ label }}</a> ({{ _("job created") }})
     {% else %}<a href="{{ url_for('main.review_extraction', extraction_id=p.id) }}">{{ label }}</a>{% endif %}
     </li>
   {% endfor %}
@@ -23,29 +22,24 @@
 </nav>
 {% endif %}
 <div class="flash dxf-note">
-  <strong>Read from a {{ (dxf_report or {}).get("cad") or "KOMPAS-3D" }} DXF{% if dxf_report and dxf_report.get("scale") and dxf_report.get("scale") != 1 %} (drawn at {{ "%g"|format(dxf_report.get("scale")) }}:1, brought to 1:1){% endif %}:</strong> the outer profile and its dimensions only. Material, quantity, roughness
-  and the blank are not in the DXF: fill them in. Bores and other inner features are not read: add them by hand.
-  Each row shows its section (§) and the dimensions it was taken from; a value not given directly by a dimension
-  is marked <span class="badge badge-check">check</span>, with the reason under the row.
+  <strong>{{ _("Read from a {cad} DXF", cad=(dxf_report or {}).get("cad") or "KOMPAS-3D") }}{% if dxf_report and dxf_report.get("scale") and dxf_report.get("scale") != 1 %} ({{ _("drawn at {scale}:1, brought to 1:1", scale="%g"|format(dxf_report.get("scale"))) }}){% endif %}:</strong> {{ _("the outer profile and its dimensions only. Material, quantity, roughness and the blank are not in the DXF: fill them in. Bores and other inner features are not read: add them by hand. Each row shows its section (§) and the dimensions it was taken from; a value not given directly by a dimension is marked {check}, with the reason under the row.", check=('<span class="badge badge-check">%s</span>'|safe) % _("check")) }}
 </div>
 {% else %}
 <p class="muted">
-  {{ extraction.original_filename }} · read by {{ extraction.model }}
-  {% if extraction.prompt_version %}(prompt {{ extraction.prompt_version[:8] }}){% endif %}
-  {% if extraction.read_mode and extraction.read_mode != "features" %}· mode {{ extraction.read_mode }}{% endif %} ·
-  nothing is saved as a job until you press <strong>Confirm</strong>.
+  {{ extraction.original_filename }} · {{ _("read by {model}", model=extraction.model) }}
+  {% if extraction.prompt_version %}({{ _("prompt") }} {{ extraction.prompt_version[:8] }}){% endif %}
+  {% if extraction.read_mode and extraction.read_mode != "features" %}· {{ _("mode") }} {{ extraction.read_mode }}{% endif %} ·
+  {{ _("nothing is saved as a job until you press {confirm}.", confirm=strong(_("Confirm"))) }}
 </p>
 {% endif %}
 
 {% if extraction.is_cached %}
 <div class="flash cached-note">
-  <span class="badge badge-cached">cached</span>
-  This file was already read by {{ extraction.model }}
-  (upload #{{ extraction.cached_from_id }}, {{ extraction.cached_from.created_at.strftime("%Y-%m-%d %H:%M") }} UTC).
-  The saved result is shown; no new API call was made.
+  <span class="badge badge-cached">{{ _("cached") }}</span>
+  {{ _("This file was already read by {model} (upload #{n}, {at} UTC). The saved result is shown; no new API call was made.", model=extraction.model, n=extraction.cached_from_id, at=extraction.cached_from.created_at.strftime("%Y-%m-%d %H:%M")) }}
   <form method="post" action="{{ url_for('main.read_again', extraction_id=extraction.id) }}" class="inline-form">
-    <button type="submit" class="js-reading">Read again</button>
-    <span class="muted small">makes a new, paid API call</span>
+    <button type="submit" class="js-reading">{{ _("Read again") }}</button>
+    <span class="muted small">{{ _("makes a new, paid API call") }}</span>
   </form>
 </div>
 {% endif %}
@@ -55,23 +49,21 @@
 <div class="banner-not-turned" role="alert">
   <strong>⚠ {{ not_turned_banner }}</strong>
   <p>
-    The model classified this drawing as
-    <em>{{ "not a turned part" if data.part_type == "not_turned" else "unclear" }}</em>.
-    TurnPilot plans lathe operations only. Check the drawing before creating a job.
+    {{ _("The model classified this drawing as {kind}. TurnPilot plans lathe operations only. Check the drawing before creating a job.", kind=("<em>%s</em>"|safe) % (_("not a turned part") if data.part_type == "not_turned" else _("unclear"))) }}
   </p>
 </div>
 {% endif %}
 
 {% if geometry_warnings %}
 <div class="flash flash-error geometry-check">
-  <strong>Geometry check:</strong>
+  <strong>{{ _("Geometry check:") }}</strong>
   <ul>{% for w in geometry_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
 </div>
 {% endif %}
 
 {% if data and data.warnings %}
 <div class="flash flash-error">
-  <strong>{{ "DXF warnings" if extraction.is_dxf else "Model warnings" }}:</strong>
+  <strong>{{ _("DXF warnings") if extraction.is_dxf else _("Model warnings") }}:</strong>
   <ul>{% for w in data.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
 </div>
 {% endif %}
@@ -79,19 +71,18 @@
 <div class="review-layout">
   {% if extraction.is_dxf %}
   <section class="card drawing-preview dxf-binding">
-    <h2>Dimensions → sections</h2>
-    <p class="muted small">Every dimension of this part in the DXF and what the code bound it to (by the x of its
-      anchor points; boundary 0 is the left face).
-      <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='original') }}">Original file</a></p>
+    <h2>{{ _("Dimensions → sections") }}</h2>
+    <p class="muted small">{{ _("Every dimension of this part in the DXF and what the code bound it to (by the x of its anchor points; boundary 0 is the left face).") }}
+      <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='original') }}">{{ _("Original file") }}</a></p>
     <table class="dxf-dims">
-      <thead><tr><th>Dimension</th><th>Kind</th><th>Bound to</th></tr></thead>
+      <thead><tr><th>{{ _("Dimension") }}</th><th>{{ _("Kind") }}</th><th>{{ _("Bound to") }}</th></tr></thead>
       <tbody>
       {% for d in dxf_report.dims %}
         <tr class="{% if d.inner %}dxf-inner{% elif not d.bound %}dxf-unbound{% endif %}">
           <td>{{ d.text }}</td>
           <td>{{ d.kind }}</td>
           <td>
-            {% if d.inner %}inner profile: not read{% elif not d.bound %}⚠ not bound: {{ d.binding }}{% else %}{{ d.binding }}{% endif %}
+            {% if d.inner %}{{ _("inner profile: not read") }}{% elif not d.bound %}⚠ {{ _("not bound:") }} {{ d.binding }}{% else %}{{ d.binding }}{% endif %}
             {% for f in d.flags %}<div class="warning small">⚠ {{ f }}</div>{% endfor %}
           </td>
         </tr>
@@ -102,43 +93,42 @@
   {% else %}
   <figure class="card drawing-preview">
     <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='sent') }}" target="_blank">
-      <img src="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='sent') }}" alt="Drawing as sent to the model">
+      <img src="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='sent') }}" alt="{{ _("Drawing as sent to the model") }}">
     </a>
     <figcaption class="muted small">
-      Image sent to the model ·
-      <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='original') }}" target="_blank">original file</a>
+      {{ _("Image sent to the model") }} ·
+      <a href="{{ url_for('main.extraction_file', extraction_id=extraction.id, which='original') }}" target="_blank">{{ _("original file") }}</a>
     </figcaption>
   </figure>
   {% endif %}
 
-  {% if for_machine %}<p class="warning">The job will be planned for <strong>{{ for_machine.name }}</strong> (from the
-    shop page).</p>{% endif %}
+  {% if for_machine %}<p class="warning">{{ _("The job will be planned for {machine} (from the shop page).", machine=strong(for_machine.name)) }}</p>{% endif %}
   <form method="post" action="{{ url_for('main.confirm_extraction', extraction_id=extraction.id) }}" class="review-form">
     {% if for_machine %}<input type="hidden" name="machine_id" value="{{ for_machine.id }}">{% endif %}
     <div class="card grid-form">
-      <label>Job name <input name="name" value="{{ values.name }}" required></label>
-      <label>Material
+      <label>{{ _("Job name") }} <input name="name" value="{{ values.name }}" required></label>
+      <label>{{ _("Material") }}
         <select name="material_id" required>
-          <option value="">— select —</option>
+          <option value="">{{ _("— select —") }}</option>
           {% for m in materials %}
             <option value="{{ m.id }}" {% if values.material_id == m.id %}selected{% endif %}>{{ m.name }} (ISO {{ m.iso_group }})</option>
           {% endfor %}
         </select>
-        <span class="small">On drawing: {{ data.material if data and data.material else "not found" }}</span>
+        <span class="small">{{ _("On drawing:") }} {{ data.material if data and data.material else _("not found") }}</span>
       </label>
-      <label>Quantity <input name="quantity" type="number" min="1" value="{{ values.quantity }}"></label>
-      <label>Blank shape
-    <select name="blank_shape">{% for s in blank_shapes %}<option {% if s == values.blank_shape %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+      <label>{{ _("Quantity") }} <input name="quantity" type="number" min="1" value="{{ values.quantity }}"></label>
+      <label>{{ _("Blank shape") }}
+    <select name="blank_shape">{% for s in blank_shapes %}<option value="{{ s }}" {% if s == values.blank_shape %}selected{% endif %}>{{ s|label }}</option>{% endfor %}</select>
   </label>
-      <label>Blank Ø (hex bar: S), mm
-        {% if values.blank_diameter_suggested %}<span class="badge badge-suggested">suggested</span>{% endif %}
+      <label>{{ _("Blank Ø (hex bar: S), mm") }}
+        {% if values.blank_diameter_suggested %}<span class="badge badge-suggested">{{ _("suggested") }}</span>{% endif %}
         {% if values.blank_diameter_from_title_block %}<span class="badge badge-suggested"
-          title="Read from the material / blank text in the title block: {{ data.material }}">title block</span>{% endif %}
+          title="{{ _("Read from the material / blank text in the title block:") }} {{ data.material }}">{{ _("title block") }}</span>{% endif %}
         <input name="blank_diameter" type="number" step="any" min="0" value="{{ values.blank_diameter if values.blank_diameter is not none else '' }}" required
                {% if values.blank_diameter_suggested %}class="suggested"{% endif %}>
       </label>
-      <label>Blank length, mm
-        {% if values.blank_length_suggested %}<span class="badge badge-suggested">suggested</span>{% endif %}
+      <label>{{ _("Blank length, mm") }}
+        {% if values.blank_length_suggested %}<span class="badge badge-suggested">{{ _("suggested") }}</span>{% endif %}
         <input name="blank_length" type="number" step="any" min="0" value="{{ values.blank_length if values.blank_length is not none else '' }}" required
                {% if values.blank_length_suggested %}class="suggested"{% endif %}>
       </label>
@@ -146,39 +136,33 @@
       <input type="hidden" name="blank_length_suggested" value="{{ '1' if values.blank_length_suggested else '' }}">
       {% if values.blank_diameter_suggested or values.blank_length_suggested %}
       <p class="muted small">
-        The drawing has no blank size. Suggested: largest Ø + {{ config.BLANK_DIAMETER_ALLOWANCE_MM|round(1) }} mm rounded up to the
-        next bar size; length = overall length + {{ config.BLANK_FACING_ALLOWANCE_MM|round(1) }} mm facing + parting tool width.
+        {{ _("The drawing has no blank size. Suggested: largest Ø + {d} mm rounded up to the next bar size; length = overall length + {f} mm facing + parting tool width.", d=config.BLANK_DIAMETER_ALLOWANCE_MM|round(1), f=config.BLANK_FACING_ALLOWANCE_MM|round(1)) }}
         {% for n in values.blank_notes %}<br>{{ n }}{% endfor %}
       </p>
       {% endif %}
     </div>
 
-    <h2>Features</h2>
+    <h2>{{ _("Features") }}</h2>
     <p class="muted small">
-      Rows with low confidence (&lt; {{ config.LOW_CONFIDENCE_THRESHOLD }}) are highlighted. Untick a row to leave it out.
-      Lengths marked <span class="badge badge-check">check</span> are not dimensioned directly but computed from
-      other dimensions (e.g. a baseline minus a groove).
-      For a CAD PDF with its dimensions as text, the numbers are also checked against the drawing: numbers
-      that are not on it and numbers on it that are not used are listed with the geometry warnings. Which section
-      a number belongs to is not checked.
-      Groove: Ø = bottom, Start Ø = diameter it is cut from, Length = width.
-      Taper: Start Ø → Ø over Length. Fillet: Radius. Arc (a formed section, from a DXF): Start Ø → Ø over Length, Radius. Tapers, fillets and arcs are not planned automatically.
-      Hex: Ø = diameter across corners, S = size across flats; the lathe turns Ø, the flats are milled.
-      Roughness is shown as written (Ra or Rz); for cutting data an Rz is converted to Ra ≈ Rz/4 (GOST 2789).
+      {{ _("Rows with low confidence (&lt; {t}) are highlighted. Untick a row to leave it out.", t=config.LOW_CONFIDENCE_THRESHOLD) }}
+      {{ _("Lengths marked {check} are not dimensioned directly but computed from other dimensions (e.g. a baseline minus a groove).", check=('<span class="badge badge-check">%s</span>'|safe) % _("check")) }}
+      {{ _("For a CAD PDF with its dimensions as text, the numbers are also checked against the drawing: numbers that are not on it and numbers on it that are not used are listed with the geometry warnings. Which section a number belongs to is not checked.") }}
+      {{ _("Groove: Ø = bottom, Start Ø = diameter it is cut from, Length = width.") }}
+      {{ _("Taper: Start Ø → Ø over Length. Fillet: Radius. Arc (a formed section, from a DXF): Start Ø → Ø over Length, Radius. Tapers, fillets and arcs are not planned automatically.") }}
+      {{ _("Hex: Ø = diameter across corners, S = size across flats; the lathe turns Ø, the flats are milled.") }}
+      {{ _("Roughness is shown as written (Ra or Rz); for cutting data an Rz is converted to Ra ≈ Rz/4 (GOST 2789).") }}
       {% if data and data.general_tolerance %}
-      <br><strong>General tolerances on the drawing: {{ data.general_tolerance }}</strong>, applied to sizes without their own
-      (<span class="badge badge-general">general</span>: holes H, shafts h, fillets and chamfers ±IT/2).
+      <br><strong>{{ _("General tolerances on the drawing: {t}", t=data.general_tolerance) }}</strong>, {{ _("applied to sizes without their own ({general}: holes H, shafts h, fillets and chamfers ±IT/2).", general=('<span class="badge badge-general">%s</span>'|safe) % _("general")) }}
       {% endif %}
       {% if data and data.general_ra %}
-      <br><strong>General roughness on the drawing: {{ data.general_ra_param }} {{ data.general_ra }}</strong>, applied to features without their own mark
-      (<span class="badge badge-general">general</span>).
+      <br><strong>{{ _("General roughness on the drawing: {p} {v}", p=data.general_ra_param, v=data.general_ra) }}</strong>, {{ _("applied to features without their own mark ({general}).", general=('<span class="badge badge-general">%s</span>'|safe) % _("general")) }}
       {% endif %}
     </p>
     <input type="hidden" name="feature_count" value="{{ values.rows|length }}">
     <div class="table-wrap">
     <table class="card review-table">
       <thead>
-        <tr><th>Use</th>{% if extraction.is_dxf %}<th title="Section of the profile, left to right">§</th>{% endif %}<th>Type</th><th>Ø</th><th>Start Ø</th><th>Length</th><th>Tolerance</th><th>Roughness, µm</th><th>Pitch</th><th>Radius</th><th>S (hex)</th><th>Where</th><th>Conf.</th></tr>
+        <tr><th>{{ _("Use") }}</th>{% if extraction.is_dxf %}<th title="{{ _("Section of the profile, left to right") }}">§</th>{% endif %}<th>{{ _("Type") }}</th><th>Ø</th><th>{{ _("Start Ø") }}</th><th>{{ _("Length") }}</th><th>{{ _("Tolerance") }}</th><th>{{ _("Roughness, µm") }}</th><th>{{ _("Pitch") }}</th><th>{{ _("Radius") }}</th><th>{{ _("S (hex)") }}</th><th>{{ _("Where") }}</th><th>{{ _("Conf.") }}</th></tr>
       </thead>
       <tbody>
       {% for row in values.rows %}
@@ -187,62 +171,62 @@
           <td><input type="checkbox" name="f{{ i }}-include" value="1" {% if row.include %}checked{% endif %}></td>
           {% if extraction.is_dxf %}<td class="dxf-section">
             {{ row.dxf_section if row.dxf_section is not none else "" }}
-            {% if row.dxf_notes %}<span class="badge badge-check" title="{{ row.dxf_notes|join('; ') }}">check</span>{% endif %}
+            {% if row.dxf_notes %}<span class="badge badge-check" title="{{ row.dxf_notes|join('; ') }}">{{ _("check") }}</span>{% endif %}
           </td>{% endif %}
           <td>
             <select name="f{{ i }}-type">
-              {% for t in feature_types %}<option {% if t == row.type %}selected{% endif %}>{{ t }}</option>{% endfor %}
+              {% for t in feature_types %}<option value="{{ t }}" {% if t == row.type %}selected{% endif %}>{{ t|label }}</option>{% endfor %}
             </select>
           </td>
           {% for key in ("diameter", "start_diameter", "length") %}
           <td>
             <input name="f{{ i }}-{{ key }}" type="number" step="any" min="0" value="{{ row[key] if row[key] is not none else '' }}">
             {% if key == "diameter" and row.size_derived == "diameter" %}<span class="badge badge-check"
-              title="Not on the drawing: computed from the hex size across flats (D = S / cos 30°). Check it.">check</span>{% endif %}
+              title="{{ _("Not on the drawing: computed from the hex size across flats (D = S / cos 30°). Check it.") }}">{{ _("check") }}</span>{% endif %}
             {% if key == "length" and row.length_computed and not row.length_derived %}<span class="badge badge-check"
-              title="Not written on the drawing: computed as {{ row.length_computed }} from its dimensions. Check it.">check</span>{% endif %}
+              title="{{ _("Not written on the drawing: computed as {formula} from its dimensions. Check it.", formula=row.length_computed) }}">{{ _("check") }}</span>{% endif %}
             {% if key == "length" and row.length_computed %}<span class="formula small">= {{ row.length_computed }}</span>{% endif %}
             {% if key == "length" and row.length_ambiguous %}<span class="badge badge-check"
-              title="The dimensions allow a second reading of this length (with or without the groove next to it). Check the extension lines on the drawing.">check</span>
+              title="{{ _("The dimensions allow a second reading of this length (with or without the groove next to it). Check the extension lines on the drawing.") }}">{{ _("check") }}</span>
             {% elif key == "length" and row.length_derived %}<span class="badge badge-check"
-              title="Not dimensioned directly: computed from other dimensions (e.g. a baseline minus a groove). Check it.">check</span>{% endif %}
+              title="{{ _("Not dimensioned directly: computed from other dimensions (e.g. a baseline minus a groove). Check it.") }}">{{ _("check") }}</span>{% endif %}
           </td>
           {% endfor %}
           <td>
             <input name="f{{ i }}-tolerance" value="{{ row.tolerance or '' }}" size="8">
             {% if row.tolerance_general %}<span class="badge badge-general"
-              title="From the general tolerance note: {{ data.general_tolerance }}">general</span>{% endif %}
+              title="{{ _("From the general tolerance note:") }} {{ data.general_tolerance }}">{{ _("general") }}</span>{% endif %}
           </td>
           <td class="roughness">
             <select name="f{{ i }}-ra_param">
               {% for p in ("Ra", "Rz") %}<option {% if (row.ra_param or "Ra") == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
             </select>
             <input name="f{{ i }}-ra" type="number" step="any" min="0" value="{{ row.ra if row.ra is not none else '' }}">
-            {% if row.ra_general %}<span class="badge badge-general">general</span>{% endif %}
+            {% if row.ra_general %}<span class="badge badge-general">{{ _("general") }}</span>{% endif %}
           </td>
           <td>
             <input name="f{{ i }}-pitch" type="number" step="any" min="0" value="{{ row.pitch if row.pitch is not none else '' }}">
             {% if row.pitch_assumed %}<span class="badge badge-check"
-              title="No pitch on the drawing: the ISO 261 coarse pitch was filled in. Check it.">check</span>{% endif %}
+              title="{{ _("No pitch on the drawing: the ISO 261 coarse pitch was filled in. Check it.") }}">{{ _("check") }}</span>{% endif %}
           </td>
           <td><input name="f{{ i }}-radius" type="number" step="any" min="0" value="{{ row.radius if row.radius is not none else '' }}">
             {% if row.type in ("arc", "fillet") %}
-            <select name="f{{ i }}-arc_shape" title="Arc / fillet: bulging away from the axis (convex) or into it (concave). From the DXF geometry when there is one; empty: not programmed.">
-              <option value="">shape?</option>
-              <option value="convex" {% if row.arc_shape == "convex" %}selected{% endif %}>convex</option>
-              <option value="concave" {% if row.arc_shape == "concave" %}selected{% endif %}>concave</option>
+            <select name="f{{ i }}-arc_shape" title="{{ _("Arc / fillet: bulging away from the axis (convex) or into it (concave). From the DXF geometry when there is one; empty: not programmed.") }}">
+              <option value="">{{ _("shape?") }}</option>
+              <option value="convex" {% if row.arc_shape == "convex" %}selected{% endif %}>{{ _("convex") }}</option>
+              <option value="concave" {% if row.arc_shape == "concave" %}selected{% endif %}>{{ _("concave") }}</option>
             </select>{% endif %}</td>
           <td>
             <input name="f{{ i }}-across_flats" type="number" step="any" min="0" value="{{ row.across_flats if row.across_flats is not none else '' }}">
             {% if row.size_derived == "across_flats" %}<span class="badge badge-check"
-              title="Not on the drawing: computed from the diameter across corners (S = D · cos 30°). Check it.">check</span>{% endif %}
+              title="{{ _("Not on the drawing: computed from the diameter across corners (S = D · cos 30°). Check it.") }}">{{ _("check") }}</span>{% endif %}
             {% if row.probably_s %}<button type="button" class="js-is-s small" data-row="{{ i }}"
-              title="The Ø is probably the size across flats on the chamfer circle: move it to S (the Ø across corners is then computed on Confirm)">this is S</button>{% endif %}
+              title="{{ _("The Ø is probably the size across flats on the chamfer circle: move it to S (the Ø across corners is then computed on Confirm)") }}">{{ _("this is S") }}</button>{% endif %}
           </td>
           <td>
-            <select name="f{{ i }}-position" title="Chamfers: outside / inside and the end face. Threads: outside / inside.">
+            <select name="f{{ i }}-position" title="{{ _("Chamfers: outside / inside and the end face. Threads: outside / inside.") }}">
               <option value="">—</option>
-              {% for p in positions %}<option {% if row.position == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+              {% for p in positions %}<option value="{{ p }}" {% if row.position == p %}selected{% endif %}>{{ p|label }}</option>{% endfor %}
             </select>
           </td>
           <td>
@@ -252,8 +236,8 @@
         </tr>
         {% if row.grinding or row.bore_ra_check or row.dxf_dims or row.dxf_notes %}
         <tr class="row-warning"><td></td><td colspan="{{ 12 if extraction.is_dxf else 11 }}">
-          {% if row.dxf_dims %}<div class="muted small">from {{ row.dxf_dims|join(", ") }}</div>{% endif %}
-          {% for n in row.dxf_notes or () %}<div class="warning">check: {{ n }}</div>{% endfor %}
+          {% if row.dxf_dims %}<div class="muted small">{{ _("from") }} {{ row.dxf_dims|join(", ") }}</div>{% endif %}
+          {% for n in row.dxf_notes or () %}<div class="warning">{{ _("check") }}: {{ n }}</div>{% endfor %}
           {% if row.grinding %}<div class="warning">⚠ {{ grinding_warning }}</div>{% endif %}
           {% if row.bore_ra_check %}<div class="warning">⚠ {{ bore_ra_warning }}</div>{% endif %}
         </td></tr>
@@ -264,10 +248,9 @@
     </div>
 
     <div class="card">
-      <label class="inline"><input type="checkbox" name="add_face" value="1" {% if values.add_face %}checked{% endif %}> Add facing</label>
-      <label class="inline"><input type="checkbox" name="add_parting" value="1" {% if values.add_parting %}checked{% endif %}> Add parting</label>
-      <p class="muted small">Drawings rarely show facing and parting; they are added as features unless unticked.
-        If a facing or parting row above is ticked, the checkbox does not add a second one.</p>
+      <label class="inline"><input type="checkbox" name="add_face" value="1" {% if values.add_face %}checked{% endif %}> {{ _("Add facing") }}</label>
+      <label class="inline"><input type="checkbox" name="add_parting" value="1" {% if values.add_parting %}checked{% endif %}> {{ _("Add parting") }}</label>
+      <p class="muted small">{{ _("Drawings rarely show facing and parting; they are added as features unless unticked. If a facing or parting row above is ticked, the checkbox does not add a second one.") }}</p>
     </div>
 
     {% if needs_override %}
@@ -275,15 +258,15 @@
       <label class="inline">
         <input type="checkbox" name="override_part_type" value="1" id="override-part-type"
                {% if values.override_part_type %}checked{% endif %}>
-        I understand, create anyway
+        {{ _("I understand, create anyway") }}
       </label>
     </div>
     {% endif %}
 
     <div class="actions">
       <button type="submit" class="primary" id="confirm-button"
-              {% if needs_override and not values.override_part_type %}disabled{% endif %}>Confirm</button>
-      <a href="{{ url_for('main.upload_drawing') }}">Cancel</a>
+              {% if needs_override and not values.override_part_type %}disabled{% endif %}>{{ _("Confirm") }}</button>
+      <a href="{{ url_for('main.upload_drawing') }}">{{ _("Cancel") }}</a>
     </div>
   </form>
 </div>
@@ -303,7 +286,7 @@
   document.querySelectorAll(".js-reading").forEach(function (button) {
     button.form.addEventListener("submit", function () {
       button.disabled = true;
-      button.textContent = "Reading…";
+      button.textContent = t("Reading…");
     });
   });
 </script>

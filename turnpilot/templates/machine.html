@@ -1,85 +1,79 @@
 {% extends "base.html" %}
-{% block title %}Machine{% endblock %}
+{% block title %}{{ _("Machine") }}{% endblock %}
 {% block content %}
-<h1>Machine: {{ machine.name }}</h1>
-<p class="muted small"><a href="{{ url_for('main.machines') }}">all machines</a> ·
-  <a href="{{ url_for('main.machine_passport', machine_id=machine.id) }}">Read the values from the machine passport (PDF)</a>: each value comes with its page, and you confirm it before it is used.</p>
+<h1>{{ _("Machine") }}: {{ machine.name }}</h1>
+<p class="muted small"><a href="{{ url_for('main.machines') }}">{{ _("all machines") }}</a> ·
+  <a href="{{ url_for('main.machine_passport', machine_id=machine.id) }}">{{ _("Read the values from the machine passport (PDF)") }}</a>: {{ _("each value comes with its page, and you confirm it before it is used.") }}</p>
 <form method="post" class="card inline-form">
   <input type="hidden" name="action" value="kind">
-  <label>Machine type (its shape on the shop plan; the operator's choice)
-    <select name="machine_kind"><option value="">— not set —</option>
-      {% for key, label in machine_kinds.items() %}<option value="{{ key }}" {% if machine.machine_kind == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-  <button class="small">Save the type</button>
+  <label>{{ _("Machine type (its shape on the shop plan; the operator's choice)") }}
+    <select name="machine_kind"><option value="">{{ _("— not set —") }}</option>
+      {% for key, kind in machine_kinds.items() %}<option value="{{ key }}" {% if machine.machine_kind == key %}selected{% endif %}>{{ _(kind) }}</option>{% endfor %}</select></label>
+  <button class="small">{{ _("Save the type") }}</button>
 </form>
 <form method="post" class="card grid-form machine-profile">
   <input type="hidden" name="action" value="profile">
-  <label>Name <input name="name" value="{{ machine.name }}" required></label>
+  <label>{{ _("Name") }} <input name="name" value="{{ machine.name }}" required></label>
   {% for f in machine_fields %}
     {% set value = machine[f.name] %}
     {% set src = machine.source_of(f.name) %}
-    <label>{{ f.label }}{% if f.unit %}, {{ f.unit }}{% endif %}
+    <label>{{ _(f.label) }}{% if f.unit %}, {{ f.unit }}{% endif %}
       {% if f.kind == "bool" %}
         <select name="{{ f.name }}">
-          <option value="" {% if value is none %}selected{% endif %}>not known</option>
-          <option value="yes" {% if value is true %}selected{% endif %}>yes</option>
-          <option value="no" {% if value is false %}selected{% endif %}>no</option>
+          <option value="" {% if value is none %}selected{% endif %}>{{ _("not known") }}</option>
+          <option value="yes" {% if value is true %}selected{% endif %}>{{ _("yes") }}</option>
+          <option value="no" {% if value is false %}selected{% endif %}>{{ _("no") }}</option>
         </select>
       {% elif f.kind == "text" %}
-        <input name="{{ f.name }}" value="{{ value or '' }}" maxlength="100" placeholder="not known">
+        <input name="{{ f.name }}" value="{{ value or '' }}" maxlength="100" placeholder="{{ _("not known") }}">
       {% else %}
         <input name="{{ f.name }}" type="number" step="{{ '1' if f.kind == 'int' else 'any' }}" min="0"
-               value="{{ format_value(f, value) }}" placeholder="not known" {% if f.required %}required{% endif %}>
+               value="{{ format_value(f, value) }}" placeholder="{{ _("not known") }}" {% if f.required %}required{% endif %}>
       {% endif %}
-      <span class="small muted">{{ src.label if src else "seed" }}{% if src and src.quote %}: “{{ src.quote }}”{% endif %}{% if f.help %} · {{ f.help }}{% endif %}</span>
+      <span class="small muted">{{ src.label if src else _("seed") }}{% if src and src.quote %}: “{{ src.quote }}”{% endif %}{% if f.help %} · {{ _(f.help) }}{% endif %}</span>
     </label>
   {% endfor %}
-  <p class="muted small">Nothing here is guessed: an empty field is not known. When threading the feed is the
-    pitch, so the Z axis moves at n·P mm/min; with a threading limit, thread operations keep within it,
-    without one they ask you to check n·P. The spindle delivers power × efficiency; without the efficiency
-    every roughing operation asks you to check the power. A value you change here is recorded as entered by
-    the operator; values read from the passport show its page.</p>
-  <button type="submit">Save profile</button>
+  <p class="muted small">{{ _("Nothing here is guessed: an empty field is not known. When threading the feed is the pitch, so the Z axis moves at n·P mm/min; with a threading limit, thread operations keep within it, without one they ask you to check n·P. The spindle delivers power × efficiency; without the efficiency every roughing operation asks you to check the power. A value you change here is recorded as entered by the operator; values read from the passport show its page.") }}</p>
+  <button type="submit">{{ _("Save profile") }}</button>
 </form>
 
-<h2>Programming values (G-code)</h2>
+<h2>{{ _("Programming values (G-code)") }}</h2>
 <form method="post" class="card grid-form">
   <input type="hidden" name="action" value="programming">
   {% for f in programming_fields %}
     {% set value = machine[f.name] %}
     {% set src = machine.source_of(f.name) %}
-    <label>{{ f.label }}{% if f.unit %}, {{ f.unit }}{% endif %}
+    <label>{{ _(f.label) }}{% if f.unit %}, {{ f.unit }}{% endif %}
       {% if f.kind == "choice" %}
         <select name="{{ f.name }}">
-          <option value="" {% if value is none %}selected{% endif %}>not set</option>
-          {% for o in f.options %}<option {% if value == o %}selected{% endif %}>{{ o }}</option>{% endfor %}
+          <option value="" {% if value is none %}selected{% endif %}>{{ _("not set") }}</option>
+          {% for o in f.options %}<option value="{{ o }}" {% if value == o %}selected{% endif %}>{{ _(o) }}</option>{% endfor %}
         </select>
       {% else %}
-        <input name="{{ f.name }}" type="number" step="any" min="0" value="{{ format_value(f, value) }}" placeholder="not set">
+        <input name="{{ f.name }}" type="number" step="any" min="0" value="{{ format_value(f, value) }}" placeholder="{{ _("not set") }}">
       {% endif %}
-      <span class="small muted">{{ src.label if src else "not set" }}{% if f.help %} · {{ f.help }}{% endif %}</span>
+      <span class="small muted">{{ src.label if src else _("not set") }}{% if f.help %} · {{ _(f.help) }}{% endif %}</span>
     </label>
   {% endfor %}
-  <p class="muted small">No catalogue or passport gives these: you enter them for this machine, and each is recorded
-    as the operator's. There is no default: a program is not built while a value it needs is empty.</p>
-  <button type="submit">Save programming values</button>
+  <p class="muted small">{{ _("No catalogue or passport gives these: you enter them for this machine, and each is recorded as the operator's. There is no default: a program is not built while a value it needs is empty.") }}</p>
+  <button type="submit">{{ _("Save programming values") }}</button>
 </form>
 
-<h2>Bar stock</h2>
+<h2>{{ _("Bar stock") }}</h2>
 <form method="post" class="card grid-form">
   <input type="hidden" name="action" value="stock">
-  <label>Hex bar sizes across flats S, mm
+  <label>{{ _("Hex bar sizes across flats S, mm") }}
     <input name="hex_bar_sizes" value="{{ hex_bar_sizes }}" placeholder="8, 10, 11, 12">
   </label>
-  <p class="muted small">A part whose largest section is a hex of one of these sizes gets a hex bar as the
-    suggested blank: its flats are not machined. Round bar sizes are set in the configuration.</p>
-  <button type="submit">Save bar stock</button>
+  <p class="muted small">{{ _("A part whose largest section is a hex of one of these sizes gets a hex bar as the suggested blank: its flats are not machined. Round bar sizes are set in the configuration.") }}</p>
+  <button type="submit">{{ _("Save bar stock") }}</button>
 </form>
 
-<h2>Materials</h2>
+<h2>{{ _("Materials") }}</h2>
 <form method="post" class="card">
   <input type="hidden" name="action" value="materials">
   <table>
-    <thead><tr><th>Material</th><th>ISO</th><th>kc1, N/mm²</th><th>mc</th><th>Source of kc1</th><th>Source of mc</th><th>Catalogue group</th></tr></thead>
+    <thead><tr><th>{{ _("Material") }}</th><th>ISO</th><th>kc1, {{ _("N/mm²") }}</th><th>mc</th><th>{{ _("Source of kc1") }}</th><th>{{ _("Source of mc") }}</th><th>{{ _("Catalogue group") }}</th></tr></thead>
     <tbody>
     {% for m in materials %}
       <tr>
@@ -89,79 +83,74 @@
         <td><input name="m{{ m.id }}-mc" type="number" step="any" min="0" max="1" value="{{ m.mc if m.mc is not none else '' }}"></td>
         <td><input name="m{{ m.id }}-kc1_source" value="{{ m.kc1_source or '' }}" size="40"></td>
         <td><input name="m{{ m.id }}-mc_source" value="{{ m.mc_source or '' }}" size="30"></td>
-        <td><input name="m{{ m.id }}-catalogue_group" value="{{ m.catalogue_group or '' }}" size="6" maxlength="20" placeholder="e.g. P1.2"></td>
+        <td><input name="m{{ m.id }}-catalogue_group" value="{{ m.catalogue_group or '' }}" size="6" maxlength="20" placeholder="{{ _("e.g. P1.2") }}"></td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  <p class="muted small">Specific cutting force kc = kc1 · hm<sup>−mc</sup> (hm = feed for a 90° entering angle),
-    as the tool maker's catalogue gives it for the material group. The cutting power of roughing is
-    Pc = Vc · ap · f · kc / 60000 kW. A material without kc1 and mc is not checked. The seed values are
-    placeholders: replace them with your catalogue's. The catalogue group (e.g. Sandvik Coromant P1.2) picks the
-    confirmed rows of the <a href="{{ url_for('main.cutting_data') }}">cutting data</a> for this material; without
-    one, every operation uses the tool's own values and asks you to check them.</p>
-  <button type="submit">Save materials</button>
+  <p class="muted small">{{ _("Specific cutting force kc = kc1 · hm<sup>−mc</sup> (hm = feed for a 90° entering angle), as the tool maker's catalogue gives it for the material group. The cutting power of roughing is Pc = Vc · ap · f · kc / 60000 kW. A material without kc1 and mc is not checked. The seed values are placeholders: replace them with your catalogue's. The catalogue group (e.g. Sandvik Coromant P1.2) picks the confirmed rows of the {link} for this material; without one, every operation uses the tool's own values and asks you to check them.", link=link(url_for('main.cutting_data'), _("cutting data"))) }}</p>
+  <button type="submit">{{ _("Save materials") }}</button>
 </form>
 
-<h2>Turret</h2>
+<h2>{{ _("Turret") }}</h2>
 <form method="post" class="card">
   <input type="hidden" name="action" value="turret">
   <table>
-    <thead><tr><th>Pos.</th><th>Tool</th><th>Type</th><th>ISO</th><th>Insert</th><th>Holder · RMPX · T</th><th></th></tr></thead>
+    <thead><tr><th>{{ _("Pos.") }}</th><th>{{ _("Tool") }}</th><th>{{ _("Type") }}</th><th>ISO</th><th>{{ _("Insert") }}</th><th>{{ _("Holder · RMPX · T") }}</th><th></th></tr></thead>
     <tbody>
     {% for slot in machine.slots %}
       <tr>
         <td><strong>{{ slot.label }}</strong></td>
         <td>
           <select name="slot_{{ slot.position }}">
-            <option value="">— empty —</option>
+            <option value="">{{ _("— empty —") }}</option>
             {% for tool in tools %}
               <option value="{{ tool.id }}" {% if slot.tool_id == tool.id %}selected{% endif %}>{{ tool.name }}</option>
             {% endfor %}
           </select>
         </td>
-        <td>{{ slot.tool.type if slot.tool else "" }}</td>
+        <td>{{ slot.tool.type|label if slot.tool else "" }}</td>
         <td>{{ slot.tool.iso_group if slot.tool else "" }}</td>
         <td>{{ slot.tool.insert_code if slot.tool else "" }}</td>
-        <td class="small">{% if slot.tool %}{{ slot.tool.holder_code or "holder —" }} ·
+        <td class="small">{% if slot.tool %}{{ slot.tool.holder_code or _("holder —") }} ·
           {{ ("RMPX " ~ slot.tool.max_ramp_angle ~ "°") if slot.tool.max_ramp_angle is not none else "RMPX —" }} ·
           {{ ("T" ~ slot.tool.tip_direction) if slot.tool.tip_direction is not none else "T —" }}{% if slot.tool.type in ("boring", "boring_rough") %} ·
           {{ ("DMIN " ~ slot.tool.min_bore_diameter) if slot.tool.min_bore_diameter is not none else "DMIN —" }}{% endif %}{% endif %}</td>
-        <td class="row-actions">{% if slot.tool %}<a href="{{ url_for('main.edit_tool', tool_id=slot.tool.id) }}">Edit</a>{% endif %}</td>
+        <td class="row-actions">{% if slot.tool %}<a href="{{ url_for('main.edit_tool', tool_id=slot.tool.id) }}">{{ _("Edit") }}</a>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  <button type="submit">Save turret</button>
+  <button type="submit">{{ _("Save turret") }}</button>
 </form>
 {% set others = machines|rejectattr("id", "equalto", machine.id)|list %}
 {% if others %}
 <form method="post" class="card inline-form">
   <input type="hidden" name="action" value="copy_turret">
-  <label>Copy the turret from <select name="from_machine_id" aria-label="Machine to copy from">
+  <label>{{ _("Copy the turret from") }} <select name="from_machine_id" aria-label="{{ _("Machine to copy from") }}">
     {% for m in others %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}</select></label>
-  <input name="copied_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
-  <button type="submit">Copy the turret from the other machine</button>
-  <span class="small muted">every position of this machine takes the other's tool (or empty); kept in the history</span>
+  <input name="copied_by" maxlength="100" placeholder="{{ _("operator's name (required)") }}" aria-label="{{ _("Operator's name") }}" required>
+  <button type="submit">{{ _("Copy the turret from the other machine") }}</button>
+  <span class="small muted">{{ _("every position of this machine takes the other's tool (or empty); kept in the history") }}</span>
 </form>
 {% endif %}
-{% if turret_copies %}<details class="card small"><summary>Turret copies ({{ turret_copies|length }})</summary><ul>
-  {% for c in turret_copies %}<li>{{ c.copied_at.strftime("%Y-%m-%d %H:%M") }}: from {{ c.from_machine.name }}, {{ c.copied_by }}
+{% if turret_copies %}<details class="card small"><summary>{{ _("Turret copies ({n})", n=turret_copies|length) }}</summary><ul>
+  {% for c in turret_copies %}<li>{{ c.copied_at.strftime("%Y-%m-%d %H:%M") }}: {{ _("from {machine}", machine=c.from_machine.name) }}, {{ c.copied_by }}
     {% set before = c.before|fromjson %}{% set after = c.after|fromjson %}
-    <span class="muted">— changed: {% for p, t in after.items() if before[p] != t %}T{{ p }} {{ tool_names.get(before[p], "empty") }} → {{ tool_names.get(t, "empty") }}{% if not loop.last %}, {% endif %}{% else %}nothing{% endfor %}</span></li>{% endfor %}
+    <span class="muted">— {{ _("changed:") }} {% for p, t in after.items() if before[p] != t %}T{{ p }} {{ tool_names.get(before[p], _("empty")) }} → {{ tool_names.get(t, _("empty")) }}{% if not loop.last %}, {% endif %}{% else %}{{ _("nothing") }}{% endfor %}</span></li>{% endfor %}
 </ul></details>{% endif %}
 
-<h2>Tool library</h2>
+<h2>{{ _("Tool library") }}</h2>
 <div class="card">
   <table>
     <thead>
-      <tr><th>Name</th><th>Type</th><th>Insert</th><th>Grade</th><th>ISO</th>
-          <th>Vc, m/min</th><th>f, mm/rev</th><th>ap, mm</th><th>Recommended</th><th>Width, mm</th><th>Ø, mm</th><th>Source</th><th>Catalogue rows</th><th></th></tr>
+      <tr><th>{{ _("Name") }}</th><th>{{ _("Type") }}</th><th>{{ _("Insert") }}</th><th>{{ _("Grade") }}</th><th>ISO</th>
+          <th>Vc, {{ _("m/min") }}</th><th>f, {{ _("mm/rev") }}</th><th>ap, {{ _("mm") }}</th><th>{{ _("Recommended") }}</th><th>{{ _("Width, mm") }}</th><th>{{ _("Ø, mm") }}</th><th>{{ _("Source") }}</th><th>{{ _("Catalogue rows") }}</th><th></th></tr>
     </thead>
     <tbody>
     {% for tool in tools %}
       <tr>
-        <td>{{ tool.name }}</td><td>{{ tool.type }}</td><td>{{ tool.insert_code }}</td><td>{{ tool.grade }}</td>
+        <td>{{ tool.name }}</td><td>{{ tool.type|label }}</td><td>{{ tool.insert_code }}</td><td>{{ tool.grade }}</td>
         <td>{{ tool.iso_group }}</td>
         <td>{{ tool.vc_min|round(0)|int }}–{{ tool.vc_max|round(0)|int }}</td>
         <td>{{ tool.f_min }}–{{ tool.f_max }}</td>
@@ -172,39 +161,35 @@
           {% if tool.vc_points %}<br>Vc(f) {{ tool.vc_points }}{% endif %}
         </td>
         <td>{{ tool.insert_width if tool.insert_width is not none else "" }}</td>
-        <td>{{ tool.diameter if tool.diameter is not none else "" }}{% if tool.max_depth %}<br><span class="small">max depth {{ tool.max_depth }}</span>{% endif %}{% if tool.point_angle_deg %}<br><span class="small">point {{ tool.point_angle_deg }}°{% if tool.point_angle_source %} ({{ tool.point_angle_source }}){% endif %}</span>{% endif %}{% if tool.holder_code %}<br><span class="small">holder {{ tool.holder_code }}</span>{% endif %}{% if tool.max_ramp_angle is not none %}<br><span class="small">RMPX {{ tool.max_ramp_angle }}°{% if tool.max_ramp_source %} ({{ tool.max_ramp_source }}){% endif %}</span>{% endif %}{% if tool.entering_angle_deg is not none %}<br><span class="small">κr {{ tool.entering_angle_deg }}°{% if tool.entering_angle_source %} ({{ tool.entering_angle_source }}){% endif %}</span>{% endif %}{% if tool.nose_radius is not none %}<br><span class="small">rε {{ tool.nose_radius }}</span>{% endif %}{% if tool.tip_direction is not none %}<br><span class="small">T{{ tool.tip_direction }}</span>{% endif %}</td>
+        <td>{{ tool.diameter if tool.diameter is not none else "" }}{% if tool.max_depth %}<br><span class="small">{{ _("max depth") }} {{ tool.max_depth }}</span>{% endif %}{% if tool.point_angle_deg %}<br><span class="small">{{ _("point") }} {{ tool.point_angle_deg }}°{% if tool.point_angle_source %} ({{ tool.point_angle_source }}){% endif %}</span>{% endif %}{% if tool.holder_code %}<br><span class="small">{{ _("holder") }} {{ tool.holder_code }}</span>{% endif %}{% if tool.max_ramp_angle is not none %}<br><span class="small">RMPX {{ tool.max_ramp_angle }}°{% if tool.max_ramp_source %} ({{ tool.max_ramp_source }}){% endif %}</span>{% endif %}{% if tool.entering_angle_deg is not none %}<br><span class="small">κr {{ tool.entering_angle_deg }}°{% if tool.entering_angle_source %} ({{ tool.entering_angle_source }}){% endif %}</span>{% endif %}{% if tool.nose_radius is not none %}<br><span class="small">rε {{ tool.nose_radius }}</span>{% endif %}{% if tool.tip_direction is not none %}<br><span class="small">T{{ tool.tip_direction }}</span>{% endif %}</td>
         <td class="small">{{ tool.source or "" }}</td>
         <td class="small">{% for group, geometry, vc in catalogue_status.get(tool.id, []) %}
           {{ group }}: ap/f {{ "✓" if geometry else "—" }}, Vc {{ "✓" if vc else "—" }}<br>
         {% else %}<span class="muted">—</span>{% endfor %}</td>
         <td class="row-actions">
-          <a href="{{ url_for('main.edit_tool', tool_id=tool.id) }}">Edit</a>
+          <a href="{{ url_for('main.edit_tool', tool_id=tool.id) }}">{{ _("Edit") }}</a>
           <form method="post" action="{{ url_for('main.delete_tool', tool_id=tool.id) }}" class="inline-form"
-                onsubmit="return confirm('Delete {{ tool.name|e }}? A tool used by operations is retired instead.');">
-            <button type="submit" class="small">Delete</button>
+                onsubmit="return confirm('{{ _("Delete {name}? A tool used by operations is retired instead.", name=tool.name) }}');">
+            <button type="submit" class="small">{{ _("Delete") }}</button>
           </form>
         </td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  <p class="muted">"Catalogue rows": the confirmed <a href="{{ url_for('main.cutting_data') }}">cutting data</a> the
-    planner uses for the tool, per material group (✓); "—": the tool's own values, with a "check" on its
-    operations. Cutting data ranges in the seed are placeholders (NOT validated). Check them against the tool
-    catalogue and write where they come from in "Source". A tool in the turret cannot be deleted; one used by
-    operations is retired instead (kept for their record).</p>
+  <p class="muted">{{ _("\"Catalogue rows\": the confirmed {link} the planner uses for the tool, per material group (✓); \"—\": the tool's own values, with a \"check\" on its operations. Cutting data ranges in the seed are placeholders (NOT validated). Check them against the tool catalogue and write where they come from in \"Source\". A tool in the turret cannot be deleted; one used by operations is retired instead (kept for their record).", link=link(url_for('main.cutting_data'), _("cutting data"))) }}</p>
 </div>
 
-<h3>Add tool</h3>
+<h3>{{ _("Add tool") }}</h3>
 <form method="post" action="{{ url_for('main.add_tool') }}" class="card grid-form">
-  <label>Name <input name="name" required></label>
-  <label>Type
-    <select name="type">{% for t in tool_types %}<option>{{ t }}</option>{% endfor %}</select>
+  <label>{{ _("Name") }} <input name="name" required></label>
+  <label>{{ _("Type") }}
+    <select name="type">{% for t in tool_types %}<option value="{{ t }}">{{ t|label }}</option>{% endfor %}</select>
   </label>
-  <label>Insert code <input name="insert_code" placeholder="CNMG 120408"></label>
-  <label>Grade <input name="grade"></label>
+  <label>{{ _("Insert code") }} <input name="insert_code" placeholder="CNMG 120408"></label>
+  <label>{{ _("Grade") }} <input name="grade"></label>
   <fieldset>
-    <legend>ISO groups</legend>
+    <legend>{{ _("ISO groups") }}</legend>
     {% for g in iso_groups %}<label class="inline"><input type="checkbox" name="iso_group" value="{{ g }}"> {{ g }}</label>{% endfor %}
   </fieldset>
   <label>Vc min <input name="vc_min" type="number" step="any" required></label>
@@ -213,22 +198,22 @@
   <label>f max <input name="f_max" type="number" step="any" required></label>
   <label>ap min <input name="ap_min" type="number" step="any" required></label>
   <label>ap max <input name="ap_max" type="number" step="any" required></label>
-  <label>Insert width, mm (grooving/parting) <input name="insert_width" type="number" step="any" min="0"></label>
-  <label>Diameter, mm (drills) <input name="diameter" type="number" step="any" min="0"></label>
-  <label>Max depth, mm (drills; grooving: the holder's) <input name="max_depth" type="number" step="any" min="0"></label>
-  <label>Holder code (the operator's; e.g. RF123E08-2525B) <input name="holder_code" maxlength="50"></label>
-  <label>RMPX — max in-copying angle, ° (turning: down towards the chuck; catalogue, for the holder) <input name="max_ramp_angle" type="number" step="any" min="0" max="89"></label>
-  <label>Source of RMPX (catalogue page, holder) <input name="max_ramp_source" maxlength="200"></label>
-  <label>Entering angle κr, ° (turning: the insert in its holder) <input name="entering_angle_deg" type="number" step="any" min="1" max="179"></label>
-  <label>Source of κr (catalogue page, holder) <input name="entering_angle_source" maxlength="200"></label>
-  <label>Nose radius rε, mm (empty: from the insert code) <input name="nose_radius" type="number" step="any" min="0"></label>
-  <label>Tip direction T (0–9, the control's offset page; empty: no compensation) <input name="tip_direction" type="number" step="1" min="0" max="9"></label>
-  <label>Point angle, ° (drills: the catalogue's SIG) <input name="point_angle_deg" type="number" step="any" min="60" max="180"></label>
-  <label>Source of the point angle (catalogue page) <input name="point_angle_source" maxlength="200"></label>
-  <label>ap rec (catalogue) <input name="ap_rec" type="number" step="any" min="0"></label>
-  <label>f rec (catalogue) <input name="f_rec" type="number" step="any" min="0"></label>
-  <label>Vc at f (catalogue) <input name="vc_points" maxlength="200" placeholder="0.1:455, 0.4:305, 0.8:215"></label>
-  <label>Source of Vc / f / ap <input name="source" maxlength="300" placeholder="catalogue, insert grade, page"></label>
-  <button type="submit">Add tool</button>
+  <label>{{ _("Insert width, mm (grooving/parting)") }} <input name="insert_width" type="number" step="any" min="0"></label>
+  <label>{{ _("Diameter, mm (drills)") }} <input name="diameter" type="number" step="any" min="0"></label>
+  <label>{{ _("Max depth, mm (drills; grooving: the holder's)") }} <input name="max_depth" type="number" step="any" min="0"></label>
+  <label>{{ _("Holder code (the operator's; e.g. RF123E08-2525B)") }} <input name="holder_code" maxlength="50"></label>
+  <label>{{ _("RMPX — max in-copying angle, ° (turning: down towards the chuck; catalogue, for the holder)") }} <input name="max_ramp_angle" type="number" step="any" min="0" max="89"></label>
+  <label>{{ _("Source of RMPX (catalogue page, holder)") }} <input name="max_ramp_source" maxlength="200"></label>
+  <label>{{ _("Entering angle κr, ° (turning: the insert in its holder)") }} <input name="entering_angle_deg" type="number" step="any" min="1" max="179"></label>
+  <label>{{ _("Source of κr (catalogue page, holder)") }} <input name="entering_angle_source" maxlength="200"></label>
+  <label>{{ _("Nose radius rε, mm (empty: from the insert code)") }} <input name="nose_radius" type="number" step="any" min="0"></label>
+  <label>{{ _("Tip direction T (0–9, the control's offset page; empty: no compensation)") }} <input name="tip_direction" type="number" step="1" min="0" max="9"></label>
+  <label>{{ _("Point angle, ° (drills: the catalogue's SIG)") }} <input name="point_angle_deg" type="number" step="any" min="60" max="180"></label>
+  <label>{{ _("Source of the point angle (catalogue page)") }} <input name="point_angle_source" maxlength="200"></label>
+  <label>{{ _("ap rec (catalogue)") }} <input name="ap_rec" type="number" step="any" min="0"></label>
+  <label>{{ _("f rec (catalogue)") }} <input name="f_rec" type="number" step="any" min="0"></label>
+  <label>{{ _("Vc at f (catalogue)") }} <input name="vc_points" maxlength="200" placeholder="0.1:455, 0.4:305, 0.8:215"></label>
+  <label>{{ _("Source of Vc / f / ap") }} <input name="source" maxlength="300" placeholder="{{ _("catalogue, insert grade, page") }}"></label>
+  <button type="submit">{{ _("Add tool") }}</button>
 </form>
 {% endblock %}

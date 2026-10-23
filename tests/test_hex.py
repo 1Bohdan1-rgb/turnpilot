@@ -305,7 +305,7 @@ def test_review_suggests_the_hex_bar(app, client):
     png = (FIXTURES / "01_stepped_shaft.png").read_bytes()
     client.post("/jobs/upload", data={"drawing": (io.BytesIO(png), "fitting.png")}, content_type="multipart/form-data")
     page = client.get("/extractions/1/review").data.decode()
-    assert "<option selected>hex</option>" in page
+    assert '<option value="hex" selected>hex</option>' in page
     assert "Hex bar S11: the flats are not machined." in page
 
 

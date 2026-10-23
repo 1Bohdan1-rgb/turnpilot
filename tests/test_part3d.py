@@ -25,7 +25,9 @@ def test_program_page_offers_the_3d_view_from_the_project_files(app, client):
     page = client.get(f"/gcode/{record.id}").get_data(as_text=True)
     assert f'data-src="/gcode/{record.id}/part3d.json"' in page and 'data-mode="program"' in page
     assert "/static/vendor/three/three.module.min.js" in page and "/static/part3d.js" in page
-    assert "Лише зовнішній профіль — отвори й лиски не показано" in page
+    assert "Outer profile only: bores and flats are not shown." in page
+    uk = app.test_client().get(f"/gcode/{record.id}").get_data(as_text=True)  # the default language
+    assert "Лише зовнішній профіль: отвори й лиски не показано." in uk
     assert "http" not in page.split('<script type="importmap">')[1].split("</script>")[0]
     data = client.get(f"/gcode/{record.id}/part3d.json").get_json()
     assert data["states"][0]["n"] is None and len(data["states"]) > 2
@@ -63,8 +65,9 @@ def test_shop_panel_shows_the_part_by_the_marks_with_its_captions(app, client):
     services.make_order_current(order, "Bohdan")
     panel = client.get(f"/shop/machines/{machine.id}?fragment=1").get_data(as_text=True)
     assert f'data-src="/orders/{order.id}/part3d.json"' in panel and 'data-mode="order"' in panel
-    assert "за відмітками оператора, не з верстата" in panel
-    assert "Лише зовнішній профіль — отвори й лиски не показано" in panel
+    assert "by the operator's marks, not from the machine." in panel
+    uk = app.test_client().get(f"/shop/machines/{machine.id}?fragment=1").get_data(as_text=True)
+    assert "за відмітками оператора, не з верстата" in uk and "Лише зовнішній профіль: отвори й лиски не показано" in uk
     assert "turnpilotPart3d.mountAll(body)" in client.get("/shop").get_data(as_text=True)
 
 

@@ -1,5 +1,5 @@
 {% if fragment %}{% set back = request.args.get("back") or url_for("main.order_detail", order_id=order.id) %}{% include "_order_panel.html" %}{% else %}{% extends "base.html" %}
-{% block title %}Order {{ order.id }}{% endblock %}
+{% block title %}{{ _("Order {n}", n=order.id) }}{% endblock %}
 {% block content %}
 {% set back = url_for("main.order_detail", order_id=order.id) %}
 {% include "_order_panel.html" %}

@@ -121,7 +121,7 @@ def machines():
             db.session.rollback()
             flash(str(e), "error")
             return redirect(url_for("main.machines"))
-        flash(f"Machine {machine.name} added: its turret, programming values and passport are empty.")
+        flash(_("Machine {name} added: its turret, programming values and passport are empty.", name=machine.name))
         return redirect(url_for("main.machine", machine_id=machine.id))
     return render_template("machines.html", machines=services.machines(),
                            new_fields=[FIELDS_BY_NAME[k] for k in services.NEW_MACHINE_FIELDS])
@@ -154,7 +154,7 @@ def machine(machine_id=None):
                     services.check_machine(machine)
                 except services.MachineError as e:
                     raise FormError(str(e)) from None
-                flash("Machine profile saved.")
+                flash(_("Machine profile saved."))
             elif request.form.get("action") == "programming":
                 for field in PROGRAMMING_FIELDS:
                     try:
@@ -163,21 +163,21 @@ def machine(machine_id=None):
                         raise FormError(str(e)) from None
                     if value != getattr(machine, field.name) or services.is_demo(machine, field.name):
                         services.set_machine_value(machine, field.name, value, SOURCE_OPERATOR)
-                flash("Programming values saved.")
+                flash(_("Programming values saved."))
             elif request.form.get("action") == "copy_turret":
                 source = db.session.get(Machine, _number(request.form, "from_machine_id", int, required=True))
                 try:
                     copy = services.copy_turret(machine, source, request.form.get("copied_by"))
                 except services.TurretChangeError as e:
                     raise FormError(str(e)) from None
-                flash(f"{machine.name}'s turret copied from {copy.from_machine.name} by {copy.copied_by}. Jobs "
-                      "calculated for it before: calculate them again.")
+                flash(_("{machine}'s turret copied from {source} by {name}. Jobs calculated for it before: calculate "
+                        "them again.", machine=machine.name, source=copy.from_machine.name, name=copy.copied_by))
             elif request.form.get("action") == "kind":
                 kind = request.form.get("machine_kind") or None
                 if kind is not None and kind not in MACHINE_KINDS:
                     raise FormError("Machine type: " + ", ".join(MACHINE_KINDS.values()))
                 machine.machine_kind = kind
-                flash("Machine type saved.")
+                flash(_("Machine type saved."))
             elif request.form.get("action") == "stock":
                 text = request.form.get("hex_bar_sizes", "").strip()
                 try:
@@ -185,7 +185,7 @@ def machine(machine_id=None):
                 except ValueError:
                     raise FormError("Hex bar sizes: numbers across flats in mm, e.g. 8, 10, 11") from None
                 machine.hex_bar_sizes = ", ".join(f"{s:g}" for s in sizes) or None
-                flash("Bar stock saved.")
+                flash(_("Bar stock saved."))
             elif request.form.get("action") == "materials":
                 for material in db.session.execute(db.select(Material)).scalars():
                     prefix = f"m{material.id}-"
@@ -196,12 +196,12 @@ def machine(machine_id=None):
                     for key in ("kc1_source", "mc_source"):
                         setattr(material, key, (request.form.get(prefix + key) or "").strip()[:200] or None)
                     material.catalogue_group = (request.form.get(prefix + "catalogue_group") or "").strip()[:20] or None
-                flash("Materials saved.")
+                flash(_("Materials saved."))
             elif request.form.get("action") == "turret":
                 for slot in machine.slots:
                     tool_id = request.form.get(f"slot_{slot.position}") or None
                     slot.tool_id = int(tool_id) if tool_id else None
-                flash("Turret saved.")
+                flash(_("Turret saved."))
             db.session.commit()
         except FormError as e:
             db.session.rollback()
@@ -235,7 +235,7 @@ def machine_passport(machine_id=None):
     if request.method == "POST":
         upload = request.files.get("passport")
         if upload is None or not upload.filename:
-            flash("Choose the machine passport (PDF).", "error")
+            flash(_("Choose the machine passport (PDF)."), "error")
             return redirect(url_for("main.machine_passport", machine_id=machine.id))
         try:
             document = services.store_passport(machine, upload.filename, upload.read(), current_app.instance_path)
@@ -256,13 +256,13 @@ def passport_pages(document_id):
     if request.method == "POST":
         pages = sorted({int(p) for p in request.form.getlist("page") if p.isdigit() and 1 <= int(p) <= document.pages})
         if not pages:
-            flash("Pick the pages with the machine's technical data.", "error")
+            flash(_("Pick the pages with the machine's technical data."), "error")
         elif len(pages) > MAX_PASSPORT_PAGES:
-            flash(f"At most {MAX_PASSPORT_PAGES} pages in one reading.", "error")
+            flash(_("At most {n} pages in one reading.", n=MAX_PASSPORT_PAGES), "error")
         else:
             document.selected_pages = ", ".join(str(p) for p in pages)
             db.session.commit()
-            flash(f"Pages {document.selected_pages} picked.")
+            flash(_("Pages {pages} picked.", pages=document.selected_pages))
         return redirect(url_for("main.passport_pages", document_id=document.id))
     texts = passport_reader.page_texts(services.passport_path(document, current_app.instance_path))
     pages = [
@@ -281,7 +281,7 @@ def read_passport(document_id):
     """The paid call: only on the operator's explicit request, for the picked pages."""
     document = db.get_or_404(MachineDocument, document_id)
     if not request.form.get("paid"):
-        flash("Tick that you start a paid reading (one API call).", "error")
+        flash(_("Tick that you start a paid reading (one API call)."), "error")
         return redirect(url_for("main.passport_pages", document_id=document.id))
     try:
         services.read_passport_document(document, current_app.instance_path, current_app.config,
@@ -290,7 +290,7 @@ def read_passport(document_id):
         flash(str(e), "error")
         return redirect(url_for("main.passport_pages", document_id=document.id))
     if document.status != "read":
-        flash(f"The passport could not be read: {document.error}", "error")
+        flash(_("The passport could not be read: {error}", error=document.error), "error")
         return redirect(url_for("main.passport_pages", document_id=document.id))
     return redirect(url_for("main.passport_review", document_id=document.id))
 
@@ -319,7 +319,7 @@ def confirm_passport(document_id):
         flash(str(e), "error")
         return redirect(url_for("main.passport_review", document_id=document.id))
     db.session.commit()
-    flash(f"{count} value(s) confirmed from the passport.")
+    flash(_("{n} value(s) confirmed from the passport.", n=count))
     return redirect(url_for("main.machine", machine_id=document.machine_id))
 
 
@@ -359,10 +359,10 @@ def cutting_data_review():
             confirmed, rejected = services.review_cutting_data(rows, request.form)
         except services.CuttingDataError as e:
             db.session.rollback()
-            flash(f"{e}. Nothing was saved.", "error")
+            flash(_("{error}. Nothing was saved.", error=e), "error")
             return redirect(url_for("main.cutting_data_review", document=document_id))
         db.session.commit()
-        flash(f"{confirmed} row(s) confirmed, {rejected} rejected.")
+        flash(_("{confirmed} row(s) confirmed, {rejected} rejected.", confirmed=confirmed, rejected=rejected))
         return redirect(url_for("main.cutting_data_review", document=document_id) if _rows_to_check(document_id)
                         else url_for("main.cutting_data"))
     confirmed = db.session.execute(db.select(CuttingDataRow).filter_by(status="confirmed")).scalars().all()
@@ -377,10 +377,10 @@ def add_cutting_data():
         row = services.add_cutting_data_by_hand(request.form)
     except services.CuttingDataError as e:
         db.session.rollback()
-        flash(f"{e}. Nothing was saved.", "error")
+        flash(_("{error}. Nothing was saved.", error=e), "error")
         return redirect(url_for("main.cutting_data"))
     db.session.commit()
-    flash(f"Row {row.insert_code or row.grade} ({row.material_group}) entered and confirmed.")
+    flash(_("Row {row} ({group}) entered and confirmed.", row=row.insert_code or row.grade, group=row.material_group))
     return redirect(url_for("main.cutting_data"))
 
 
@@ -396,7 +396,7 @@ def import_cutting_data():
     except (services.UploadError, ValueError) as e:
         flash(str(e), "error")
     else:
-        flash(f"{added} row(s) to check added; {already} already there.")
+        flash(_("{added} row(s) to check added; {already} already there.", added=added, already=already))
     return redirect(url_for("main.cutting_data"))
 
 
@@ -409,7 +409,7 @@ def catalogues():
         request.max_content_length = current_app.config["MAX_CATALOGUE_LENGTH"]  # before the form is read
         upload = request.files.get("catalogue")
         if upload is None or not upload.filename:
-            flash("Choose the catalogue (PDF).", "error")
+            flash(_("Choose the catalogue (PDF)."), "error")
             return redirect(url_for("main.catalogues"))
         try:
             document = services.store_catalogue(upload, request.form.get("title"), current_app.instance_path)
@@ -445,17 +445,17 @@ def catalogue_pages(document_id):
             return redirect(url_for("main.catalogue_pages", document_id=document.id))
         groups = ", ".join(g.strip() for g in request.form.get("material_groups", "").split(",") if g.strip())
         if not picked:
-            flash("Pick the pages with the cutting data.", "error")
+            flash(_("Pick the pages with the cutting data."), "error")
         elif len(picked) > MAX_CATALOGUE_PAGES:
-            flash(f"At most {MAX_CATALOGUE_PAGES} pages in one reading.", "error")
+            flash(_("At most {n} pages in one reading.", n=MAX_CATALOGUE_PAGES), "error")
         elif not groups:
-            flash("Write the material groups to record (e.g. P1.2).", "error")
+            flash(_("Write the material groups to record (e.g. P1.2)."), "error")
         else:
             document.selected_pages = ", ".join(str(p) for p in picked)
             document.material_groups = groups[:100]
             document.codes = request.form.get("codes", "").strip() or None
             db.session.commit()
-            flash(f"Pages {document.selected_pages} picked.")
+            flash(_("Pages {pages} picked.", pages=document.selected_pages))
         return redirect(url_for("main.catalogue_pages", document_id=document.id))
     query = request.args.get("q", "").strip()
     found = catalogue_reader.search(pages, query) if query else []
@@ -486,7 +486,7 @@ def read_catalogue(document_id):
     """The paid call: only on the operator's explicit request, for the picked pages."""
     document = db.get_or_404(CatalogueDocument, document_id)
     if not request.form.get("paid"):
-        flash("Tick that you start a paid reading (one API call).", "error")
+        flash(_("Tick that you start a paid reading (one API call)."), "error")
         return redirect(url_for("main.catalogue_pages", document_id=document.id))
     try:
         services.read_catalogue_document(document, current_app.instance_path, current_app.config,
@@ -495,7 +495,7 @@ def read_catalogue(document_id):
         flash(str(e), "error")
         return redirect(url_for("main.catalogue_pages", document_id=document.id))
     if document.status != "read":
-        flash(f"The catalogue could not be read: {document.error}", "error")
+        flash(_("The catalogue could not be read: {error}", error=document.error), "error")
         return redirect(url_for("main.catalogue_pages", document_id=document.id))
     return redirect(url_for("main.cutting_data_review", document=document.id))
 
@@ -598,7 +598,7 @@ def add_tool():
         fields = _tool_fields(form)
         db.session.add(Tool(type=tool_type, **fields))
         db.session.commit()
-        flash(f"Tool '{fields['name']}' added to the library. Assign it to a turret position.")
+        flash(_("Tool '{name}' added to the library. Assign it to a turret position.", name=fields["name"]))
     except FormError as e:
         flash(str(e), "error")
     return redirect(url_for("main.machine"))
@@ -620,7 +620,7 @@ def edit_tool(tool_id):
             for key, value in _tool_fields(request.form).items():
                 setattr(tool, key, value)
             db.session.commit()
-            flash(f"Tool '{tool.name}' saved. Jobs calculated with it before show a note until recalculated.")
+            flash(_("Tool '{name}' saved. Jobs calculated with it before show a note until recalculated.", name=tool.name))
             return redirect(url_for("main.machine"))
         except FormError as e:
             db.session.rollback()
@@ -640,12 +640,12 @@ def take_rmpx(tool_id):
     style = request.form.get("holder_style", "")
     chosen = next((s for s in planner.rmpx_suggestions(tool.insert_code, tool.holder_code) if s[0] == style), None)
     if chosen is None:
-        flash("No catalogue RMPX for this insert and holder.", "error")
+        flash(_("No catalogue RMPX for this insert and holder."), "error")
         return redirect(url_for("main.edit_tool", tool_id=tool.id))
     tool.max_ramp_angle = chosen[1]
     tool.max_ramp_source = f"{chosen[2]}, holder {style} (confirmed by the operator)"
     db.session.commit()
-    flash(f"RMPX {chosen[1]:g}° set for '{tool.name}' with the holder {style}.")
+    flash(_("RMPX {angle}° set for '{name}' with the holder {holder}.", angle=f"{chosen[1]:g}", name=tool.name, holder=style))
     return redirect(url_for("main.edit_tool", tool_id=tool.id))
 
 
@@ -655,12 +655,12 @@ def take_entering_angle(tool_id):
     tool = _active_tool_or_404(tool_id)
     chosen = planner.entering_angle_suggestion(tool.holder_code)
     if chosen is None or chosen[0] != request.form.get("holder_style", ""):
-        flash("No entering angle for this holder code.", "error")
+        flash(_("No entering angle for this holder code."), "error")
         return redirect(url_for("main.edit_tool", tool_id=tool.id))
     tool.entering_angle_deg = chosen[1]
     tool.entering_angle_source = f"{chosen[2]}; holder {tool.holder_code} (taken by the operator)"[:200]
     db.session.commit()
-    flash(f"κr {chosen[1]:g}° set for '{tool.name}' (holder {tool.holder_code}).")
+    flash(_("κr {angle}° set for '{name}' (holder {holder}).", angle=f"{chosen[1]:g}", name=tool.name, holder=tool.holder_code))
     return redirect(url_for("main.edit_tool", tool_id=tool.id))
 
 
@@ -671,12 +671,12 @@ def take_dmin(tool_id):
     holder = request.form.get("holder", "")
     chosen = next((s for s in planner.dmin_suggestions(tool.insert_code, tool.holder_code) if s[0] == holder), None)
     if chosen is None:
-        flash("No catalogue DMIN for this insert and holder.", "error")
+        flash(_("No catalogue DMIN for this insert and holder."), "error")
         return redirect(url_for("main.edit_tool", tool_id=tool.id))
     tool.min_bore_diameter = chosen[1]
     tool.min_bore_source = f"{chosen[2]}, holder {holder} (confirmed by the operator)"
     db.session.commit()
-    flash(f"DMIN {chosen[1]:g} mm set for '{tool.name}' with the holder {holder}.")
+    flash(_("DMIN {value} mm set for '{name}' with the holder {holder}.", value=f"{chosen[1]:g}", name=tool.name, holder=holder))
     return redirect(url_for("main.edit_tool", tool_id=tool.id))
 
 
@@ -688,15 +688,16 @@ def delete_tool(tool_id):
     slots = db.session.execute(db.select(TurretSlot).filter_by(tool_id=tool.id)).scalars().all()
     if slots:
         positions = ", ".join(slot.label for slot in slots)
-        flash(f"Tool '{tool.name}' is in the turret at {positions}: remove it from there first.", "error")
+        flash(_("Tool '{name}' is in the turret at {positions}: remove it from there first.", name=tool.name,
+                positions=positions), "error")
         return redirect(url_for("main.machine"))
     used = db.session.execute(db.select(db.func.count(Operation.id)).filter_by(tool_id=tool.id)).scalar()
     if used:
         tool.is_retired = True
-        flash(f"Tool '{tool.name}' is used by {used} operation(s): retired (kept for their record).")
+        flash(_("Tool '{name}' is used by {n} operation(s): retired (kept for their record).", name=tool.name, n=used))
     else:
         db.session.delete(tool)
-        flash(f"Tool '{tool.name}' deleted.")
+        flash(_("Tool '{name}' deleted.", name=tool.name))
     db.session.commit()
     return redirect(url_for("main.machine"))
 
@@ -870,8 +871,9 @@ def set_job_machine(job_id):
     if machine.id != services.job_machine(job).id:
         job.machine = machine
         db.session.commit()
-        flash(f"The job is planned for {machine.name} now: calculate it for this machine"
-              + (" (the current calculation was made for another one)." if job.current_operations else "."))
+        flash(_("The job is planned for {machine} now: calculate it for this machine (the current calculation was made "
+                "for another one).", machine=machine.name) if job.current_operations else
+              _("The job is planned for {machine} now: calculate it for this machine.", machine=machine.name))
     return redirect(url_for("main.job_detail", job_id=job.id))
 
 
@@ -889,8 +891,9 @@ def change_job_turret(job_id):
     except (FormError, services.TurretChangeError) as e:
         flash(str(e), "error")
     else:
-        flash(f"T{change.position} for this job: {change.machine_tool.name if change.machine_tool else 'empty'} -> "
-              f"{change.tool.name if change.tool else 'empty'}. Calculate the job again.")
+        flash(_("T{position} for this job: {old} -> {new}. Calculate the job again.", position=change.position,
+                old=change.machine_tool.name if change.machine_tool else _("empty"),
+                new=change.tool.name if change.tool else _("empty")))
     return redirect(url_for("main.job_detail", job_id=job.id) + "#turret")
 
 
@@ -915,8 +918,9 @@ def accept_turret_setup(job_id):
         db.session.rollback()
         flash(str(e), "error")
         return redirect(_local(request.form.get("back")) or url_for("main.job_detail", job_id=job.id))
-    flash(f"Set-up accepted by {setup.accepted_by}: {len(setup.changes)} position(s) for this job; calculated again "
-          f"(v{job.last_calculation_version}). Install the tools and measure their offsets at the machine.")
+    flash(_("Set-up accepted by {name}: {n} position(s) for this job; calculated again (v{v}). Install the tools and "
+            "measure their offsets at the machine.", name=setup.accepted_by, n=len(setup.changes),
+            v=job.last_calculation_version))
     return redirect(url_for("main.operations", job_id=job.id))
 
 
@@ -933,8 +937,8 @@ def turret_installed(job_id):
     except (FormError, services.TurretChangeError) as e:
         flash(str(e), "error")
     else:
-        flash("Installed, X / Z offsets measured: " + ", ".join(f"T{c.position} {c.tool.name}" for c in marked)
-              + f" ({marked[0].install.installed_by}).")
+        flash(_("Installed, X / Z offsets measured: {tools} ({name}).",
+                tools=", ".join(f"T{c.position} {c.tool.name}" for c in marked), name=marked[0].install.installed_by))
     return redirect(back)
 
 
@@ -951,7 +955,7 @@ def undo_turret_installed(job_id, install_id):
     except services.TurretChangeError as e:
         flash(str(e), "error")
     else:
-        flash(f"T{install.change.position}: the mark is cancelled ({install.undone_by}).")
+        flash(_("T{position}: the mark is cancelled ({name}).", position=install.change.position, name=install.undone_by))
     return redirect(back)
 
 
@@ -965,7 +969,7 @@ def undo_job_turret_change(job_id, change_id):
     except services.TurretChangeError as e:
         flash(str(e), "error")
     else:
-        flash(f"T{change.position} for this job is the machine's again. Calculate the job again.")
+        flash(_("T{position} for this job is the machine's again. Calculate the job again.", position=change.position))
     return redirect(url_for("main.job_detail", job_id=job_id) + "#turret")
 
 
@@ -977,7 +981,7 @@ def job_gcode(job_id):
     if request.method == "POST":
         readiness, record = services.generate_gcode(job, machine)
         if record is None:
-            flash("No program: " + "; ".join(readiness.blockers), "error")
+            flash(_("No program: {reasons}", reasons="; ".join(readiness.blockers)), "error")
             return redirect(url_for("main.job_gcode", job_id=job.id))
         return redirect(url_for("main.gcode_program", program_id=record.id))
     readiness = services.gcode_readiness(job, machine)
@@ -1034,10 +1038,10 @@ def gcode_ready(program_id):
     try:
         services.mark_gcode_ready(record, record.machine or services.job_machine(record.job), request.form)
     except services.GcodeError as e:
-        flash(f"Not ready to run: {e}.", "error")
+        flash(_("Not ready to run: {reasons}.", reasons=e), "error")
     else:
-        flash(f"Ready to run, confirmed by {record.confirmed_by}. The program is not sent anywhere: download it, and "
-              "the operator presses Start after the machine check.")
+        flash(_("Ready to run, confirmed by {name}. The program is not sent anywhere: download it, and the operator "
+                "presses Start after the machine check.", name=record.confirmed_by))
     return redirect(url_for("main.gcode_program", program_id=record.id))
 
 
@@ -1066,7 +1070,7 @@ def gcode_setup(job_id):
     job.free_end, job.stickout_mm, job.face_stock_mm = free_end, stickout, face_stock
     job.gcode_setup_demo = False  # saved by the operator
     db.session.commit()
-    flash("G-code set-up saved.")
+    flash(_("G-code set-up saved."))
     return redirect(url_for("main.job_detail", job_id=job.id))
 
 
@@ -1103,7 +1107,8 @@ def choose_bore_depth(job_id, feature_id):
     except services.DepthError as e:
         flash(str(e), "error")
     else:
-        flash(f"Bore Ø{feature.diameter:g}: depth {services.BORE_DEPTH_MODES[mode]} ({feature.depth_decided_by}).")
+        flash(_("Bore Ø{d}: depth {mode} ({name}).", d=f"{feature.diameter:g}", mode=_(services.BORE_DEPTH_MODES[mode]),
+                name=feature.depth_decided_by))
     return redirect(url_for("main.job_detail", job_id=job_id))
 
 
@@ -1120,7 +1125,7 @@ def choose_arc_radius(job_id, feature_id):
         dimension, geometry = feature.radius, feature.drawn_radius
     name = (request.form.get("decided_by") or "").strip()[:100]
     if not name:
-        flash("The operator's name is required for the decision.", "error")
+        flash(_("The operator's name is required for the decision."), "error")
         return redirect(url_for("main.job_detail", job_id=job_id))
     if choice == "dimension":
         radius = dimension
@@ -1130,13 +1135,13 @@ def choose_arc_radius(job_id, feature_id):
         try:
             radius = _number(request.form, "own_radius", required=True)
         except FormError as e:
-            flash(f"Own radius: {e}", "error")
+            flash(_("Own radius: {error}", error=e), "error")
             return redirect(url_for("main.job_detail", job_id=job_id))
     else:
         abort(400)
     problem = services.check_own_radius(feature.job, feature, radius)
     if problem:
-        flash(f"R{radius:g} not saved: {problem}.", "error")
+        flash(_("R{r} not saved: {problem}.", r=f"{radius:g}", problem=problem), "error")
         return redirect(url_for("main.job_detail", job_id=job_id))
     source = {"dimension": "dimension", "drawn": "drawn", "own": "operator"}[choice]
     note = (request.form.get("note") or "").strip()[:200] or None
@@ -1167,8 +1172,9 @@ def set_arc_shape(job_id, feature_id):
     if feature.type == "fillet":
         feature.face = side
     db.session.commit()
-    flash(f"{feature.type} R{feature.radius:g}: {'convex' if convex else 'concave'}"
-          + (f", {side}" if feature.type == "fillet" else "") + ". Calculate the job again.")
+    flash(_("{type} R{r}: {shape}. Calculate the job again.", type=i18n.label(feature.type), r=f"{feature.radius:g}",
+            shape=(_("convex") if convex else _("concave"))
+            + (f", {i18n.label(side)}" if feature.type == "fillet" else "")))
     return redirect(url_for("main.job_detail", job_id=job_id))
 
 
@@ -1187,12 +1193,12 @@ def delete_feature(job_id, feature_id):
 def calculate(job_id):
     job = db.get_or_404(Job, job_id)
     if not job.active_features:
-        flash("Add at least one feature before calculating.", "error")
+        flash(_("Add at least one feature before calculating."), "error")
         return redirect(url_for("main.job_detail", job_id=job.id))
     had_operations = bool(job.current_operations)
     services.calculate_operations(job, services.job_machine(job))
     if had_operations:
-        flash("Previous operations were archived. See the calculation history.")
+        flash(_("Previous operations were archived. See the calculation history."))
     return redirect(url_for("main.operations", job_id=job.id))
 
 
@@ -1217,9 +1223,9 @@ def history(job_id):
 def approve_operation(op_id):
     op = db.get_or_404(Operation, op_id)
     if op.is_archived:
-        flash("Archived operations are read-only.", "error")
+        flash(_("Archived operations are read-only."), "error")
     elif op.tool_id is None:
-        flash(f"Operation {op.sequence} has no tool and cannot be approved.", "error")
+        flash(_("Operation {n} has no tool and cannot be approved.", n=op.sequence), "error")
     else:
         op.status = "approved"
         db.session.commit()
@@ -1234,7 +1240,7 @@ def skip_operation(op_id):
     except services.SkipError as e:
         flash(str(e), "error")
     else:
-        flash(f"Operation {op.sequence} skipped: it is left out of the program.")
+        flash(_("Operation {n} skipped: it is left out of the program.", n=op.sequence))
     return redirect(url_for("main.operations", job_id=op.job_id))
 
 
@@ -1246,7 +1252,7 @@ def unskip_operation(op_id):
     except services.SkipError as e:
         flash(str(e), "error")
     else:
-        flash(f"Operation {op.sequence} is proposed again.")
+        flash(_("Operation {n} is proposed again.", n=op.sequence))
     return redirect(url_for("main.operations", job_id=op.job_id))
 
 
@@ -1254,7 +1260,7 @@ def unskip_operation(op_id):
 def edit_operation(op_id):
     op = db.get_or_404(Operation, op_id)
     if op.is_archived:
-        flash("Archived operations are read-only.", "error")
+        flash(_("Archived operations are read-only."), "error")
         return redirect(url_for("main.history", job_id=op.job_id))
     machine = services.job_machine(op.job)
     if request.method == "POST":
@@ -1268,7 +1274,7 @@ def edit_operation(op_id):
                 ap=_number(request.form, "ap"),
                 passes=_number(request.form, "passes", int),
             )
-            flash(f"Operation {op.sequence}: {len(edits)} field(s) changed." if edits else "No changes.")
+            flash(_("Operation {n}: {k} field(s) changed.", n=op.sequence, k=len(edits)) if edits else _("No changes."))
             return redirect(url_for("main.operations", job_id=op.job_id))
         except (FormError, ValueError) as e:
             db.session.rollback()
@@ -1534,7 +1540,7 @@ def upload_drawing():
     if request.method == "POST":
         upload = request.files.get("drawing")
         if upload is None or not upload.filename:
-            flash("Choose a drawing file to upload.", "error")
+            flash(_("Choose a drawing file to upload."), "error")
             return redirect(url_for("main.upload_drawing"))
         try:
             extraction = services.read_drawing(
@@ -1622,7 +1628,7 @@ def confirm_extraction(extraction_id):
     extraction.status = "confirmed"
     extraction.confirmed_at = datetime.now(timezone.utc)
     db.session.commit()
-    flash("Job created from the drawing. Check the features and press Calculate.")
+    flash(_("Job created from the drawing. Check the features and press Calculate."))
     return redirect(url_for("main.job_detail", job_id=job.id))
 
 
@@ -1667,8 +1673,10 @@ def create_order(job_id):
     except (FormError, services.OrderError) as e:
         flash(str(e), "error")
         return redirect(url_for("main.job_detail", job_id=job.id))
-    flash(f"Order {order.id}: {order.quantity} × {job.name} on {machine.name}"
-          + ("" if order.program else f" (no program made for {machine.name} yet: no time, no operation list)."))
+    flash(_("Order {n}: {quantity} × {job} on {machine}", n=order.id, quantity=order.quantity, job=job.name,
+            machine=machine.name)
+          + ("" if order.program else " " + _("(no program made for {machine} yet: no time, no operation list).",
+                                              machine=machine.name)))
     return redirect(url_for("main.order_detail", order_id=order.id))
 
 
@@ -1723,11 +1731,16 @@ def shop():
     from . import shop_svg
 
     record, plan = services.current_shop_plan()
+    machines = services.shop_machines()
+    for m in machines:  # the page's language
+        m["status_label"] = i18n.label(m["status_label"])
+        if m["kind_label"]:
+            m["kind_label"] = _(m["kind_label"])
     return render_template("shop.html", record=record, plan=plan, statuses=MACHINE_STATUSES,
                            svg=shop_svg.plan_svg(plan) if plan else None,
                            view_box=shop_svg.view_box(plan) if plan else None,
                            text_size=shop_svg.text_size(plan) if plan else None,
-                           machines=services.shop_machines())
+                           machines=machines)
 
 
 @bp.route("/shop/machines/<int:machine_id>")
@@ -1779,18 +1792,18 @@ def shop_plan_page():
     if request.method == "POST":
         upload = request.files.get("plan")
         if upload is None or not upload.filename:
-            flash("Choose the plan's JSON file.", "error")
+            flash(_("Choose the plan's JSON file."), "error")
             return redirect(url_for("main.shop_plan_page"))
         try:
             text = upload.read().decode("utf-8")
             record = services.store_shop_plan(text, upload.filename, request.form.get("uploaded_by"))
         except UnicodeDecodeError:
-            flash("The plan file is not UTF-8 text.", "error")
+            flash(_("The plan file is not UTF-8 text."), "error")
             return redirect(url_for("main.shop_plan_page"))
         except (shop_plan.PlanError, services.OrderError) as e:
-            flash(f"The plan was not saved: {e}", "error")
+            flash(_("The plan was not saved: {error}", error=e), "error")
             return redirect(url_for("main.shop_plan_page"))
-        flash(f"Plan '{record.name}' ({record.width_mm:g} × {record.height_mm:g} mm) uploaded.")
+        flash(_("Plan '{name}' ({w} × {h} mm) uploaded.", name=record.name, w=f"{record.width_mm:g}", h=f"{record.height_mm:g}"))
         return redirect(url_for("main.shop"))
     plans = db.session.execute(db.select(ShopPlan).order_by(ShopPlan.id.desc())).scalars().all()
     return render_template("shop_plan.html", plans=plans)

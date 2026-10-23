@@ -94,21 +94,21 @@ async function mount(el) {
     const [mod, ctl] = await load();
     THREE = mod; OrbitControls = ctl.OrbitControls;
   } catch (e) {
-    info.textContent = "3D view not loaded: " + e.message;
+    info.textContent = t("3D view not loaded: {error}", {error: e.message});
     return;
   }
   const data = await fetch(el.dataset.src).then(r => r.json());
   if (data.error) { info.textContent = data.error; return; }
   const notes = [];
   if (data.note) notes.push(data.note);
-  if (data.computed_at) notes.push(`Program ${data.program} was made before the states were kept: simulated again from its text ${data.computed_at} with the job's and the turret's data of then.`);
-  if (data.stale && data.stale.length) notes.push(`Program ${data.program} is out of date: ${data.stale.join("; ")}.`);
+  if (data.computed_at) notes.push(t("Program {n} was made before the states were kept: simulated again from its text {at} with the job's and the turret's data of then.", {n: data.program, at: data.computed_at}));
+  if (data.stale && data.stale.length) notes.push(t("Program {n} is out of date: {reasons}.", {n: data.program, reasons: data.stale.join("; ")}));
   info.textContent = notes.join(" ");
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({antialias: false});
   } catch (e) {
-    view.textContent = "This browser cannot show 3D (no WebGL): use the 2D simulation on the program's page.";
+    view.textContent = t("This browser cannot show 3D (no WebGL): use the 2D simulation on the program's page.");
     return;
   }
   const col = colours(el);
@@ -199,8 +199,8 @@ async function mount(el) {
           return lost ? "ghost" : null;
         }), () => material("ghost", col.current, 0.18));
       }
-      where.textContent = k === 0 ? "operation 0 of " + (states.length - 1) + ": the bar"
-        : `operation ${k} of ${states.length - 1}: N${states[k].n} ${states[k].title}`;
+      where.textContent = k === 0 ? t("operation 0 of {total}: the bar", {total: states.length - 1})
+        : t("operation {k} of {total}: N{n} {title}", {k: k, total: states.length - 1, n: states[k].n, title: states[k].title});
       render();
     };
     slider.addEventListener("input", show);
@@ -213,7 +213,7 @@ function mountAll(root) {
   (root || document).querySelectorAll(".part3d[data-src]").forEach(el => {
     const go = () => mount(el).catch(e => {
       const info = el.querySelector(".part3d-info");
-      if (info) info.textContent = "3D view: " + e.message;
+      if (info) info.textContent = t("3D view: {error}", {error: e.message});
     });
     if (el.tagName === "DETAILS" && !el.open) el.addEventListener("toggle", () => { if (el.open) go(); });
     else go();

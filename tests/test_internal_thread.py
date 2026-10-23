@@ -118,7 +118,7 @@ def test_review_and_job_keep_the_internal_thread(app, client):
     png = (FIXTURES / "01_stepped_shaft.png").read_bytes()
     client.post("/jobs/upload", data={"drawing": (io.BytesIO(png), "vtulka.png")}, content_type="multipart/form-data")
     page = client.get("/extractions/1/review").data.decode()
-    assert "<option selected>internal</option>" in page
+    assert '<option value="internal" selected>internal</option>' in page
     form = {"name": "Vtulka", "material_id": "1", "quantity": "1", "blank_diameter": "29", "blank_length": "36",
             "feature_count": "2", "f0-include": "1", "f0-type": "od_turn", "f0-diameter": "25", "f0-length": "30",
             "f1-include": "1", "f1-type": "thread", "f1-diameter": "14", "f1-length": "28", "f1-pitch": "2",

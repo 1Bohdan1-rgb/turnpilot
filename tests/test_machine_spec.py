@@ -46,7 +46,7 @@ def test_machine_page_shows_every_field_with_its_source(client):
     page = client.get("/machine").get_data(as_text=True)
     for field in MACHINE_FIELDS:
         assert f'name="{field.name}"' in page, field.name
-    assert "seed ·" in page and "entered by the operator" not in page  # seed values have no recorded source
+    assert "seed ·" in page and '<span class="small muted">entered by the operator' not in page  # seed values have no recorded source
 
 
 def test_a_changed_value_is_recorded_as_the_operators(client):

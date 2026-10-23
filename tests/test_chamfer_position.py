@@ -70,7 +70,7 @@ def test_review_and_confirm_keep_the_position(app, client):
     png = (FIXTURES / "01_stepped_shaft.png").read_bytes()
     client.post("/jobs/upload", data={"drawing": (io.BytesIO(png), "vtulka.png")}, content_type="multipart/form-data")
     page = client.get("/extractions/1/review").data.decode()
-    assert "<option selected>internal right</option>" in page
+    assert '<option value="internal right" selected>internal right</option>' in page
 
     form = {"name": "Vtulka", "material_id": "1", "quantity": "1", "blank_diameter": "29", "blank_length": "36",
             "feature_count": "2", "f0-include": "1", "f0-type": "od_turn", "f0-diameter": "25", "f0-length": "30",

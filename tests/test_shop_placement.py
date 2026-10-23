@@ -8,6 +8,7 @@ from gcode_jobs import ready_machine
 from test_dxf_upload import no_api  # noqa: F401 (a fixture: no API call)
 
 from turnpilot import services
+from turnpilot.i18n import JS_KEYS, UK
 from turnpilot.models import Machine, db
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "docs" / "shop_plan_example.json"
@@ -154,7 +155,12 @@ def test_the_page_asks_who_changes_the_plan_and_moves_nothing_without_it(app, cl
     ready_machine()
     upload_plan(client)
     page = client.get("/shop").get_data(as_text=True)
-    assert "Хто змінює" in page and 'id="sf-operator"' not in page and "Впишіть, хто змінює" in page
+    assert "Who changes" in page and 'id="sf-operator"' not in page and 't("Write who changes")' in page
     assert 'sessionStorage.getItem("sf-changer")' in page and "changerField.focus()" in page
     assert page.count("!changer()) { start = null; return; }") == 2  # dragging on the plan and from the list
-    assert "Прибрати з плану" in page and "змінив/змінила" in page
+    assert 't("Take off the plan")' in page and 't("changed by {name}, {at}"' in page
+    # in Ukrainian (the default): the page's label, and the scripts' texts from the dictionary
+    assert "Хто змінює" in app.test_client().get("/shop").get_data(as_text=True)
+    assert (UK["Write who changes"], UK["Take off the plan"]) == ("Впишіть, хто змінює", "Прибрати з плану")
+    assert UK["changed by {name}, {at}"].startswith("змінив/змінила")
+    assert {"Write who changes", "Take off the plan", "changed by {name}, {at}"} <= set(JS_KEYS)

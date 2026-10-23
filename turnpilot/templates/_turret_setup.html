@@ -2,42 +2,39 @@
 whole set-up. Shown on the job page and the process sheet once the job is calculated. #}
 {% if setup and setup.proposal.needed %}
 {% set p = setup.proposal %}
-<h2 id="setup">Turret set-up from the library for {{ setup.machine.name }}</h2>
+<h2 id="setup">{{ _("Turret set-up from the library for {machine}", machine=setup.machine.name) }}</h2>
 <div class="card setup-card">
-  <p class="small muted">Proposed by the planner's own rules from the library's tools whose cutting data come from a
-    confirmed catalogue row: what is in the turret and fits stays; empty positions first, in the operations' order.
-    Nothing changes until it is accepted; the machine's turret and the other jobs keep theirs.</p>
+  <p class="small muted">{{ _("Proposed by the planner's own rules from the library's tools whose cutting data come from a confirmed catalogue row: what is in the turret and fits stays; empty positions first, in the operations' order. Nothing changes until it is accepted; the machine's turret and the other jobs keep theirs.") }}</p>
   {% if p.rows %}
   <table>
-    <thead><tr><th>Pos.</th><th>Take out</th><th>Put in</th><th>Offset</th><th>Source</th></tr></thead>
+    <thead><tr><th>{{ _("Pos.") }}</th><th>{{ _("Take out") }}</th><th>{{ _("Put in") }}</th><th>{{ _("Offset") }}</th><th>{{ _("Source") }}</th></tr></thead>
     <tbody>
     {% for r in p.rows %}{% set d = setup.details[r.position] %}
       <tr>
         <td><strong>T{{ r.position }}</strong></td>
-        <td>{{ r.remove.name if r.remove else "— empty —" }}{% if r.remove %} <span class="small muted">{{ r.remove.insert_code }}</span>{% endif %}</td>
-        <td><strong>{{ r.install.name }}</strong><br><span class="small">insert {{ r.install.insert_code or "—" }}
-          · holder {{ r.install.holder_code or "not set" }} · grade {{ r.install.grade or "—" }}</span>
+        <td>{{ r.remove.name if r.remove else _("— empty —") }}{% if r.remove %} <span class="small muted">{{ r.remove.insert_code }}</span>{% endif %}</td>
+        <td><strong>{{ r.install.name }}</strong><br><span class="small">{{ _("insert") }} {{ r.install.insert_code or "—" }}
+          · {{ _("holder") }} {{ r.install.holder_code or _("not set") }} · {{ _("grade") }} {{ r.install.grade or "—" }}</span>
           <br><span class="small muted">{{ r.reasons|join("; ") }}</span>
-          {% if r.also_on %}<br><span class="small">This tool stands also on {{ r.also_on|join(", ") }} now (if there is one
-            only, take it from there).</span>{% endif %}</td>
-        <td>{{ d.t_word }}{% if d.offset_page %}<br><span class="small">offset page {{ d.offset_page }} (G42)</span>{% endif %}</td>
-        <td class="small">{{ d.source or "not recorded" }}</td>
+          {% if r.also_on %}<br><span class="small">{{ _("This tool stands also on {machines} now (if there is one only, take it from there).", machines=r.also_on|join(", ")) }}</span>{% endif %}</td>
+        <td>{{ d.t_word }}{% if d.offset_page %}<br><span class="small">{{ _("offset page {page} (G42)", page=d.offset_page) }}</span>{% endif %}</td>
+        <td class="small">{{ d.source or _("not recorded") }}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   {% endif %}
-  {% if p.unplaced %}<div class="warning small"><strong>No position this job leaves free for:</strong>
+  {% if p.unplaced %}<div class="warning small"><strong>{{ _("No position this job leaves free for:") }}</strong>
     <ul>{% for t, why in p.unplaced %}<li>{{ t.name }} ({{ t.insert_code }}): {{ why }}</li>{% endfor %}</ul></div>{% endif %}
-  {% if p.missing %}<div class="warning small"><strong>The library cannot give:</strong>
+  {% if p.missing %}<div class="warning small"><strong>{{ _("The library cannot give:") }}</strong>
     <ul>{% for m in p.missing %}<li>{{ m }}</li>{% endfor %}</ul></div>{% endif %}
   {% if p.rows %}
   <form method="post" action="{{ url_for('main.accept_turret_setup', job_id=job.id) }}" class="inline-form">
     <input type="hidden" name="signature" value="{{ setup.signature }}">
     <input type="hidden" name="back" value="{{ request.path }}#setup">
-    <input name="decided_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
-    <button class="primary">Accept the set-up</button>
-    <span class="small muted">writes the changes for this job and calculates it again</span>
+    <input name="decided_by" maxlength="100" placeholder="{{ _("operator's name (required)") }}" aria-label="{{ _("Operator's name") }}" required>
+    <button class="primary">{{ _("Accept the set-up") }}</button>
+    <span class="small muted">{{ _("writes the changes for this job and calculates it again") }}</span>
   </form>
   {% endif %}
 </div>

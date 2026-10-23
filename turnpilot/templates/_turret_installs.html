@@ -4,29 +4,29 @@ operator field (decided_by); else this partial has its own. job, installs, back.
 {% if installs %}
 {% if not in_form %}<form method="post" action="{{ url_for('main.turret_installed', job_id=job.id) }}" class="installs-form">
   <input type="hidden" name="back" value="{{ back }}">
-  <label class="small operator-field">Operator <input name="decided_by" maxlength="100" required aria-label="Operator's name"></label>
+  <label class="small operator-field">{{ _("Operator") }} <input name="decided_by" maxlength="100" required aria-label="{{ _("Operator's name") }}"></label>
 {% endif %}
 <div class="installs" id="installs">
-  <h3>Turret set-up at the machine</h3>
+  <h3>{{ _("Turret set-up at the machine") }}</h3>
   <table>
-    <thead><tr><th>Pos.</th><th>Tool</th><th>Offset</th><th>Installed, X / Z offsets measured</th></tr></thead>
+    <thead><tr><th>{{ _("Pos.") }}</th><th>{{ _("Tool") }}</th><th>{{ _("Offset") }}</th><th>{{ _("Installed, X / Z offsets measured") }}</th></tr></thead>
     <tbody>
     {% for c in installs %}{% set d = offset_details(c.tool, c.position) %}
       <tr{% if not c.install %} class="pending"{% endif %}>
         <td><strong>T{{ c.position }}</strong></td>
-        <td>{{ c.tool.name }}<br><span class="small">insert {{ c.tool.insert_code or "—" }} · holder {{ c.tool.holder_code or "not set" }}</span>
-          <br><span class="small muted">instead of {{ c.machine_tool.name if c.machine_tool else "empty" }}</span></td>
-        <td>{{ d.t_word }}{% if d.offset_page %}<br><span class="small">offset page {{ d.offset_page }} (G42)</span>{% endif %}</td>
+        <td>{{ c.tool.name }}<br><span class="small">{{ _("insert") }} {{ c.tool.insert_code or "—" }} · {{ _("holder") }} {{ c.tool.holder_code or _("not set") }}</span>
+          <br><span class="small muted">{{ _("instead of") }} {{ c.machine_tool.name if c.machine_tool else _("empty") }}</span></td>
+        <td>{{ d.t_word }}{% if d.offset_page %}<br><span class="small">{{ _("offset page {page} (G42)", page=d.offset_page) }}</span>{% endif %}</td>
         <td>{% if c.install %}<span class="done-mark">✓</span> <span class="small">{{ c.install.installed_by }},
             {{ c.install.installed_at.strftime("%Y-%m-%d %H:%M") }}</span>
-          <button class="small" formaction="{{ url_for('main.undo_turret_installed', job_id=job.id, install_id=c.install.id) }}">Cancel the mark</button>
-          {% else %}<button class="touch" name="change_id" value="{{ c.id }}" formaction="{{ url_for('main.turret_installed', job_id=job.id) }}">Installed, X / Z offsets measured</button>{% endif %}</td>
+          <button class="small" formaction="{{ url_for('main.undo_turret_installed', job_id=job.id, install_id=c.install.id) }}">{{ _("Cancel the mark") }}</button>
+          {% else %}<button class="touch" name="change_id" value="{{ c.id }}" formaction="{{ url_for('main.turret_installed', job_id=job.id) }}">{{ _("Installed, X / Z offsets measured") }}</button>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   {% if installs|rejectattr("install")|list|length > 1 %}
-  <button class="touch" formaction="{{ url_for('main.turret_installed', job_id=job.id) }}">All installed, X / Z offsets measured</button>
+  <button class="touch" formaction="{{ url_for('main.turret_installed', job_id=job.id) }}">{{ _("All installed, X / Z offsets measured") }}</button>
   {% endif %}
 </div>
 {% if not in_form %}</form>{% endif %}

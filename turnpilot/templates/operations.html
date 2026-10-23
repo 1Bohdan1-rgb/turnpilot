@@ -1,47 +1,45 @@
 {% extends "base.html" %}
-{% block title %}Operations · {{ job.name }}{% endblock %}
+{% block title %}{{ _("Operations") }} · {{ job.name }}{% endblock %}
 {% block content %}
-<h1>Process sheet: {{ job.name }}</h1>
+<h1>{{ _("Process sheet: {job}", job=job.name) }}</h1>
 <p class="muted">
-  {{ job.material.name }} (ISO {{ job.material.iso_group }}) · blank Ø{{ job.blank_diameter|round(2) }} × {{ job.blank_length|round(2) }} mm ·
-  {{ machine.name }}, max {{ machine.max_rpm }} rpm ·
-  {% if job.calculated_machine_id and job.calculated_machine_id != machine.id %}<strong class="warning">calculated for
-    {{ job.calculated_machine.name }}: calculate again for {{ machine.name }}</strong> ·{% endif %}
-  <a href="{{ url_for('main.job_detail', job_id=job.id) }}">back to features</a>
-  {% if job.archived_operations %}· <a href="{{ url_for('main.history', job_id=job.id) }}">calculation history</a>{% endif %}
+  {{ job.material.name }} (ISO {{ job.material.iso_group }}) · {{ _("blank") }} Ø{{ job.blank_diameter|round(2) }} × {{ job.blank_length|round(2) }} {{ _("mm") }} ·
+  {{ _("{machine}, max {rpm} rpm", machine=machine.name, rpm=machine.max_rpm) }} ·
+  {% if job.calculated_machine_id and job.calculated_machine_id != machine.id %}<strong class="warning">{{ _("calculated for {old}: calculate again for {new}", old=job.calculated_machine.name, new=machine.name) }}</strong> ·{% endif %}
+  <a href="{{ url_for('main.job_detail', job_id=job.id) }}">{{ _("back to features") }}</a>
+  {% if job.archived_operations %}· <a href="{{ url_for('main.history', job_id=job.id) }}">{{ _("calculation history") }}</a>{% endif %}
 </p>
-<p class="actions"><a class="button" href="{{ url_for('main.job_gcode', job_id=job.id) }}">G-code</a></p>
-{% if job.current_operations %}<p class="muted small">Calculation version {{ job.last_calculation_version }}</p>{% endif %}
+<p class="actions"><a class="button" href="{{ url_for('main.job_gcode', job_id=job.id) }}">{{ _("G-code") }}</a></p>
+{% if job.current_operations %}<p class="muted small">{{ _("Calculation version {v}", v=job.last_calculation_version) }}</p>{% endif %}
 {% for w in machine_warnings %}<div class="flash flash-error machine-warning">⚠ {{ w }}</div>{% endfor %}
 {% include "_turret_setup.html" %}
 {% set changed = job.tools_changed_since_calculation %}
 {% if changed %}
 <div class="flash flash-error tools-changed" role="alert">
-  <strong>Tool data changed after this calculation:</strong>
-  {% for t in changed %}{{ t.name }}{% if t.is_retired %} (retired){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.
-  The cutting data below were calculated with the old values: press <strong>Calculate</strong> on the
-  <a href="{{ url_for('main.job_detail', job_id=job.id) }}">job page</a> to recalculate.
+  <strong>{{ _("Tool data changed after this calculation:") }}</strong>
+  {% for t in changed %}{{ t.name }}{% if t.is_retired %} ({{ _("retired") }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.
+  {{ _("The cutting data below were calculated with the old values: press {calculate} on the {link} to recalculate.", calculate=strong(_("Calculate")), link=link(url_for('main.job_detail', job_id=job.id), _("job page"))) }}
 </div>
 {% endif %}
 
 {% if not job.current_operations %}
-<p class="muted">No operations yet. Press "Calculate" on the job page.</p>
+<p class="muted">{{ _("No operations yet. Press \"Calculate\" on the job page.") }}</p>
 {% else %}
 <div class="table-wrap">
 <table class="card ops">
   <thead>
     <tr>
-      <th>#</th><th>Feature</th><th>Operation</th><th>Pos.</th><th>Tool</th>
-      <th>Vc, m/min</th><th>n, rpm</th><th>f, mm/rev</th><th>ap, mm</th><th>Width, mm</th><th>Depth/side, mm</th><th>Passes</th>
-      <th>Notes</th><th>Status</th><th></th>
+      <th>#</th><th>{{ _("Feature") }}</th><th>{{ _("Operation") }}</th><th>{{ _("Pos.") }}</th><th>{{ _("Tool") }}</th>
+      <th>Vc, {{ _("m/min") }}</th><th>n, {{ _("rpm") }}</th><th>f, {{ _("mm/rev") }}</th><th>ap, {{ _("mm") }}</th><th>{{ _("Width, mm") }}</th><th>{{ _("Depth/side, mm") }}</th><th>{{ _("Passes") }}</th>
+      <th>{{ _("Notes") }}</th><th>{{ _("Status") }}</th><th></th>
     </tr>
   </thead>
   <tbody>
   {% for op in job.current_operations %}
     <tr class="status-{{ op.status }}{% if op.warning %} has-warning{% endif %}">
       <td>{{ op.sequence }}</td>
-      <td>{{ op.feature.type }}{% if op.feature.diameter %} Ø{{ op.feature.diameter }}{% endif %}{% if op.feature.across_flats %} S{{ op.feature.across_flats }}{% endif %}</td>
-      <td>{{ op.tool_type }} <span class="muted">({{ op.rough_finish }})</span></td>
+      <td>{{ op.feature.type|label }}{% if op.feature.diameter %} Ø{{ op.feature.diameter }}{% endif %}{% if op.feature.across_flats %} S{{ op.feature.across_flats }}{% endif %}</td>
+      <td>{{ op.tool_type|label }} <span class="muted">({{ op.rough_finish|label }})</span></td>
       <td>{{ "T%d"|format(op.turret_position) if op.turret_position else "—" }}</td>
       <td>{{ op.tool.name if op.tool else "—" }}</td>
       <td>{{ op.vc if op.vc is not none else "—" }}</td>
@@ -54,28 +52,28 @@
       <td class="notes">
         {% if op.warning %}<div class="warning">⚠ {{ op.warning }}</div>{% endif %}
         {% if op.note %}<div>{{ op.note }}</div>{% endif %}
-        {% if op.status == "skipped" %}<div class="muted">skipped by {{ op.skipped_by }}{% if op.skipped_at %}, {{ op.skipped_at.strftime("%Y-%m-%d") }}{% endif %}{% if op.skip_carried_from %} (carried from v{{ op.skip_carried_from }}){% endif %}: {{ op.skipped_note }}</div>{% endif %}
+        {% if op.status == "skipped" %}<div class="muted">{{ _("skipped by") }} {{ op.skipped_by }}{% if op.skipped_at %}, {{ op.skipped_at.strftime("%Y-%m-%d") }}{% endif %}{% if op.skip_carried_from %} ({{ _("carried from v{v}", v=op.skip_carried_from) }}){% endif %}: {{ op.skipped_note }}</div>{% endif %}
       </td>
-      <td><span class="badge badge-{{ op.status }}">{{ op.status }}</span>
-        {% if op.edits %}<div class="muted small">{{ op.edits|length }} edit(s)</div>{% endif %}</td>
+      <td><span class="badge badge-{{ op.status }}">{{ op.status|label }}</span>
+        {% if op.edits %}<div class="muted small">{{ _("{n} edit(s)", n=op.edits|length) }}</div>{% endif %}</td>
       <td class="row-actions">
         {% if op.status not in ("approved", "skipped") and op.tool %}
         <form method="post" action="{{ url_for('main.approve_operation', op_id=op.id) }}">
-          <button type="submit">Approve</button>
+          <button type="submit">{{ _("Approve") }}</button>
         </form>
         {% endif %}
-        <a class="button" href="{{ url_for('main.edit_operation', op_id=op.id) }}">Edit</a>
+        <a class="button" href="{{ url_for('main.edit_operation', op_id=op.id) }}">{{ _("Edit") }}</a>
         {% if op.status == "skipped" %}
         <form method="post" action="{{ url_for('main.unskip_operation', op_id=op.id) }}" class="inline-form">
-          <input name="skipped_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
-          <button type="submit" class="small">Unskip</button>
+          <input name="skipped_by" maxlength="100" placeholder="{{ _("operator's name") }}" aria-label="{{ _("Operator's name") }}" required>
+          <button type="submit" class="small">{{ _("Unskip") }}</button>
         </form>
         {% else %}
-        <details class="small"><summary>Skip</summary>
+        <details class="small"><summary>{{ _("Skip") }}</summary>
           <form method="post" action="{{ url_for('main.skip_operation', op_id=op.id) }}">
-            <input name="note" maxlength="200" placeholder="why (required)" aria-label="Why" required>
-            <input name="skipped_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
-            <button type="submit" class="small">Skip: leave out of the program</button>
+            <input name="note" maxlength="200" placeholder="{{ _("why (required)") }}" aria-label="{{ _("Why") }}" required>
+            <input name="skipped_by" maxlength="100" placeholder="{{ _("operator's name") }}" aria-label="{{ _("Operator's name") }}" required>
+            <button type="submit" class="small">{{ _("Skip: leave out of the program") }}</button>
           </form></details>
         {% endif %}
       </td>
@@ -86,8 +84,6 @@
 </div>
 {% set unconfirmed = job.current_operations|selectattr("tool_id")|rejectattr("status", "equalto", "skipped")
    |rejectattr("cutting_data_origin", "in", ["catalogue", "operator"])|list %}
-{% if unconfirmed %}<p class="warning small">{{ unconfirmed|length }} operation(s) ({% for op in unconfirmed %}{{ op.sequence }}{% if not loop.last %}, {% endif %}{% endfor %})
-  take cutting data from the tool's own ranges, without a confirmed catalogue row or the operator's values. Verify them
-  before machining.</p>{% endif %}
+{% if unconfirmed %}<p class="warning small">{{ _("{n} operation(s) ({list}) take cutting data from the tool's own ranges, without a confirmed catalogue row or the operator's values. Verify them before machining.", n=unconfirmed|length, list=unconfirmed|map(attribute="sequence")|join(", ")) }}</p>{% endif %}
 {% endif %}
 {% endblock %}

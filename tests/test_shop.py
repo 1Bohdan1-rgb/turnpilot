@@ -85,4 +85,4 @@ def test_the_card_shows_the_queue_and_the_time_left_of_all_orders(app, client):
     left = services.order_progress(running)["left_s"] + services.order_progress(queued)["left_s"]
     assert m["all_left"] == services._clock(left) and m["all_incomplete"] and m["all_without_program"] == 1
     page = client.get("/shop").get_data(as_text=True)
-    assert "<dt>Next</dt>" in page and "All orders left" in page
+    assert '<dt>${esc(t("Next"))}</dt>' in page and 't("All orders left")' in page

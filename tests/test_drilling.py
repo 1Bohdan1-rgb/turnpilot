@@ -232,4 +232,4 @@ def test_drill_choice_still_by_the_finishing_pass():
 
 def test_boring_rough_is_a_tool_type_on_the_form(client):
     assert "boring_rough" in TOOL_TYPES
-    assert "<option>boring_rough</option>" in client.get("/machine").get_data(as_text=True)
+    assert '<option value="boring_rough">boring_rough</option>' in client.get("/machine").get_data(as_text=True)

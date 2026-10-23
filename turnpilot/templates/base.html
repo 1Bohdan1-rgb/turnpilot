@@ -5,7 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TurnPilot{% endblock %} · TurnPilot</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script>window.TP_TEXT = {{ js_strings()|tojson }}; window.t = k => window.TP_TEXT[k] ?? k;</script>
+  <script>
+    // the scripts' texts in the page's language (turnpilot/i18n.py JS_KEYS): t(key) or t(key, {name: value})
+    window.TP_TEXT = {{ js_strings()|tojson }};
+    window.t = (key, values) => {
+      let s = window.TP_TEXT[key] ?? key;
+      for (const name in values || {}) s = s.split("{" + name + "}").join(String(values[name]));
+      return s;
+    };
+  </script>
   <script type="importmap">{"imports": {"three": "{{ url_for('static', filename='vendor/three/three.module.min.js') }}"}}</script>
   <script type="module" src="{{ url_for('static', filename='part3d.js') }}"></script>
 </head>

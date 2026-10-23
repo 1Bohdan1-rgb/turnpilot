@@ -1,46 +1,47 @@
 {% extends "base.html" %}
 {% block title %}{{ job.name }}{% endblock %}
 {% block content %}
+{% set names_req = _("operator's name (required)") %}
 <h1>{{ job.name }}</h1>
 <p class="muted">
-  {{ job.material.name }} (ISO {{ job.material.iso_group }}) · qty {{ job.quantity }} ·
-  blank {{ job.blank_label }} × {{ job.blank_length|round(2) }} mm
-  {% if job.extraction %}· created from drawing <a href="{{ url_for('main.extraction_file', extraction_id=job.extraction.id, which='original') }}" target="_blank">{{ job.extraction.original_filename }}</a>{% endif %}
+  {{ job.material.name }} (ISO {{ job.material.iso_group }}) · {{ _("qty") }} {{ job.quantity }} ·
+  {{ _("blank") }} {{ job.blank_label }} × {{ job.blank_length|round(2) }} {{ _("mm") }}
+  {% if job.extraction %}· {{ _("created from drawing") }} <a href="{{ url_for('main.extraction_file', extraction_id=job.extraction.id, which='original') }}" target="_blank">{{ job.extraction.original_filename }}</a>{% endif %}
 </p>
 <form method="post" action="{{ url_for('main.set_job_machine', job_id=job.id) }}" class="inline-form">
-  <label class="small">Planned for the machine
-    <select name="machine_id" aria-label="Machine">{% for m in machines %}<option value="{{ m.id }}" {% if m.id == job_machine.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select></label>
-  <button class="small">Set</button>
-  <a class="small" href="{{ url_for('main.machine', machine_id=job_machine.id) }}">{{ job_machine.name }}: turret and values</a>
+  <label class="small">{{ _("Planned for the machine") }}
+    <select name="machine_id" aria-label="{{ _("Machine") }}">{% for m in machines %}<option value="{{ m.id }}" {% if m.id == job_machine.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select></label>
+  <button class="small">{{ _("Set") }}</button>
+  <a class="small" href="{{ url_for('main.machine', machine_id=job_machine.id) }}">{{ _("{machine}: turret and values", machine=job_machine.name) }}</a>
 </form>
 {% if job.current_operations and job.calculated_machine_id and job.calculated_machine_id != job_machine.id %}
-<div class="warning">The current calculation was made for {{ job.calculated_machine.name }}: Calculate again for
-  {{ job_machine.name }} (its turret and limits).</div>{% endif %}
+<div class="warning">{{ _("The current calculation was made for {old}: Calculate again for {new} (its turret and limits).", old=job.calculated_machine.name, new=job_machine.name) }}</div>{% endif %}
 {% for w in machine_warnings %}<div class="flash flash-error machine-warning">⚠ {{ w }}</div>{% endfor %}
 
-<h2>Orders</h2>
+<h2>{{ _("Orders") }}</h2>
 <div class="card">
   {% set orders = job_orders %}
-  {% if orders %}<ul>{% for o in orders %}<li><a href="{{ url_for('main.order_detail', order_id=o.id) }}">Order {{ o.id }}</a>:
-    {{ o.done }} of {{ o.quantity }} on {{ o.machine.name }}{% if o.status == "closed" %} (closed){% elif o.is_current %} (running){% endif %}</li>{% endfor %}</ul>{% endif %}
+  {% if orders %}<ul>{% for o in orders %}<li><a href="{{ url_for('main.order_detail', order_id=o.id) }}">{{ _("Order {n}", n=o.id) }}</a>:
+    {{ _("{done} of {quantity} on {machine}", done=o.done, quantity=o.quantity, machine=o.machine.name) }}{% if o.status == "closed" %} ({{ _("closed") }}){% elif o.is_current %} ({{ _("running") }}){% endif %}</li>{% endfor %}</ul>{% endif %}
   <form method="post" action="{{ url_for('main.create_order', job_id=job.id) }}" class="inline-form">
-    <select name="machine_id" aria-label="Machine">{% for m in machines %}<option value="{{ m.id }}" {% if m.id == job_machine.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select>
-    <input name="quantity" type="number" min="1" step="1" placeholder="quantity" aria-label="Quantity" required>
-    <input name="created_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
-    <button class="small">New order</button>
+    <select name="machine_id" aria-label="{{ _("Machine") }}">{% for m in machines %}<option value="{{ m.id }}" {% if m.id == job_machine.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select>
+    <input name="quantity" type="number" min="1" step="1" placeholder="{{ _("quantity") }}" aria-label="{{ _("Quantity") }}" required>
+    <input name="created_by" maxlength="100" placeholder="{{ _("operator's name") }}" aria-label="{{ _("Operator's name") }}" required>
+    <button class="small">{{ _("New order") }}</button>
   </form>
-  <p class="muted small">An order takes the job's newest program made for its machine (operations and time).</p>
+  <p class="muted small">{{ _("An order takes the job's newest program made for its machine (operations and time).") }}</p>
 </div>
 
-<h2>Features</h2>
+<h2>{{ _("Features") }}</h2>
 {% if job.active_features %}
 <table class="card">
-  <thead><tr><th>#</th><th>Type</th><th>Ø, mm</th><th>Length, mm</th><th>Tolerance</th><th>Roughness, µm</th><th>Pitch, mm</th><th>Start Ø, mm</th><th>Radius, mm</th><th>S (hex), mm</th><th>Conf.</th><th></th></tr></thead>
+  <thead><tr><th>#</th><th>{{ _("Type") }}</th><th>{{ _("Ø, mm") }}</th><th>{{ _("Length, mm") }}</th><th>{{ _("Tolerance") }}</th><th>{{ _("Roughness, µm") }}</th><th>{{ _("Pitch, mm") }}</th><th>{{ _("Start Ø, mm") }}</th><th>{{ _("Radius, mm") }}</th><th>{{ _("S (hex), mm") }}</th><th>{{ _("Conf.") }}</th><th></th></tr></thead>
   <tbody>
+  {% set radius_sources = {"dimension": _("the dimension"), "drawn": _("the geometry"), "operator": _("own value")} %}
   {% for f in job.active_features %}
     <tr>
       <td>{{ loop.index }}</td>
-      <td>{{ f.type }}{% if f.location %} <span class="muted small">({{ f.location }}{% if f.face %}, {{ f.face }}{% endif %})</span>{% endif %}</td>
+      <td>{{ f.type|label }}{% if f.location %} <span class="muted small">({{ f.location|label }}{% if f.face %}, {{ f.face|label }}{% endif %})</span>{% endif %}</td>
       <td>{{ f.diameter if f.diameter is not none else "" }}</td>
       <td>{{ f.length if f.length is not none else "" }}</td>
       <td>{{ f.tolerance or "" }}</td>
@@ -48,70 +49,65 @@
       <td>{{ f.pitch if f.pitch is not none else "" }}</td>
       <td>{{ f.start_diameter if f.start_diameter is not none else "" }}</td>
       <td>{{ f.radius if f.radius is not none else "" }}
-        {% if f.type in ("arc", "fillet") %}<span class="small muted">{{ {True: "convex", False: "concave"}.get(f.arc_convex, "shape?") }}{% if f.type == "fillet" and f.face %}, {{ f.face }}{% endif %}</span>
+        {% if f.type in ("arc", "fillet") %}<span class="small muted">{{ {True: _("convex"), False: _("concave")}.get(f.arc_convex, _("shape?")) }}{% if f.type == "fillet" and f.face %}, {{ f.face|label }}{% endif %}</span>
           <form method="post" action="{{ url_for('main.set_arc_shape', job_id=job.id, feature_id=f.id) }}" class="inline-form">
-            <select name="arc_shape" aria-label="Shape"><option value="">shape…</option>
-              <option value="convex" {% if f.arc_convex == true %}selected{% endif %}>convex (away from the axis)</option>
-              <option value="concave" {% if f.arc_convex == false %}selected{% endif %}>concave (into the axis)</option></select>
-            {% if f.type == "fillet" %}<select name="face" aria-label="Side"><option value="">side…</option>
-              <option value="left" {% if f.face == "left" %}selected{% endif %}>left</option>
-              <option value="right" {% if f.face == "right" %}selected{% endif %}>right</option></select>{% endif %}
-            <button class="small">Set</button></form>{% endif %}
+            <select name="arc_shape" aria-label="{{ _("Shape") }}"><option value="">{{ _("shape…") }}</option>
+              <option value="convex" {% if f.arc_convex == true %}selected{% endif %}>{{ _("convex (away from the axis)") }}</option>
+              <option value="concave" {% if f.arc_convex == false %}selected{% endif %}>{{ _("concave (into the axis)") }}</option></select>
+            {% if f.type == "fillet" %}<select name="face" aria-label="{{ _("Side") }}"><option value="">{{ _("side…") }}</option>
+              <option value="left" {% if f.face == "left" %}selected{% endif %}>{{ _("left") }}</option>
+              <option value="right" {% if f.face == "right" %}selected{% endif %}>{{ _("right") }}</option></select>{% endif %}
+            <button class="small">{{ _("Set") }}</button></form>{% endif %}
         {% if f.type == "arc" and f.drawn_radius is not none and f.radius is not none and (f.drawn_radius - f.radius)|abs > 0.01 %}
-          <div class="warning small">{% set c = conflicts.get(f.id) %}{% if c %}Z{{ c.z_free|round(3) }} to Z{{ c.z_chuck|round(3) }} (D{{ c.d_free }} to D{{ c.d_chuck }}): {% endif %}dimension R{{ f.radius }} ≠ geometry R{{ f.drawn_radius }}: not programmed until you decide
+          <div class="warning small">{% set c = conflicts.get(f.id) %}{% if c %}Z{{ c.z_free|round(3) }} {{ _("to") }} Z{{ c.z_chuck|round(3) }} (D{{ c.d_free }} {{ _("to") }} D{{ c.d_chuck }}): {% endif %}{{ _("dimension R{a} ≠ geometry R{b}: not programmed until you decide", a=f.radius, b=f.drawn_radius) }}
             {% set dim_r, geo_r = f.radius, f.drawn_radius %}
             {% for key, w in arc_tops.get(f.id, {}).items() if key != "current" %}<div class="warning">{{ w }}</div>{% endfor %}
             <form method="post" action="{{ url_for('main.choose_arc_radius', job_id=job.id, feature_id=f.id) }}" class="inline-form">
-              <button name="radius" value="dimension" class="small">Take the dimension R{{ dim_r }}</button>
-              <button name="radius" value="drawn" class="small">Take the geometry R{{ geo_r }}</button>
-              <input name="own_radius" type="number" step="any" min="0" placeholder="own R" aria-label="Own radius">
-              <button name="radius" value="own" class="small">Take my value</button>
-              <input name="note" maxlength="200" placeholder="note (optional), e.g. confirmed by the designer" aria-label="Note">
-              <input name="decided_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
+              <button name="radius" value="dimension" class="small">{{ _("Take the dimension R{r}", r=dim_r) }}</button>
+              <button name="radius" value="drawn" class="small">{{ _("Take the geometry R{r}", r=geo_r) }}</button>
+              <input name="own_radius" type="number" step="any" min="0" placeholder="{{ _("own R") }}" aria-label="{{ _("Own radius") }}">
+              <button name="radius" value="own" class="small">{{ _("Take my value") }}</button>
+              <input name="note" maxlength="200" placeholder="{{ _("note (optional), e.g. confirmed by the designer") }}" aria-label="{{ _("Note") }}">
+              <input name="decided_by" maxlength="100" placeholder="{{ names_req }}" aria-label="{{ _("Operator's name") }}" required>
             </form></div>
         {% endif %}
-        {% if f.type == "arc" and f.radius_source %}<div class="small muted">R{{ f.radius }}: the operator's decision
-          ({{ {"dimension": "the dimension", "drawn": "the geometry", "operator": "own value"}[f.radius_source] }};
-          dimension R{{ f.radius_dimension }}, geometry R{{ f.radius_geometry }}),
+        {% if f.type == "arc" and f.radius_source %}<div class="small muted">{{ _("R{r}: the operator's decision ({source}; dimension R{a}, geometry R{b}),", r=f.radius, source=radius_sources[f.radius_source], a=f.radius_dimension, b=f.radius_geometry) }}
           {{ f.radius_decided_at.strftime("%Y-%m-%d %H:%M") }}{% if f.radius_note %}: {{ f.radius_note }}{% endif %}</div>
           {% if arc_tops.get(f.id, {}).current %}<div class="warning small">{{ arc_tops[f.id].current }}</div>{% endif %}
-          <details class="small"><summary>Change the decision</summary>
+          <details class="small"><summary>{{ _("Change the decision") }}</summary>
             {% set dim_r, geo_r = f.radius_dimension, f.radius_geometry %}
             {% for key, w in arc_tops.get(f.id, {}).items() if key != "current" %}<div class="warning">{{ w }}</div>{% endfor %}
             <form method="post" action="{{ url_for('main.choose_arc_radius', job_id=job.id, feature_id=f.id) }}" class="inline-form">
-              <button name="radius" value="dimension" class="small">Take the dimension R{{ dim_r }}</button>
-              <button name="radius" value="drawn" class="small">Take the geometry R{{ geo_r }}</button>
-              <input name="own_radius" type="number" step="any" min="0" placeholder="own R" aria-label="Own radius">
-              <button name="radius" value="own" class="small">Take my value</button>
-              <input name="note" maxlength="200" placeholder="note (optional), e.g. confirmed by the designer" aria-label="Note">
-              <input name="decided_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
+              <button name="radius" value="dimension" class="small">{{ _("Take the dimension R{r}", r=dim_r) }}</button>
+              <button name="radius" value="drawn" class="small">{{ _("Take the geometry R{r}", r=geo_r) }}</button>
+              <input name="own_radius" type="number" step="any" min="0" placeholder="{{ _("own R") }}" aria-label="{{ _("Own radius") }}">
+              <button name="radius" value="own" class="small">{{ _("Take my value") }}</button>
+              <input name="note" maxlength="200" placeholder="{{ _("note (optional), e.g. confirmed by the designer") }}" aria-label="{{ _("Note") }}">
+              <input name="decided_by" maxlength="100" placeholder="{{ names_req }}" aria-label="{{ _("Operator's name") }}" required>
             </form>
-            <p class="muted">A change recalculates the job: operations that stay the same keep their approval, the
-              others are to be approved again; a program made before is out of date.</p>
+            <p class="muted">{{ _("A change recalculates the job: operations that stay the same keep their approval, the others are to be approved again; a program made before is out of date.") }}</p>
             {% if f.radius_decisions %}<ol class="muted">{% for d in f.radius_decisions %}
-              <li>R{{ d.radius }} ({{ {"dimension": "the dimension", "drawn": "the geometry", "operator": "own value"}[d.source] }}),
-                {{ d.decided_by or "name not recorded" }}, {{ d.decided_at.strftime("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
+              <li>R{{ d.radius }} ({{ radius_sources[d.source] }}),
+                {{ d.decided_by or _("name not recorded") }}, {{ d.decided_at.strftime("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
             {% endfor %}</ol>{% endif %}
           </details>{% endif %}
-        {% if f.type == "bore" %}<div class="small">{% if f.depth_mode %}<span class="muted">depth {{ depth_modes[f.depth_mode] }}:
-            the operator's decision ({{ f.depth_decided_by }}, {{ f.depth_decided_at.strftime("%Y-%m-%d %H:%M") }})</span>
-          <details><summary>Change</summary>{% else %}<div class="warning">The depth {{ f.length }}: to the full Ø or to the
-            drill's point? Not programmed until you decide.{% endif %}
+        {% if f.type == "bore" %}<div class="small">{% if f.depth_mode %}<span class="muted">{{ _("depth {mode}: the operator's decision ({name}, {at})", mode=_(depth_modes[f.depth_mode]), name=f.depth_decided_by, at=f.depth_decided_at.strftime("%Y-%m-%d %H:%M")) }}</span>
+          <details><summary>{{ _("Change") }}</summary>{% else %}<div class="warning">{{ _("The depth {length}: to the full Ø or to the drill's point? Not programmed until you decide.", length=f.length) }}{% endif %}
             {% if depth_hints.get(f.id) %}<div class="muted">{{ depth_hints[f.id] }}</div>{% endif %}
             <form method="post" action="{{ url_for('main.choose_bore_depth', job_id=job.id, feature_id=f.id) }}" class="inline-form">
-              {% for key, label in depth_modes.items() %}<button name="depth_mode" value="{{ key }}" class="small">Depth {{ label }}</button>{% endfor %}
-              <input name="note" maxlength="200" placeholder="note (optional)" aria-label="Note">
-              <input name="decided_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
+              {% for key, mode in depth_modes.items() %}<button name="depth_mode" value="{{ key }}" class="small">{{ _("Depth {mode}", mode=_(mode)) }}</button>{% endfor %}
+              <input name="note" maxlength="200" placeholder="{{ _("note (optional)") }}" aria-label="{{ _("Note") }}">
+              <input name="decided_by" maxlength="100" placeholder="{{ names_req }}" aria-label="{{ _("Operator's name") }}" required>
             </form>
             {% if f.depth_decisions %}<ol class="muted">{% for d in f.depth_decisions %}
-              <li>depth {{ depth_modes[d.mode] }}, {{ d.decided_by }}, {{ d.decided_at.strftime("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
+              <li>{{ _("depth {mode}", mode=_(depth_modes[d.mode])) }}, {{ d.decided_by }}, {{ d.decided_at.strftime("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
             {% endfor %}</ol>{% endif %}
             {% if f.depth_mode %}</details>{% else %}</div>{% endif %}</div>{% endif %}</td>
       <td>{{ f.across_flats if f.across_flats is not none else "" }}</td>
       <td>{{ "%.2f"|format(f.confidence) if f.confidence is not none else "" }}</td>
       <td>
         <form method="post" action="{{ url_for('main.delete_feature', job_id=job.id, feature_id=f.id) }}">
-          <button class="link danger" type="submit">Delete</button>
+          <button class="link danger" type="submit">{{ _("Delete") }}</button>
         </form>
       </td>
     </tr>
@@ -119,105 +115,102 @@
   </tbody>
 </table>
 {% else %}
-<p class="muted">No features yet.</p>
+<p class="muted">{{ _("No features yet.") }}</p>
 {% endif %}
 
-<h3>Add feature</h3>
+<h3>{{ _("Add feature") }}</h3>
 <form method="post" action="{{ url_for('main.add_feature', job_id=job.id) }}" class="card grid-form">
-  <label>Type
-    <select name="type">{% for t in feature_types %}<option>{{ t }}</option>{% endfor %}</select>
+  <label>{{ _("Type") }}
+    <select name="type">{% for t in feature_types %}<option value="{{ t }}">{{ t|label }}</option>{% endfor %}</select>
   </label>
-  <label>Diameter, mm <input name="diameter" type="number" step="any" min="0"></label>
-  <label>Length, mm <input name="length" type="number" step="any" min="0"></label>
-  <label>Tolerance <input name="tolerance" placeholder="h7"></label>
-  <label>Roughness, µm
+  <label>{{ _("Diameter, mm") }} <input name="diameter" type="number" step="any" min="0"></label>
+  <label>{{ _("Length, mm") }} <input name="length" type="number" step="any" min="0"></label>
+  <label>{{ _("Tolerance") }} <input name="tolerance" placeholder="h7"></label>
+  <label>{{ _("Roughness, µm") }}
     <span class="inline-fields">
       <select name="ra_param"><option>Ra</option><option>Rz</option></select>
       <input name="ra" type="number" step="any" min="0" placeholder="1.6">
     </span>
   </label>
-  <label>Pitch, mm (thread) <input name="pitch" type="number" step="any" min="0"></label>
-  <label>Start Ø, mm (groove / taper / arc) <input name="start_diameter" type="number" step="any" min="0" placeholder="groove: blank Ø if empty"></label>
-  <label>Radius, mm (fillet / arc) <input name="radius" type="number" step="any" min="0"></label>
-  <label>S across flats, mm (hex; Ø = across corners) <input name="across_flats" type="number" step="any" min="0"></label>
-  <label>Arc / fillet shape
-    <select name="arc_shape"><option value="">—</option><option value="convex">convex (away from the axis)</option>
-      <option value="concave">concave (into the axis)</option></select>
+  <label>{{ _("Pitch, mm (thread)") }} <input name="pitch" type="number" step="any" min="0"></label>
+  <label>{{ _("Start Ø, mm (groove / taper / arc)") }} <input name="start_diameter" type="number" step="any" min="0" placeholder="{{ _("groove: blank Ø if empty") }}"></label>
+  <label>{{ _("Radius, mm (fillet / arc)") }} <input name="radius" type="number" step="any" min="0"></label>
+  <label>{{ _("S across flats, mm (hex; Ø = across corners)") }} <input name="across_flats" type="number" step="any" min="0"></label>
+  <label>{{ _("Arc / fillet shape") }}
+    <select name="arc_shape"><option value="">—</option><option value="convex">{{ _("convex (away from the axis)") }}</option>
+      <option value="concave">{{ _("concave (into the axis)") }}</option></select>
   </label>
-  <label>Where (chamfer / thread / fillet)
-    <select name="position"><option value="">—</option>{% for p in positions %}<option>{{ p }}</option>{% endfor %}</select>
+  <label>{{ _("Where (chamfer / thread / fillet)") }}
+    <select name="position"><option value="">—</option>{% for p in positions %}<option value="{{ p }}">{{ p|label }}</option>{% endfor %}</select>
   </label>
-  <p class="muted small">Groove: Diameter is the groove bottom, Start Ø is the diameter the groove is cut from, Length is the width.
-    Chamfers are machined in the finishing pass of the feature with the same diameter.
-    Taper: Start Ø → Ø over Length. Arc: Start Ø → Ø over Length with its Radius. Tapers, fillets and arcs are shown as manual operations.</p>
-  <button type="submit">Add feature</button>
+  <p class="muted small">{{ _("Groove: Diameter is the groove bottom, Start Ø is the diameter the groove is cut from, Length is the width.") }}
+    {{ _("Chamfers are machined in the finishing pass of the feature with the same diameter.") }}
+    {{ _("Taper: Start Ø → Ø over Length. Arc: Start Ø → Ø over Length with its Radius. Tapers, fillets and arcs are shown as manual operations.") }}</p>
+  <button type="submit">{{ _("Add feature") }}</button>
 </form>
 
 <form method="post" action="{{ url_for('main.calculate', job_id=job.id) }}" class="actions">
-  <button type="submit" class="primary">Calculate</button>
-  {% if job.current_operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">View current operations</a>{% endif %}
-  <a class="button" href="{{ url_for('main.job_gcode', job_id=job.id) }}">G-code</a>
-  {% if job.archived_operations %}<a href="{{ url_for('main.history', job_id=job.id) }}">Calculation history</a>{% endif %}
+  <button type="submit" class="primary">{{ _("Calculate") }}</button>
+  {% if job.current_operations %}<a href="{{ url_for('main.operations', job_id=job.id) }}">{{ _("View current operations") }}</a>{% endif %}
+  <a class="button" href="{{ url_for('main.job_gcode', job_id=job.id) }}">{{ _("G-code") }}</a>
+  {% if job.archived_operations %}<a href="{{ url_for('main.history', job_id=job.id) }}">{{ _("Calculation history") }}</a>{% endif %}
 </form>
 {% include "_turret_setup.html" %}
 {% with back = url_for('main.job_detail', job_id=job.id) ~ '#installs', in_form = False %}{% include "_turret_installs.html" %}{% endwith %}
 {% if job.axial_order_known %}
-<h2 id="turret">Turret set-up for this job</h2>
-<p class="muted small">The machine's turret, with this job's own changes (the machine and the other jobs keep theirs).
-  After a change: Calculate again; calculations made before keep their operations.</p>
+<h2 id="turret">{{ _("Turret set-up for this job") }}</h2>
+<p class="muted small">{{ _("The machine's turret, with this job's own changes (the machine and the other jobs keep theirs). After a change: Calculate again; calculations made before keep their operations.") }}</p>
 <div class="card">
   <table>
-    <thead><tr><th>Pos.</th><th>Tool for this job</th><th>Change</th><th></th></tr></thead>
+    <thead><tr><th>{{ _("Pos.") }}</th><th>{{ _("Tool for this job") }}</th><th>{{ _("Change") }}</th><th></th></tr></thead>
     <tbody>
     {% for s in turret %}
       <tr{% if s.change %} class="changed"{% endif %}>
         <td><strong>T{{ s.position }}</strong></td>
-        <td>{{ s.tool.name if s.tool else "— empty —" }}{% if s.tool %} <span class="small muted">{{ s.tool.insert_code }}</span>{% endif %}</td>
-        <td class="small">{% if s.change %}{{ s.change.machine_tool.name if s.change.machine_tool else "empty" }} → {{ s.tool.name if s.tool else "empty" }},
-          {{ s.change.decided_by }}, {{ s.change.created_at.strftime("%Y-%m-%d %H:%M") }}{% if s.change.note %}: {{ s.change.note }}{% endif %}{% else %}<span class="muted">the machine's</span>{% endif %}</td>
+        <td>{{ s.tool.name if s.tool else _("— empty —") }}{% if s.tool %} <span class="small muted">{{ s.tool.insert_code }}</span>{% endif %}</td>
+        <td class="small">{% if s.change %}{{ s.change.machine_tool.name if s.change.machine_tool else _("empty") }} → {{ s.tool.name if s.tool else _("empty") }},
+          {{ s.change.decided_by }}, {{ s.change.created_at.strftime("%Y-%m-%d %H:%M") }}{% if s.change.note %}: {{ s.change.note }}{% endif %}{% else %}<span class="muted">{{ _("the machine's") }}</span>{% endif %}</td>
         <td>{% if s.change %}<form method="post" action="{{ url_for('main.undo_job_turret_change', job_id=job.id, change_id=s.change.id) }}" class="inline-form">
-          <input name="decided_by" maxlength="100" placeholder="operator's name" aria-label="Operator's name" required>
-          <button class="small">Undo</button></form>{% endif %}</td>
+          <input name="decided_by" maxlength="100" placeholder="{{ _("operator's name") }}" aria-label="{{ _("Operator's name") }}" required>
+          <button class="small">{{ _("Undo") }}</button></form>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   <form method="post" action="{{ url_for('main.change_job_turret', job_id=job.id) }}" class="inline-form">
-    <select name="position" aria-label="Position">{% for s in turret %}<option value="{{ s.position }}">T{{ s.position }}</option>{% endfor %}</select>
-    <select name="tool_id" aria-label="Tool"><option value="">— empty —</option>
+    <select name="position" aria-label="{{ _("Position") }}">{% for s in turret %}<option value="{{ s.position }}">T{{ s.position }}</option>{% endfor %}</select>
+    <select name="tool_id" aria-label="{{ _("Tool") }}"><option value="">{{ _("— empty —") }}</option>
       {% for t in library %}<option value="{{ t.id }}">{{ t.name }} ({{ t.insert_code }})</option>{% endfor %}</select>
-    <input name="note" maxlength="200" placeholder="note (optional)" aria-label="Note">
-    <input name="decided_by" maxlength="100" placeholder="operator's name (required)" aria-label="Operator's name" required>
-    <button class="small">Change for this job</button>
+    <input name="note" maxlength="200" placeholder="{{ _("note (optional)") }}" aria-label="{{ _("Note") }}">
+    <input name="decided_by" maxlength="100" placeholder="{{ names_req }}" aria-label="{{ _("Operator's name") }}" required>
+    <button class="small">{{ _("Change for this job") }}</button>
   </form>
   {% set undone = job.turret_changes|rejectattr("active")|list %}
-  {% if undone %}<details class="small"><summary>Undone changes ({{ undone|length }})</summary><ul class="muted">
-    {% for c in undone %}<li>T{{ c.position }}: {{ c.machine_tool.name if c.machine_tool else "empty" }} → {{ c.tool.name if c.tool else "empty" }},
-      {{ c.decided_by }} {{ c.created_at.strftime("%Y-%m-%d %H:%M") }}; undone by {{ c.removed_by }} {{ c.removed_at.strftime("%Y-%m-%d %H:%M") }}</li>{% endfor %}
+  {% if undone %}<details class="small"><summary>{{ _("Undone changes ({n})", n=undone|length) }}</summary><ul class="muted">
+    {% for c in undone %}<li>T{{ c.position }}: {{ c.machine_tool.name if c.machine_tool else _("empty") }} → {{ c.tool.name if c.tool else _("empty") }},
+      {{ c.decided_by }} {{ c.created_at.strftime("%Y-%m-%d %H:%M") }}; {{ _("undone by") }} {{ c.removed_by }} {{ c.removed_at.strftime("%Y-%m-%d %H:%M") }}</li>{% endfor %}
   </ul></details>{% endif %}
 </div>
 
-<h2>G-code set-up</h2>
+<h2>{{ _("G-code set-up") }}</h2>
 <form method="post" action="{{ url_for('main.gcode_setup', job_id=job.id) }}" class="card grid-form">
-  <label>Free end (Z0) on the drawing
+  <label>{{ _("Free end (Z0) on the drawing") }}
     <select name="free_end">
-      <option value="" {% if not job.free_end %}selected{% endif %}>— choose —</option>
-      <option value="left" {% if job.free_end == "left" %}selected{% endif %}>left</option>
-      <option value="right" {% if job.free_end == "right" %}selected{% endif %}>right</option>
+      <option value="" {% if not job.free_end %}selected{% endif %}>{{ _("— choose —") }}</option>
+      <option value="left" {% if job.free_end == "left" %}selected{% endif %}>{{ _("left") }}</option>
+      <option value="right" {% if job.free_end == "right" %}selected{% endif %}>{{ _("right") }}</option>
     </select>
-    {% if suggested_free_end %}<span class="small muted">suggested: {{ suggested_free_end }} (the largest Ø is
-      held in the chuck) <span class="badge badge-check">check</span></span>{% endif %}
+    {% if suggested_free_end %}<span class="small muted">{{ _("suggested: {side} (the largest Ø is held in the chuck)", side=_(suggested_free_end)) }} <span class="badge badge-check">{{ _("check") }}</span></span>{% endif %}
   </label>
-  <label>Stick-out from the jaws, mm <input name="stickout_mm" type="number" step="any" min="0"
-    value="{{ job.stickout_mm if job.stickout_mm is not none else '' }}" placeholder="measured on the machine"></label>
-  <label>Stock beyond Z0 to face off, mm <input name="face_stock_mm" type="number" step="any" min="0"
+  <label>{{ _("Stick-out from the jaws, mm") }} <input name="stickout_mm" type="number" step="any" min="0"
+    value="{{ job.stickout_mm if job.stickout_mm is not none else '' }}" placeholder="{{ _("measured on the machine") }}"></label>
+  <label>{{ _("Stock beyond Z0 to face off, mm") }} <input name="face_stock_mm" type="number" step="any" min="0"
     value="{{ job.face_stock_mm if job.face_stock_mm is not none else '' }}"></label>
-  <p class="muted small">Z0 is on the free end face, X0 on the axis; Z is negative towards the chuck. Nothing here is
-    guessed: a program is not built while a value is empty.</p>
-  <button type="submit">Save the set-up</button>
+  <p class="muted small">{{ _("Z0 is on the free end face, X0 on the axis; Z is negative towards the chuck. Nothing here is guessed: a program is not built while a value is empty.") }}</p>
+  <button type="submit">{{ _("Save the set-up") }}</button>
 </form>
 {% endif %}
 {% if job.current_operations %}
-<p class="muted small">Recalculating archives the current operations. Their status and edit log stay in the history.</p>
+<p class="muted small">{{ _("Recalculating archives the current operations. Their status and edit log stay in the history.") }}</p>
 {% endif %}
 {% endblock %}

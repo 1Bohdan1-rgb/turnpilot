@@ -44,7 +44,7 @@ def create_app(test_config=None, instance_path=None):
     def file_too_large(_error):
         catalogue = request.endpoint == "main.catalogues"
         limit_mb = app.config["MAX_CATALOGUE_LENGTH" if catalogue else "MAX_CONTENT_LENGTH"] / (1024 * 1024)
-        flash(f"The file is too large (limit {limit_mb:g} MB).", "error")
+        flash(i18n.gettext("The file is too large (limit {mb} MB).", mb=f"{limit_mb:g}"), "error")
         return redirect(url_for("main.catalogues" if catalogue else "main.upload_drawing"))
 
     return app

@@ -1,25 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Shop{% endblock %}
+{% block title %}{{ _("Shop") }}{% endblock %}
 {% block content %}
 <div class="shop-floor" id="shop-floor">
 <header class="sf-head">
   <div>
-    <h1>Shop floor</h1>
-    <p class="sf-sub">{% if plan %}{{ plan.name }} · {{ "%g"|format(plan.width_mm) }} × {{ "%g"|format(plan.height_mm) }} mm ·
-      uploaded by {{ record.uploaded_by }} {{ record.uploaded_at.strftime("%Y-%m-%d") }}{% else %}No plan uploaded yet{% endif %} ·
-      <a href="{{ url_for('main.shop_plan_page') }}">plan file</a>. Statuses and progress are set by the operator by hand:
-      nothing is sent to or read from the machines.</p>
+    <h1>{{ _("Shop floor") }}</h1>
+    <p class="sf-sub">{% if plan %}{{ plan.name }} · {{ "%g"|format(plan.width_mm) }} × {{ "%g"|format(plan.height_mm) }} {{ _("mm") }} ·
+      {{ _("uploaded by {name} {at}", name=record.uploaded_by, at=record.uploaded_at.strftime("%Y-%m-%d")) }}{% else %}{{ _("No plan uploaded yet") }}{% endif %} ·
+      <a href="{{ url_for('main.shop_plan_page') }}">{{ _("plan file") }}</a>. {{ _("Statuses and progress are set by the operator by hand: nothing is sent to or read from the machines.") }}</p>
   </div>
   <div class="sf-tools">
-    <input id="sf-q" type="search" placeholder="Find: name, type, control…" aria-label="Find a machine">
+    <input id="sf-q" type="search" placeholder="{{ _("Find: name, type, control…") }}" aria-label="{{ _("Find a machine") }}">
     {% for s, label in [("running", "Running"), ("setup", "Setup"), ("stopped", "Stopped"), ("free", "Free")] %}
-    <button type="button" class="sf-chip" data-s="{{ s }}" aria-pressed="false"><span class="sf-dot sf-{{ s }}"></span>{{ label }}</button>
+    <button type="button" class="sf-chip" data-s="{{ s }}" aria-pressed="false"><span class="sf-dot sf-{{ s }}"></span>{{ _(label) }}</button>
     {% endfor %}
     <span class="sf-count" id="sf-count"></span>
-    <label class="sf-operator">Хто змінює <input id="sf-changer" maxlength="100" autocomplete="off"
-      aria-label="Хто змінює (розміщення верстатів на плані)" aria-describedby="sf-changer-msg"></label>
+    <label class="sf-operator">{{ _("Who changes") }} <input id="sf-changer" maxlength="100" autocomplete="off"
+      aria-label="{{ _("Who changes (the machines' places on the plan)") }}" aria-describedby="sf-changer-msg"></label>
     <span class="sf-changer-msg" id="sf-changer-msg" role="alert"></span>
-    <button type="button" class="sf-chip" id="sf-theme" aria-label="Light or dark theme">◐ Theme</button>
+    <button type="button" class="sf-chip" id="sf-theme" aria-label="{{ _("Light or dark theme") }}">◐ {{ _("Theme") }}</button>
   </div>
 </header>
 
@@ -27,12 +26,12 @@
   <div>
     <div class="sf-planbox" id="sf-planbox">
     {% if plan %}
-      <div class="sf-zoom" role="group" aria-label="Plan scale">
-        <button type="button" class="sf-chip" id="sf-zoom-in" aria-label="Zoom in">+</button>
-        <button type="button" class="sf-chip" id="sf-zoom-out" aria-label="Zoom out">−</button>
-        <button type="button" class="sf-chip" id="sf-fit">Fit</button>
+      <div class="sf-zoom" role="group" aria-label="{{ _("Plan scale") }}">
+        <button type="button" class="sf-chip" id="sf-zoom-in" aria-label="{{ _("Zoom in") }}">+</button>
+        <button type="button" class="sf-chip" id="sf-zoom-out" aria-label="{{ _("Zoom out") }}">−</button>
+        <button type="button" class="sf-chip" id="sf-fit">{{ _("Fit") }}</button>
       </div>
-      <svg class="sf-plan" id="sf-plan" viewBox="{{ view_box }}" role="img" aria-label="Top view of the shop with its machines"
+      <svg class="sf-plan" id="sf-plan" viewBox="{{ view_box }}" role="img" aria-label="{{ _("Top view of the shop with its machines") }}"
            data-width="{{ plan.width_mm }}" data-height="{{ plan.height_mm }}" data-text="{{ text_size }}">
         <defs><pattern id="sf-hatch" width="300" height="300" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="300" class="sf-hatch-line" vector-effect="non-scaling-stroke"/></pattern></defs>
@@ -40,18 +39,17 @@
         <g id="sf-machines"></g>
       </svg>
     {% else %}
-      <p class="sf-empty">No shop plan yet: upload its JSON file on the <a href="{{ url_for('main.shop_plan_page') }}">plan
-        page</a> (an example: <code>docs/shop_plan_example.json</code>).</p>
+      <p class="sf-empty">{{ _("No shop plan yet: upload its JSON file on the {link} (an example: {file}).", link=link(url_for('main.shop_plan_page'), _("plan page")), file=("<code>%s</code>"|safe) % "docs/shop_plan_example.json") }}</p>
     {% endif %}
     </div>
     <p class="sf-msg" id="sf-msg" role="status"></p>
     <div class="sf-unplaced" id="sf-unplaced"></div>
   </div>
-  <aside class="sf-card" id="sf-card" aria-live="polite"><p class="sf-note">Click a machine.</p></aside>
+  <aside class="sf-card" id="sf-card" aria-live="polite"><p class="sf-note">{{ _("Click a machine.") }}</p></aside>
 </div>
 
 <dialog id="shop-panel" class="shop-panel">
-  <form method="dialog"><button class="small" aria-label="Close">Close</button></form>
+  <form method="dialog"><button class="small" aria-label="{{ _("Close") }}">{{ _("Close") }}</button></form>
   <div id="shop-panel-body"></div>
 </dialog>
 </div>
@@ -66,7 +64,7 @@
     upload: id => `/jobs/upload?machine_id=${id}`,
   };
   const SNAP = 100;  // mm
-  const LABEL = {running: "Running", setup: "Setup", stopped: "Stopped", free: "Free"};
+  const LABEL = {running: t("Running"), setup: t("Setup"), stopped: t("Stopped"), free: t("Free")};
   const ns = "http://www.w3.org/2000/svg";
   const floor = document.getElementById("shop-floor");
   const svg = document.getElementById("sf-plan");
@@ -166,9 +164,9 @@
   function listUnplaced() {
     const un = document.getElementById("sf-unplaced");
     const rest = M.filter(m => m.x === null);
-    un.innerHTML = rest.length ? `<span class="sf-note">Not on the plan yet:</span> ` + rest.map(m =>
+    un.innerHTML = rest.length ? `<span class="sf-note">${esc(t("Not on the plan yet:"))}</span> ` + rest.map(m =>
       `<button type="button" class="sf-chip sf-machine-chip" data-id="${m.id}"><span class="sf-dot sf-${m.status}"></span>${esc(m.name)}</button>`).join(" ")
-      + (svg ? ` <span class="sf-note">drag one onto the plan, or give X / Y in its card</span>` : "") : "";
+      + (svg ? ` <span class="sf-note">${esc(t("drag one onto the plan, or give X / Y in its card"))}</span>` : "") : "";
     un.querySelectorAll("button").forEach(b => dragFromList(b, M.find(m => m.id === Number(b.dataset.id))));
   }
 
@@ -183,7 +181,7 @@
       if (ok) n++;
       document.querySelectorAll(`[data-id="${m.id}"]`).forEach(e => e.classList.toggle("dim", !ok));
     });
-    document.getElementById("sf-count").textContent = `${n} of ${M.length} shown`;
+    document.getElementById("sf-count").textContent = t("{n} of {total} shown", {n: n, total: M.length});
   }
   document.getElementById("sf-q").addEventListener("input", apply);
   document.querySelectorAll(".sf-chip[data-s]").forEach(c => c.addEventListener("click", () => {
@@ -198,41 +196,41 @@
     const m = M.find(x => x.id === id);
     document.querySelectorAll("#sf-machines .m").forEach(e => e.classList.toggle("sel", Number(e.dataset.id) === id));
     const o = m.order, warn = [];
-    if (!m.kind) warn.push("type not set (Machine page): drawn as a grey marker");
-    if (!m.length || !m.width) warn.push("footprint not set (passport or Machine page): not drawn to scale");
+    if (!m.kind) warn.push(t("type not set (Machine page): drawn as a grey marker"));
+    if (!m.length || !m.width) warn.push(t("footprint not set (passport or Machine page): not drawn to scale"));
     const pct = o ? Math.round(o.done / o.quantity * 100) : 0;
     document.getElementById("sf-card").innerHTML = `
-      <div class="sf-kind">${esc(m.kind_label || "type not set")}</div>
+      <div class="sf-kind">${esc(m.kind_label || t("type not set"))}</div>
       <h2>${esc(m.name)}</h2>
       <span class="sf-pill sf-${m.status}">${esc(m.status_label)}${m.alarm ? " !" : ""}</span>
       ${warn.map(w => `<p class="sf-warn">${esc(w)}</p>`).join("")}
-      ${m.conflicts.map(c => `<p class="sf-warn">On the plan it ${esc(c)}: check the place.</p>`).join("")}
+      ${m.conflicts.map(c => `<p class="sf-warn">${esc(t("On the plan it {what}: check the place.", {what: c}))}</p>`).join("")}
       <dl>
-        <dt>Control</dt><dd>${esc(m.control || "not set")}</dd>
-        <dt>Capacity</dt><dd>${esc(m.capacity)}</dd>
-        <dt>Footprint</dt><dd>${m.length && m.width ? `${m.length} × ${m.width} mm` : "not set"}</dd>
-        ${m.status_by ? `<dt>Status by</dt><dd>${esc(m.status_by)}${m.status_note ? ": " + esc(m.status_note) : ""}</dd>` : ""}
-        ${m.changed_by ? `<dt>${m.removed ? "Taken off the plan" : "Placed"}</dt><dd>змінив/змінила ${esc(m.changed_by)}, ${esc(m.changed_at)}</dd>` : ""}
-        ${o ? `<dt>Order</dt><dd>${o.id} · ${esc(o.job)}</dd><dt>Done</dt><dd>${o.done} of ${o.quantity}</dd>
-          ${o.part ? `<dt>Per part</dt><dd>${esc(o.part)}</dd><dt>Left</dt><dd>${esc(o.left)}${o.incomplete ? " (incomplete: no rapids / tool changes without the passport's values)" : ""}</dd>` : ""}
-          ${o.no_program ? `<dt>Time</dt><dd>no program for this machine</dd>` : ""}`
-          : `<dt>Order</dt><dd>none running</dd>`}
-        ${m.queue.map(q => `<dt>Next</dt><dd>${esc(q.job)}, ${q.quantity} pcs${q.done ? ` (${q.done} done)` : ""}${q.no_program ? " · no program for this machine" : ""}</dd>`).join("")}
-        ${m.all_left !== null ? `<dt>All orders left</dt><dd>${esc(m.all_left)}${m.all_incomplete ? " (incomplete: no rapids / tool changes without the passport's values)" : ""}${m.all_without_program ? ` · ${m.all_without_program} order(s) without a program are not in it` : ""}</dd>` : ""}
+        <dt>${esc(t("Control"))}</dt><dd>${esc(m.control || t("not set"))}</dd>
+        <dt>${esc(t("Capacity"))}</dt><dd>${esc(m.capacity)}</dd>
+        <dt>${esc(t("Footprint"))}</dt><dd>${m.length && m.width ? `${m.length} × ${m.width} ${esc(t("mm"))}` : esc(t("not set"))}</dd>
+        ${m.status_by ? `<dt>${esc(t("Status by"))}</dt><dd>${esc(m.status_by)}${m.status_note ? ": " + esc(m.status_note) : ""}</dd>` : ""}
+        ${m.changed_by ? `<dt>${esc(m.removed ? t("Taken off the plan") : t("Placed"))}</dt><dd>${esc(t("changed by {name}, {at}", {name: m.changed_by, at: m.changed_at}))}</dd>` : ""}
+        ${o ? `<dt>${esc(t("Order"))}</dt><dd>${o.id} · ${esc(o.job)}</dd><dt>${esc(t("Done"))}</dt><dd>${esc(t("{done} of {quantity}", {done: o.done, quantity: o.quantity}))}</dd>
+          ${o.part ? `<dt>${esc(t("Per part"))}</dt><dd>${esc(o.part)}</dd><dt>${esc(t("Left"))}</dt><dd>${esc(o.left)}${o.incomplete ? " " + esc(t("(incomplete: no rapids / tool changes without the passport's values)")) : ""}</dd>` : ""}
+          ${o.no_program ? `<dt>${esc(t("Time"))}</dt><dd>${esc(t("no program for this machine"))}</dd>` : ""}`
+          : `<dt>${esc(t("Order"))}</dt><dd>${esc(t("none running"))}</dd>`}
+        ${m.queue.map(q => `<dt>${esc(t("Next"))}</dt><dd>${esc(q.job)}, ${esc(t("{n} pcs", {n: q.quantity}))}${q.done ? ` (${esc(t("{n} done", {n: q.done}))})` : ""}${q.no_program ? " · " + esc(t("no program for this machine")) : ""}</dd>`).join("")}
+        ${m.all_left !== null ? `<dt>${esc(t("All orders left"))}</dt><dd>${esc(m.all_left)}${m.all_incomplete ? " " + esc(t("(incomplete: no rapids / tool changes without the passport's values)")) : ""}${m.all_without_program ? " · " + esc(t("{n} order(s) without a program are not in it", {n: m.all_without_program})) : ""}</dd>` : ""}
       </dl>
-      ${o ? `<div class="sf-bar" role="img" aria-label="${pct}% done"><i class="sf-${m.status}" style="width:${pct}%"></i></div>` : ""}
+      ${o ? `<div class="sf-bar" role="img" aria-label="${esc(t("{pct}% done", {pct: pct}))}"><i class="sf-${m.status}" style="width:${pct}%"></i></div>` : ""}
       <div class="sf-btns">
-        <a class="sf-button" href="${URLS.upload(m.id)}">Upload drawing</a>
-        <a class="sf-button ghost" href="${URLS.machine(m.id)}">Machine page</a>
-        <button type="button" class="sf-button ghost" id="sf-panel">Status and order</button>
-        ${m.x !== null ? `<button type="button" class="sf-button ghost" id="sf-rotate">Rotate 90°</button>
-          <button type="button" class="sf-button ghost" id="sf-unplace">Прибрати з плану</button>` : ""}
+        <a class="sf-button" href="${URLS.upload(m.id)}">${esc(t("Upload drawing"))}</a>
+        <a class="sf-button ghost" href="${URLS.machine(m.id)}">${esc(t("Machine page"))}</a>
+        <button type="button" class="sf-button ghost" id="sf-panel">${esc(t("Status and order"))}</button>
+        ${m.x !== null ? `<button type="button" class="sf-button ghost" id="sf-rotate">${esc(t("Rotate 90°"))}</button>
+          <button type="button" class="sf-button ghost" id="sf-unplace">${esc(t("Take off the plan"))}</button>` : ""}
       </div>
       ${svg ? `<form class="sf-place" id="sf-place">
-        <label>X, mm <input name="x" type="number" step="100" min="0" value="${m.x ?? ""}" required></label>
-        <label>Y, mm <input name="y" type="number" step="100" min="0" value="${m.y ?? ""}" required></label>
-        <label>Rotation <select name="r">${[0, 90, 180, 270].map(r => `<option ${r === m.rotation ? "selected" : ""}>${r}</option>`).join("")}</select></label>
-        <button type="submit" class="sf-button ghost">Place on the plan</button>
+        <label>X, ${esc(t("mm"))} <input name="x" type="number" step="100" min="0" value="${m.x ?? ""}" required></label>
+        <label>Y, ${esc(t("mm"))} <input name="y" type="number" step="100" min="0" value="${m.y ?? ""}" required></label>
+        <label>${esc(t("Rotation"))} <select name="r">${[0, 90, 180, 270].map(r => `<option ${r === m.rotation ? "selected" : ""}>${r}</option>`).join("")}</select></label>
+        <button type="submit" class="sf-button ghost">${esc(t("Place on the plan"))}</button>
       </form>` : ""}`;
     const form = document.getElementById("sf-place");
     if (form) form.addEventListener("submit", e => {
@@ -271,7 +269,7 @@
   });
   function changer() {
     const name = changerField.value.trim();
-    if (!name) { changerMsg.textContent = "Впишіть, хто змінює"; changerField.focus(); }
+    if (!name) { changerMsg.textContent = t("Write who changes"); changerField.focus(); }
     return name || null;
   }
   function unplace(id) {
@@ -312,7 +310,7 @@
       if (!moved) { select(m.id); return; }
       const r = svg.getBoundingClientRect();
       if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
-        msg.textContent = "Dropped outside the plan: the machine stays where it was.";
+        msg.textContent = t("Dropped outside the plan: the machine stays where it was.");
         draw(); return;
       }
       const [x, y] = toPlan(e);
@@ -342,7 +340,7 @@
         const [x, y] = toPlan(e);
         place(m.id, x, y, 0);
       } else {
-        msg.textContent = "Drop the machine on the plan.";
+        msg.textContent = t("Drop the machine on the plan.");
       }
     });
   }
@@ -429,7 +427,7 @@
   const placed = (args.get("placed") || "").split(",").map(Number);
   if (placed.length === 2 && placed.every(Number.isFinite)) {
     const m = M.find(x => x.id === Number(args.get("select")));
-    if (m) { msg.textContent = `${m.name} placed at X ${placed[0]}, Y ${placed[1]} mm.`; msg.classList.add("sf-msg-ok"); }
+    if (m) { msg.textContent = t("{name} placed at X {x}, Y {y} mm.", {name: m.name, x: placed[0], y: placed[1]}); msg.classList.add("sf-msg-ok"); }
   }
   dimCoveredLabels();
   const again = new URLSearchParams(location.search).get("open");  // back from the panel's form: open it again

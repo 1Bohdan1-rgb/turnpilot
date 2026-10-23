@@ -1,100 +1,98 @@
 {% extends "base.html" %}
-{% block title %}Edit tool{% endblock %}
+{% block title %}{{ _("Edit tool") }}{% endblock %}
 {% block content %}
-<h1>Edit tool: {{ tool.name }}</h1>
-<p class="muted">Type: <strong>{{ tool.type }}</strong> (not editable: operations already made with this tool keep
-  their meaning). Jobs calculated with this tool before the change show a note until they are recalculated.</p>
+<h1>{{ _("Edit tool") }}: {{ tool.name }}</h1>
+<p class="muted">{{ _("Type: {type} (not editable: operations already made with this tool keep their meaning). Jobs calculated with this tool before the change show a note until they are recalculated.", type=strong(tool.type|label)) }}</p>
 <form method="post" class="card grid-form">
-  <label>Name <input name="name" value="{{ tool.name }}" required></label>
-  <label>Insert code <input name="insert_code" value="{{ tool.insert_code or '' }}"></label>
-  <label>Grade <input name="grade" value="{{ tool.grade or '' }}"></label>
+  <label>{{ _("Name") }} <input name="name" value="{{ tool.name }}" required></label>
+  <label>{{ _("Insert code") }} <input name="insert_code" value="{{ tool.insert_code or '' }}"></label>
+  <label>{{ _("Grade") }} <input name="grade" value="{{ tool.grade or '' }}"></label>
   <fieldset>
-    <legend>ISO groups</legend>
+    <legend>{{ _("ISO groups") }}</legend>
     {% for g in iso_groups %}<label class="inline"><input type="checkbox" name="iso_group" value="{{ g }}"
       {% if g in tool.iso_group %}checked{% endif %}> {{ g }}</label>{% endfor %}
   </fieldset>
   {% for key in ("vc_min", "vc_max", "f_min", "f_max", "ap_min", "ap_max") %}
   <label>{{ key|replace("_", " ") }} <input name="{{ key }}" type="number" step="any" value="{{ tool[key] }}" required></label>
   {% endfor %}
-  <label>Insert width, mm (grooving/parting)
+  <label>{{ _("Insert width, mm (grooving/parting)") }}
     <input name="insert_width" type="number" step="any" min="0" value="{{ tool.insert_width if tool.insert_width is not none else '' }}"></label>
-  <label>Diameter, mm (drills)
+  <label>{{ _("Diameter, mm (drills)") }}
     <input name="diameter" type="number" step="any" min="0" value="{{ tool.diameter if tool.diameter is not none else '' }}"></label>
-  <label>Max depth, mm (drills; grooving: the holder's)
+  <label>{{ _("Max depth, mm (drills; grooving: the holder's)") }}
     <input name="max_depth" type="number" step="any" min="0" value="{{ tool.max_depth if tool.max_depth is not none else '' }}"></label>
-  <label>Holder code (the operator's; e.g. RF123E08-2525B, the shank size is the operator's choice)
+  <label>{{ _("Holder code (the operator's; e.g. RF123E08-2525B, the shank size is the operator's choice)") }}
     <input name="holder_code" maxlength="50" value="{{ tool.holder_code or '' }}"></label>
-  <label>Nose radius rε, mm (empty: from the insert code)
+  <label>{{ _("Nose radius rε, mm (empty: from the insert code)") }}
     <input name="nose_radius" type="number" step="any" min="0" value="{{ tool.nose_radius if tool.nose_radius is not none else '' }}"></label>
-  <label>Tip direction T (0–9, as on the control's offset page; empty: no compensation)
+  <label>{{ _("Tip direction T (0–9, as on the control's offset page; empty: no compensation)") }}
     <input name="tip_direction" type="number" step="1" min="0" max="9" value="{{ tool.tip_direction if tool.tip_direction is not none else '' }}"></label>
-  <label>RMPX — max in-copying angle, ° (turning: down towards the chuck; catalogue, for the holder)
+  <label>{{ _("RMPX — max in-copying angle, ° (turning: down towards the chuck; catalogue, for the holder)") }}
     <input name="max_ramp_angle" type="number" step="any" min="0" max="89" value="{{ tool.max_ramp_angle if tool.max_ramp_angle is not none else '' }}"></label>
-  <label>Source of RMPX (catalogue page, holder)
+  <label>{{ _("Source of RMPX (catalogue page, holder)") }}
     <input name="max_ramp_source" maxlength="200" value="{{ tool.max_ramp_source or '' }}"></label>
-  <label>Entering angle κr, ° (turning: the insert in its holder, e.g. 93° for a J holder)
+  <label>{{ _("Entering angle κr, ° (turning: the insert in its holder, e.g. 93° for a J holder)") }}
     <input name="entering_angle_deg" type="number" step="any" min="1" max="179" value="{{ tool.entering_angle_deg if tool.entering_angle_deg is not none else '' }}"></label>
-  <label>Source of κr (catalogue page, holder)
+  <label>{{ _("Source of κr (catalogue page, holder)") }}
     <input name="entering_angle_source" maxlength="200" value="{{ tool.entering_angle_source or '' }}"></label>
-  <label>DMIN — smallest bore, mm (boring: the holder's, from the catalogue)
+  <label>{{ _("DMIN — smallest bore, mm (boring: the holder's, from the catalogue)") }}
     <input name="min_bore_diameter" type="number" step="any" min="0" value="{{ tool.min_bore_diameter if tool.min_bore_diameter is not none else '' }}"></label>
-  <label>Source of DMIN (catalogue page, holder)
+  <label>{{ _("Source of DMIN (catalogue page, holder)") }}
     <input name="min_bore_source" maxlength="200" value="{{ tool.min_bore_source or '' }}"></label>
-  <label>Point angle, ° (drills: the catalogue's SIG)
+  <label>{{ _("Point angle, ° (drills: the catalogue's SIG)") }}
     <input name="point_angle_deg" type="number" step="any" min="60" max="180" value="{{ tool.point_angle_deg if tool.point_angle_deg is not none else '' }}"></label>
-  <label>Source of the point angle (catalogue page)
+  <label>{{ _("Source of the point angle (catalogue page)") }}
     <input name="point_angle_source" maxlength="200" value="{{ tool.point_angle_source or '' }}"></label>
-  <label>ap rec (catalogue)
+  <label>{{ _("ap rec (catalogue)") }}
     <input name="ap_rec" type="number" step="any" min="0" value="{{ tool.ap_rec if tool.ap_rec is not none else '' }}"></label>
-  <label>f rec (catalogue)
+  <label>{{ _("f rec (catalogue)") }}
     <input name="f_rec" type="number" step="any" min="0" value="{{ tool.f_rec if tool.f_rec is not none else '' }}"></label>
-  <label>Vc at f (catalogue)
+  <label>{{ _("Vc at f (catalogue)") }}
     <input name="vc_points" maxlength="200" value="{{ tool.vc_points or '' }}" placeholder="0.1:455, 0.4:305, 0.8:215"></label>
-  <p class="muted small">With f rec the planner takes the recommended f and ap and Vc from these points at that f
-    (linear between them) instead of positions in the ranges.</p>
-  <label>Source of Vc / f / ap
-    <input name="source" maxlength="300" value="{{ tool.source or '' }}" placeholder="catalogue, insert grade, page"></label>
+  <p class="muted small">{{ _("With f rec the planner takes the recommended f and ap and Vc from these points at that f (linear between them) instead of positions in the ranges.") }}</p>
+  <label>{{ _("Source of Vc / f / ap") }}
+    <input name="source" maxlength="300" value="{{ tool.source or '' }}" placeholder="{{ _("catalogue, insert grade, page") }}"></label>
   <div class="actions">
-    <button type="submit" class="primary">Save</button>
-    <a href="{{ url_for('main.machine') }}">Cancel</a>
+    <button type="submit" class="primary">{{ _("Save") }}</button>
+    <a href="{{ url_for('main.machine') }}">{{ _("Cancel") }}</a>
   </div>
 </form>
 {% if dmin %}
 <div class="card">
-  <h2>DMIN from the catalogue (a suggestion: confirm the holder)</h2>
+  <h2>{{ _("DMIN from the catalogue (a suggestion: confirm the holder)") }}</h2>
   {% for holder, value, source in dmin %}
   <form method="post" action="{{ url_for('main.take_dmin', tool_id=tool.id) }}" class="inline">
     <input type="hidden" name="holder" value="{{ holder }}">
-    {{ tool.insert_code }} in {{ holder }}: DMIN {{ value|round(1) }} mm ({{ source }})
-    <button type="submit">The holder is {{ holder }}: take {{ value|round(1) }} mm</button>
+    {{ _("{insert} in {holder}: DMIN {value} mm ({source})", insert=tool.insert_code, holder=holder, value=value|round(1), source=source) }}
+    <button type="submit">{{ _("The holder is {holder}: take {value} mm", holder=holder, value=value|round(1)) }}</button>
   </form>
   {% endfor %}
-  {% if tool.min_bore_diameter is not none %}<p class="small muted">Now: DMIN {{ tool.min_bore_diameter }} mm{% if tool.min_bore_source %} ({{ tool.min_bore_source }}){% endif %}.</p>{% endif %}
+  {% if tool.min_bore_diameter is not none %}<p class="small muted">{{ _("Now:") }} DMIN {{ tool.min_bore_diameter }} {{ _("mm") }}{% if tool.min_bore_source %} ({{ tool.min_bore_source }}){% endif %}.</p>{% endif %}
 </div>
 {% endif %}
 {% if kr %}
 <div class="card">
-  <h2>Entering angle κr by the holder (a suggestion: confirm it)</h2>
+  <h2>{{ _("Entering angle κr by the holder (a suggestion: confirm it)") }}</h2>
   {% set style, angle, source = kr %}
   <form method="post" action="{{ url_for('main.take_entering_angle', tool_id=tool.id) }}" class="inline">
     <input type="hidden" name="holder_style" value="{{ style }}">
-    {{ tool.holder_code }}: style {{ style }}, κr {{ angle|round(1) }}° ({{ source }})
-    <button type="submit">Take κr {{ angle|round(1) }}°</button>
+    {{ _("{holder}: style {style}, κr {angle}° ({source})", holder=tool.holder_code, style=style, angle=angle|round(1), source=source) }}
+    <button type="submit">{{ _("Take κr {angle}°", angle=angle|round(1)) }}</button>
   </form>
-  {% if tool.entering_angle_deg is not none %}<p class="small muted">Now: κr {{ tool.entering_angle_deg }}°{% if tool.entering_angle_source %} ({{ tool.entering_angle_source }}){% endif %}.</p>{% endif %}
+  {% if tool.entering_angle_deg is not none %}<p class="small muted">{{ _("Now:") }} κr {{ tool.entering_angle_deg }}°{% if tool.entering_angle_source %} ({{ tool.entering_angle_source }}){% endif %}.</p>{% endif %}
 </div>
 {% endif %}
 {% if rmpx %}
 <div class="card">
-  <h2>RMPX from the catalogue (a suggestion: confirm the holder)</h2>
+  <h2>{{ _("RMPX from the catalogue (a suggestion: confirm the holder)") }}</h2>
   {% for style, angle, source in rmpx %}
   <form method="post" action="{{ url_for('main.take_rmpx', tool_id=tool.id) }}" class="inline">
     <input type="hidden" name="holder_style" value="{{ style }}">
-    {{ tool.insert_code }} in a {{ style }} holder: RMPX {{ angle|round(1) }}° ({{ source }})
-    <button type="submit">The holder is {{ style }}: take {{ angle|round(1) }}°</button>
+    {{ _("{insert} in a {style} holder: RMPX {angle}° ({source})", insert=tool.insert_code, style=style, angle=angle|round(1), source=source) }}
+    <button type="submit">{{ _("The holder is {style}: take {angle}°", style=style, angle=angle|round(1)) }}</button>
   </form>
   {% endfor %}
-  {% if tool.max_ramp_angle is not none %}<p class="small muted">Now: RMPX {{ tool.max_ramp_angle }}°{% if tool.max_ramp_source %} ({{ tool.max_ramp_source }}){% endif %}.</p>{% endif %}
+  {% if tool.max_ramp_angle is not none %}<p class="small muted">{{ _("Now:") }} RMPX {{ tool.max_ramp_angle }}°{% if tool.max_ramp_source %} ({{ tool.max_ramp_source }}){% endif %}.</p>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

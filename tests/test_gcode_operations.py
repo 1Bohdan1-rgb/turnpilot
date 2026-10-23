@@ -150,7 +150,7 @@ def test_a_changed_depth_decision_keeps_the_first_in_the_history(app, client):
         ("full_diameter", "Bohdan", None), ("tip", "Ivan", "the drawing's depth is to the point")]
     assert (feature.depth_mode, feature.depth_decided_by) == ("tip", "Ivan")
     page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
-    assert "full Ø (the point goes beyond), Bohdan" in page and "drill&#39;s point, Ivan" in page
+    assert "full Ø (the point goes beyond), Bohdan" in page and "drill's point, Ivan" in page
 
 
 def test_the_full_diameter_needs_the_point_angle(app):
