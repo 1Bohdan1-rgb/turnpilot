@@ -3,9 +3,10 @@
 {% block content %}
 <h1>{{ _("New job from a drawing") }}</h1>
 <p class="muted">
-  {{ _("Upload a PNG, JPG or PDF drawing (up to {mb} MB).", mb=(config.MAX_CONTENT_LENGTH / 1048576)|round(0)|int) }}
-  {{ _("Claude reads it, then you check every value before the job is created.") }}
-  {{ _("For a PDF only the first page is read.") }}
+  {{ _("Upload a PNG, JPG, PDF or DXF drawing (up to {mb} MB).", mb=(config.MAX_CONTENT_LENGTH / 1048576)|round(0)|int) }}
+  {{ _("A DXF is read by the program at once: no model, no paid call.") }}
+  {{ _("A PNG, JPG or PDF is read by Claude (3–7 minutes; for a PDF only the first page); a file already read by the same model is not sent again.") }}
+  {{ _("Then you check every value before the job is created.") }}
 </p>
 
 {% if for_machine %}<p class="warning">{{ _("The new job will be planned for {machine} (from the shop page); the job page can change it.", machine=strong(for_machine.name)) }}</p>{% endif %}
@@ -13,7 +14,6 @@
   {% if for_machine %}<input type="hidden" name="machine_id" value="{{ for_machine.id }}">{% endif %}
   <input type="file" name="drawing" accept=".png,.jpg,.jpeg,.pdf,.dxf,image/png,image/jpeg,application/pdf" required>
   <button type="submit" class="primary" id="read-button">{{ _("Read drawing") }}</button>
-  <span class="muted small">{{ _("Reading takes 3–7 minutes. A file already read by the same model is not sent again.") }}</span>
 </form>
 <script>
   // One click = one API call: block the button until the page is replaced by the result.

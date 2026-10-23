@@ -119,7 +119,8 @@ def test_non_ascii_filenames_are_accepted(app, client, filename, data, extension
 
 
 def test_upload_page_states_reading_time(client):
-    assert "Reading takes 3–7 minutes" in client.get("/jobs/upload").data.decode()
+    page = client.get("/jobs/upload").data.decode()
+    assert "PNG, JPG, PDF or DXF" in page and "A DXF is read by the program at once" in page and "3–7 minutes" in page
 
 
 # --- successful upload and audit trail -----------------------------------------------

@@ -128,12 +128,8 @@ UK = {
     "No jobs yet.": "Завдань ще немає.",
     # upload.html, machines.html
     "New job from a drawing": "Нове завдання з креслення",
-    "Upload a PNG, JPG or PDF drawing (up to {mb} MB).": "Завантажте креслення PNG, JPG або PDF (до {mb} МБ).",
-    "Claude reads it, then you check every value before the job is created.": "Claude його читає, потім ви перевіряєте кожне значення, перш ніж завдання буде створено.",
-    "For a PDF only the first page is read.": "У PDF читається лише перша сторінка.",
     "The new job will be planned for {machine} (from the shop page); the job page can change it.": "Нове завдання буде сплановано для {machine} (зі сторінки цеху); на сторінці завдання це можна змінити.",
     "Read drawing": "Прочитати креслення",
-    "Reading takes 3–7 minutes. A file already read by the same model is not sent again.": "Читання триває 3–7 хвилин. Файл, уже прочитаний тією самою моделлю, повторно не надсилається.",
     "Reading…": "Читаю…",
     "Recent uploads": "Останні завантаження",
     "File": "Файл",
@@ -943,7 +939,6 @@ UK = {
     "T{position} for this job is the machine's again. Calculate the job again.": "T{position} для цього завдання знову як на верстаті. Розрахуйте завдання знову.",
     "No program: {reasons}": "Немає програми: {reasons}",
     "Not ready to run: {reasons}.": "Не готово до запуску: {reasons}.",
-    "Ready to run, confirmed by {name}. The program is not sent anywhere: download it, and the operator presses Start after the machine check.": "Готово до запуску, підтвердив(ла) {name}. Програма нікуди не надсилається: завантажте її, і оператор натисне «Пуск» після перевірки на верстаті.",
     "G-code set-up saved.": "Налагодження G-коду збережено.",
     "Bore Ø{d}: depth {mode} ({name}).": "Отвір Ø{d}: глибина {mode} ({name}).",
     "The operator's name is required for the decision.": "Для рішення потрібне ім'я оператора.",
@@ -1036,6 +1031,12 @@ UK = {
     "the stick-out margin beyond the parting cut (Machine page, programming values)": "запас вильоту за різом відрізки (сторінка верстата, значення програмування)",
     "the stock beyond Z0 to face off (the job's G-code set-up)": "припуск за Z0 на торцювання (налагодження G-коду завдання)",
     "the safety distance to the chuck jaws (Machine page, programming values)": "безпечна відстань до кулачків патрона (сторінка верстата, значення програмування)",
+    # upload page
+    "Ready to run, confirmed by {name}. The program is not sent anywhere: download it, and the operator presses Start after the machine check.": "Готово до запуску, підтвердив(ла) {name}. Програма нікуди не надсилається: завантажте її, і оператор натисне «Пуск» після перевірки на верстаті.",
+    "Upload a PNG, JPG, PDF or DXF drawing (up to {mb} MB).": "Завантажте креслення PNG, JPG, PDF або DXF (до {mb} МБ).",
+    "A DXF is read by the program at once: no model, no paid call.": "DXF читає програма одразу: без моделі й без платного виклику.",
+    "A PNG, JPG or PDF is read by Claude (3–7 minutes; for a PDF only the first page); a file already read by the same model is not sent again.": "PNG, JPG або PDF читає Claude (3–7 хвилин; у PDF — лише перша сторінка); файл, уже прочитаний тією самою моделлю, повторно не надсилається.",
+    "Then you check every value before the job is created.": "Потім ви перевіряєте кожне значення, перш ніж завдання буде створено.",
 }
 
 
