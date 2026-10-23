@@ -31,7 +31,7 @@ def test_program_page_offers_the_3d_view_from_the_project_files(app, client):
     assert "http" not in page.split('<script type="importmap">')[1].split("</script>")[0]
     data = client.get(f"/gcode/{record.id}/part3d.json").get_json()
     assert data["states"][0]["n"] is None and len(data["states"]) > 2
-    assert data["bar_radius"] == 16 and data["z_jaws"] == -75 and data["final"] and data["computed_at"] is None
+    assert data["bar_radius"] == 16 and data["z_jaws"] == -74 and data["final"] and data["computed_at"] is None
     assert data["stale"] == []
 
 

@@ -58,8 +58,9 @@ def test_a_cut_below_the_finished_profile(pin):
 
 
 def test_the_jaws(pin):
-    text = replace(pin[2], "G01 Z-63. F0.3", "G01 Z-71. F0.3")  # jaws at Z-75, safety 5
-    assert "closer than 5 mm to the jaws (Z-71., jaws at Z-75.)" in messages(run(pin, text))
+    # stick-out 75 to the raw end face, 1 mm of it beyond Z0: the jaws at Z-74, safety 5
+    text = replace(pin[2], "G01 Z-63. F0.3", "G01 Z-70. F0.3")
+    assert "closer than 5 mm to the jaws (Z-70., jaws at Z-74.)" in messages(run(pin, text))
 
 
 def test_below_the_axis(pin):
@@ -174,3 +175,26 @@ def test_a_cnmg_in_a_95_degree_holder_keeps_the_pin_clean(pin):
     db.session.commit()
     result = run(pin)
     assert result.ok and result.complete, (result.errors, result.incomplete)
+
+
+def test_the_stick_out_is_measured_to_the_raw_end_face(app):
+    """The jaws stand the stick-out below the raw end face, i.e. the stock beyond Z0 nearer to Z0; a program made
+    before (no "stickout_reference" in its settings) is out of date and keeps its old jaws in its drawings."""
+    import json
+
+    from gcode_jobs import make_job, ready_machine
+
+    from turnpilot import services
+
+    assert services.jaws_below_z0(75, 2) == 73 and services.jaws_below_z0(75, None) == 75
+    machine = ready_machine()
+    job = make_job(stickout=75, face_stock=2.0)
+    _, record = services.generate_gcode(job, machine)
+    settings = json.loads(record.settings)
+    assert {"name": "stickout_reference", "label": "Stick-out measured to", "unit": "",
+            "value": "the raw end face", "source": "rule", "source_label": "TurnPilot's rule"} in settings
+    assert services.program_jaws_below_z0(settings) == 73 and services.gcode_stale(record, machine) == []
+    old = [row for row in settings if row["name"] != "stickout_reference"]
+    assert services.program_jaws_below_z0(old) == 75
+    record.settings = json.dumps(old)
+    assert "values changed since this program: Stick-out measured to" in "; ".join(services.gcode_stale(record, machine))

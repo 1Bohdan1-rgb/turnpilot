@@ -956,7 +956,7 @@ def gcode_simulation(job, machine, text, profile=None):
                 planner.insert_shape(slot.tool.insert_code))
     data = gsim.SimInput(
         profile=profile, stock_radius=planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
-        face_stock=job.face_stock_mm or 0.0, stickout=job.stickout_mm or 0.0,
+        face_stock=job.face_stock_mm or 0.0, stickout=jaws_below_z0(job.stickout_mm, job.face_stock_mm),
         chuck_safety=machine.chuck_safety_mm or 0.0, max_rpm=machine.max_rpm, spindle=machine.spindle_right_hand,
         tools=tools, groove_reference=machine.groove_reference, facing_overshoot=machine.facing_overshoot_mm or 0.0,
         parting_overshoot=machine.parting_overshoot_mm or 0.0,
@@ -999,6 +999,25 @@ def gcode_checklist(record):
     return items
 
 
+STICKOUT_REFERENCE = "the raw end face"
+
+
+def jaws_below_z0(stickout, face_stock):
+    """How far below Z0 the jaws are: the stick-out is measured from the jaws to the raw end face, which stands the
+    stock beyond Z0 above Z0 (the simulation and the drawings put the jaws at Z = −this)."""
+    return (stickout or 0.0) - (face_stock or 0.0)
+
+
+def program_jaws_below_z0(settings):
+    """The same for a program's saved settings; a program made before the stick-out was measured to the raw end
+    (no "stickout_reference" row) had its jaws at −stick-out."""
+    values = {row["name"]: row["value"] for row in settings}
+    stickout = float(values.get("stickout_mm") or 0)
+    if values.get("stickout_reference"):
+        return stickout - float(values.get("face_stock_mm") or 0)
+    return stickout
+
+
 def gcode_settings(job, machine):
     """The values a program uses, each with its source (the passport, the operator, DEMO)."""
     rows = []
@@ -1018,6 +1037,9 @@ def gcode_settings(job, machine):
         rows.append({"name": name, "label": label, "unit": unit, "value": "" if value is None else f"{value:g}"
                      if isinstance(value, float) else value, "source": setup_source,
                      "source_label": "DEMO value, not from the machine" if job.gcode_setup_demo else "the operator"})
+    # what the stick-out is measured to (the simulation's jaws): a program made before this row is out of date
+    rows.append({"name": "stickout_reference", "label": "Stick-out measured to", "unit": "", "value": STICKOUT_REFERENCE,
+                 "source": "rule", "source_label": "TurnPilot's rule"})
     return rows
 
 
@@ -1084,7 +1106,7 @@ def part3d_data(record):
     return {"program": record.id, "states": states, "computed_at": computed_at,
             "final": [[round(z, 3), round(r, 3)] for z, r in profile.final_points],
             "bar_radius": planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
-            "z_jaws": -float(settings.get("stickout_mm") or 0), "stale": gcode_stale(record, machine)}
+            "z_jaws": -program_jaws_below_z0(json.loads(record.settings)), "stale": gcode_stale(record, machine)}
 
 
 def order_part3d(order):

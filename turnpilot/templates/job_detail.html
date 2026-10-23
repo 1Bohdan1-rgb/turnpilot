@@ -203,7 +203,7 @@
     </select>
     {% if suggested_free_end %}<span class="small muted">{{ _("suggested: {side} (the largest Ø is held in the chuck)", side=_(suggested_free_end)) }} <span class="badge badge-check">{{ _("check") }}</span></span>{% endif %}
   </label>
-  <label>{{ _("Stick-out from the jaws, mm") }} <input name="stickout_mm" type="number" step="any" min="0"
+  <label>{{ _("Stick-out from the jaws to the raw end face, mm") }} <input name="stickout_mm" type="number" step="any" min="0"
     value="{{ job.stickout_mm if job.stickout_mm is not none else '' }}" placeholder="{{ _("measured on the machine") }}"></label>
   <label>{{ _("Stock beyond Z0 to face off, mm") }} <input name="face_stock_mm" type="number" step="any" min="0"
     value="{{ job.face_stock_mm if job.face_stock_mm is not none else '' }}"></label>

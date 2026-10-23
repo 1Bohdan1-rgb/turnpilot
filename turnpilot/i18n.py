@@ -1014,6 +1014,11 @@ UK = {
     "Stick-out {value} mm taken from the drawing ({length} + {parting} + {margin}).": "Виліт {value} мм узято з креслення ({length} + {parting} + {margin}).",
     "Stick-out margin beyond the parting cut": "Запас вильоту за різом відрізки",
     "the stick-out hint on the job page: part length + parting width + this; empty: no hint": "підказка вильоту на сторінці завдання: довжина деталі + ширина відрізки + це значення; порожньо: без підказки",
+    # stick-out to the raw end
+    "Stick-out from the jaws to the raw end face, mm": "Виліт із кулачків до сирого торця, мм",
+    "Stick-out measured to": "Виліт міряється до",
+    "the raw end face": "сирого торця",
+    "TurnPilot's rule": "правило TurnPilot",
 }
 
 

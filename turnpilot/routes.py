@@ -1017,7 +1017,7 @@ def gcode_program(program_id):
     drawing = svg.render(
         sim["segments"], sim["final_stock"], sim["z_top"], sim["dz"], profile.final_points,
         planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
-        float(setup.get("stickout_mm") or 0), float(setup.get("chuck_safety_mm") or 0),
+        services.program_jaws_below_z0(settings), float(setup.get("chuck_safety_mm") or 0),
         [line for line, _ in sim["errors"]], tools)
     lines = record.text.splitlines()
     flagged = {}
