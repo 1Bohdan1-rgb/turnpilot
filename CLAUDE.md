@@ -1126,7 +1126,38 @@ G-code text and golden files unchanged; the files frozen by `dxf-blind-freeze` u
   name (`Job.stickout_note` keeps the sum, name, time; typing the stick-out clears it). In the user's DB the margin is
   empty: no hint until the operator enters it.
 
+## Fixes after the browser check of the design package (2026-10-23)
+Plan agreed with the user (stick-out option (a); the UK time rule written out; both order hints; the actual Vc). No
+migration; G-code text and golden files unchanged; the files frozen by `dxf-blind-freeze` untouched.
+- Stick-out: measured from the jaws to the raw end face. The simulation and the drawings put the jaws at
+  Z = stock beyond Z0 − stick-out (`services.jaws_below_z0`); programs made before have no `stickout_reference` row
+  in their settings: out of date ("Stick-out measured to"), their drawings keep the old jaws
+  (`program_jaws_below_z0`).
+- Stick-out hint: length + stock beyond Z0 + parting width + max(margin, chuck safety distance); when the safety
+  distance is taken the page says so (НД 012: 114 + 2 + 3 + max(2, 5) = 124).
+- Time: `turnpilot/localtime.py`, Europe/London by the UK rule (BST from 01:00 UTC on the last Sunday of March to
+  01:00 UTC on the last Sunday of October), tested at the changes; filter `|local` on every page; the database keeps
+  UTC; times in the G-code text unchanged. Later: a "shop time zone" setting (this Windows has no zoneinfo data and
+  requirements.txt is frozen, so no tzdata).
+- Language: `i18n.generated` (`|gen`) translates by shape what the code writes as labels and states (value
+  sources, out-of-date reasons, blockers, skip reasons, the checklist, turret set-up lines, order events, units);
+  `i18n.dxf_text` (`|dxf`) the DXF binding table's words without touching the frozen files. Stay English: the
+  planner's notes and warnings, the simulation's messages, the DXF row notes, G-code block titles, data names.
+- Upload page names DXF (read at once, no model, no paid call). "Ready to run" said once (the banner).
+- Touch size also for Unskip, Cancel the mark, Take the latest program (dark when a newer program exists or the
+  order's is out of date), Close the order.
+- Machine page: the tool library and the turret in five columns, sources behind ⓘ; measured at 768 px: no
+  horizontal scroll on /machines/1 and /machines/2.
+- Orders: `running_without_order` on the shop card and the panel; closing the running order names the machine's
+  other open orders, nothing switched. In the user's DB the running order of Lathe 1 was lost on 2026-10-22: order 4
+  was made running (order 1 stopped being), then closed; "Take the latest program" changes no running state.
+- Marks: a mark counts only when its stored title equals the block's title now (`valid_done_blocks`); taking a newer
+  program cancels the marks of changed operations (new rows, event `marks_cancelled`, a flash).
+- Process sheet: when n is capped, "→ Vc on ØD" = π·D·n/1000 on the reference diameter (facing: the blank's Ø, e.g.
+  Ø22 at 4000 rpm: 276.5 m/min). The "289" in the plan was an example not computed; corrected here.
+
 ## Deferred
+- A "shop time zone" setting (now Europe/London written out in `turnpilot/localtime.py`).
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
 - Decision (2026-10-06): TurnPilot is developed further; the SVG preview of a DXF stays deferred.
 - dimensions_first on real_02 ×3 (3 calls; 9 for a fair comparison: 6 vs 6 with features). The
@@ -1135,7 +1166,7 @@ G-code text and golden files unchanged; the files frozen by `dxf-blind-freeze` u
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1196 tests pass (2026-10-23). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1216 tests pass (2026-10-23). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

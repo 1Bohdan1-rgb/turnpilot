@@ -558,10 +558,19 @@ edit log, and a new calculation carries the skip to the same operation (feature,
 - Copying a turret from another machine also takes its filled-in programming values (an empty one there leaves
   this machine's; a DEMO value stays DEMO), with the source "copied from <machine> (<name>)" and both values in the
   history.
-- Stick-out hint on the job page: the part's length (its turned sections) + the parting insert's width + the
-  machine's "stick-out margin beyond the parting cut" (a programming value, the operator's, no default; not in a
-  program's settings). Without one of them the page says what is missing; the operator takes the hint with the name
+- Stick-out hint on the job page: the part's length (its turned sections) + the stock beyond Z0 + the parting
+  insert's width + the larger of the machine's "stick-out margin beyond the parting cut" (a programming value, the
+  operator's, no default; not in a program's settings) and the safety distance to the jaws. Without one of them the page says what is missing; the operator takes the hint with the name
   (the sum and the name are kept), it is never filled in by itself.
+
+- The stick-out is measured from the jaws to the raw end face (as the operator measures it): the simulation puts the
+  jaws the stock beyond Z0 nearer Z0. The stick-out hint is length + stock beyond Z0 + parting width + max(margin,
+  safety distance to the jaws), and says when the safety distance is taken.
+- Dates and times are shown in London's time (GMT / BST); the database keeps UTC.
+- On the process sheet, a Vc above what the capped spindle gives shows the real one: "→ Vc on ØD" (π·D·n/1000 on the
+  diameter n is calculated on).
+- Orders: a machine "running" with no order running is pointed out; marks count only on the same operation, and
+  taking a newer program cancels the marks of operations that changed.
 
 ## Planned: probing the blank, sending the program (stage 7)
 
