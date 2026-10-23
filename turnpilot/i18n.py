@@ -975,6 +975,10 @@ UK = {
     "Save materials": "Зберегти матеріали",
     # shop
     "{done} of {quantity}": "{done} з {quantity}",
+    # process sheet notes
+    "Notes of operation {n}": "Примітки операції {n}",
+    "width": "ширина",
+    "depth/side": "глибина/бік",
 }
 
 

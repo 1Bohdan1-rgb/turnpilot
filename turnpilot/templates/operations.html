@@ -29,9 +29,9 @@
 <table class="card ops">
   <thead>
     <tr>
-      <th>#</th><th>{{ _("Feature") }}</th><th>{{ _("Operation") }}</th><th>{{ _("Pos.") }}</th><th>{{ _("Tool") }}</th>
-      <th>Vc, {{ _("m/min") }}</th><th>n, {{ _("rpm") }}</th><th>f, {{ _("mm/rev") }}</th><th>ap, {{ _("mm") }}</th><th>{{ _("Width, mm") }}</th><th>{{ _("Depth/side, mm") }}</th><th>{{ _("Passes") }}</th>
-      <th>{{ _("Notes") }}</th><th>{{ _("Status") }}</th><th></th>
+      <th>#</th><th>{{ _("Feature") }}</th><th>{{ _("Operation") }}</th><th>{{ _("Tool") }}</th>
+      <th title="{{ _("m/min") }}">Vc</th><th title="{{ _("rpm") }}">n</th><th title="{{ _("mm/rev") }}">f</th><th title="{{ _("mm") }}">ap</th>
+      <th>{{ _("Passes") }}</th><th>{{ _("Status") }}</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -39,21 +39,21 @@
     <tr class="status-{{ op.status }}{% if op.warning %} has-warning{% endif %}">
       <td>{{ op.sequence }}</td>
       <td>{{ op.feature.type|label }}{% if op.feature.diameter %} Ø{{ op.feature.diameter }}{% endif %}{% if op.feature.across_flats %} S{{ op.feature.across_flats }}{% endif %}</td>
-      <td>{{ op.tool_type|label }} <span class="muted">({{ op.rough_finish|label }})</span></td>
-      <td>{{ "T%d"|format(op.turret_position) if op.turret_position else "—" }}</td>
-      <td>{{ op.tool.name if op.tool else "—" }}</td>
+      <td class="op-name">{{ op.tool_type|label }} <span class="muted">({{ op.rough_finish|label }})</span>
+        {% if op.note or op.status == "skipped" %}<button type="button" class="info" popovertarget="note-{{ op.id }}"
+          aria-label="{{ _("Notes of operation {n}", n=op.sequence) }}" title="{{ _("Notes") }}">ⓘ</button>
+        <div popover id="note-{{ op.id }}" class="note-pop">
+          <strong>{{ _("Operation {n}", n=op.sequence) }}: {{ op.tool_type|label }}</strong>
+          {% if op.note %}<div class="notes">{{ op.note }}</div>{% endif %}
+          {% if op.status == "skipped" %}<div class="muted">{{ _("skipped by") }} {{ op.skipped_by }}{% if op.skipped_at %}, {{ op.skipped_at.strftime("%Y-%m-%d") }}{% endif %}{% if op.skip_carried_from %} ({{ _("carried from v{v}", v=op.skip_carried_from) }}){% endif %}: {{ op.skipped_note }}</div>{% endif %}
+        </div>{% endif %}
+        {% if op.warning %}<div class="warning small">⚠ {{ op.warning }}</div>{% endif %}</td>
+      <td>{% if op.turret_position %}<strong>T{{ op.turret_position }}</strong> {% endif %}{{ op.tool.name if op.tool else "—" }}</td>
       <td>{{ op.vc if op.vc is not none else "—" }}</td>
       <td>{{ op.n if op.n is not none else "—" }}</td>
       <td>{{ op.f if op.f is not none else "—" }}</td>
       <td>{{ op.ap if op.ap is not none else "—" }}</td>
-      <td>{{ op.insert_width if op.insert_width is not none else "" }}</td>
-      <td>{{ op.depth if op.depth is not none else "" }}</td>
-      <td>{{ op.passes if op.passes is not none else "" }}</td>
-      <td class="notes">
-        {% if op.warning %}<div class="warning">⚠ {{ op.warning }}</div>{% endif %}
-        {% if op.note %}<div>{{ op.note }}</div>{% endif %}
-        {% if op.status == "skipped" %}<div class="muted">{{ _("skipped by") }} {{ op.skipped_by }}{% if op.skipped_at %}, {{ op.skipped_at.strftime("%Y-%m-%d") }}{% endif %}{% if op.skip_carried_from %} ({{ _("carried from v{v}", v=op.skip_carried_from) }}){% endif %}: {{ op.skipped_note }}</div>{% endif %}
-      </td>
+      <td>{{ op.passes if op.passes is not none else "" }}{% if op.insert_width is not none %}<div class="small muted">{{ _("width") }} {{ op.insert_width }}</div>{% endif %}{% if op.depth is not none %}<div class="small muted">{{ _("depth/side") }} {{ op.depth }}</div>{% endif %}</td>
       <td><span class="badge badge-{{ op.status }}">{{ op.status|label }}</span>
         {% if op.edits %}<div class="muted small">{{ _("{n} edit(s)", n=op.edits|length) }}</div>{% endif %}</td>
       <td class="row-actions">

@@ -147,7 +147,16 @@ button.danger { color: var(--error); }
 .flash { padding: 10px 14px; border-radius: 4px; margin: 12px 0; background: var(--info-bg); border: 1px solid var(--border); }
 .flash-error { background: var(--error-bg); border-color: color-mix(in srgb, var(--sf-stop) 45%, transparent); }
 
-.ops td.notes { max-width: 280px; font-size: 13px; }
+/* the process sheet: fits the screen; the notes behind ⓘ (a popover), a warning stays in sight */
+.ops th, .ops td { padding: 6px 7px; }
+.ops td.op-name { min-width: 160px; max-width: 320px; }
+.ops .warning { margin-top: 4px; }
+.ops .row-actions { flex-wrap: wrap; white-space: normal; max-width: 220px; }
+button.info { border: none; background: none; padding: 0 4px; color: var(--accent); font-size: 16px; line-height: 1; }
+.note-pop { max-width: min(560px, calc(100vw - 32px)); padding: 14px 16px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--card); color: var(--text); box-shadow: 0 6px 24px rgba(0, 0, 0, .25);
+  font-size: 13px; line-height: 1.5; }
+.note-pop .notes { margin-top: 6px; white-space: pre-line; }
 .warning { background: var(--warn-bg); color: var(--warn); padding: 4px 6px; border-radius: 4px; }
 tr.has-warning { background: color-mix(in srgb, var(--sf-warn) 7%, var(--sf-sheet)); }
 .row-actions { display: flex; gap: 6px; white-space: nowrap; }
