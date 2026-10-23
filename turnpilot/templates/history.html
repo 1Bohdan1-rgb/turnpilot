@@ -41,7 +41,7 @@
       <td><span class="badge badge-{{ op.status }}">{{ op.status|label }}</span></td>
       <td class="notes">
         {% for e in op.edits %}
-          <div>{{ e.created_at.strftime("%Y-%m-%d %H:%M") }} · {{ e.field }}: {{ e.old_value }} → {{ e.new_value }}</div>
+          <div>{{ e.created_at|local("%Y-%m-%d %H:%M") }} · {{ e.field }}: {{ e.old_value }} → {{ e.new_value }}</div>
         {% endfor %}
       </td>
     </tr>

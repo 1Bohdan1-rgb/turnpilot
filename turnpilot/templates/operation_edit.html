@@ -33,10 +33,10 @@
 <h2>{{ _("Edit log") }}</h2>
 {% if op.edits %}
 <table class="card">
-  <thead><tr><th>{{ _("When (UTC)") }}</th><th>{{ _("Field") }}</th><th>{{ _("Was") }}</th><th>{{ _("Now") }}</th></tr></thead>
+  <thead><tr><th>{{ _("When") }}</th><th>{{ _("Field") }}</th><th>{{ _("Was") }}</th><th>{{ _("Now") }}</th></tr></thead>
   <tbody>
   {% for e in op.edits %}
-    <tr><td>{{ e.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td><td>{{ e.field }}</td><td>{{ e.old_value }}</td><td>{{ e.new_value }}</td></tr>
+    <tr><td>{{ e.created_at|local("%Y-%m-%d %H:%M:%S") }}</td><td>{{ e.field }}</td><td>{{ e.old_value }}</td><td>{{ e.new_value }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

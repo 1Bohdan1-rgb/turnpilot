@@ -27,11 +27,11 @@
 {% if recent %}
 <h2>{{ _("Recent uploads") }}</h2>
 <table class="card">
-  <thead><tr><th>{{ _("Uploaded (UTC)") }}</th><th>{{ _("File") }}</th><th>{{ _("Model") }}</th><th>{{ _("Status") }}</th><th></th></tr></thead>
+  <thead><tr><th>{{ _("Uploaded") }}</th><th>{{ _("File") }}</th><th>{{ _("Model") }}</th><th>{{ _("Status") }}</th><th></th></tr></thead>
   <tbody>
   {% for ex in recent %}
     <tr>
-      <td>{{ ex.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td>{{ ex.created_at|local("%Y-%m-%d %H:%M") }}</td>
       <td><a href="{{ url_for('main.extraction_file', extraction_id=ex.id, which='original') }}">{{ ex.original_filename }}</a></td>
       <td>{% if ex.is_dxf %}{{ _("DXF, read by the code") }}{% if ex.dxf_part %} · {{ _("part {n}", n=ex.dxf_part) }}{% endif %}{% else %}{{ ex.model or "" }}{% endif %}</td>
       <td>

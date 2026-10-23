@@ -6,7 +6,7 @@
   <div>
     <h1>{{ _("Shop floor") }}</h1>
     <p class="sf-sub">{% if plan %}{{ plan.name }} · {{ "%g"|format(plan.width_mm) }} × {{ "%g"|format(plan.height_mm) }} {{ _("mm") }} ·
-      {{ _("uploaded by {name} {at}", name=record.uploaded_by, at=record.uploaded_at.strftime("%Y-%m-%d")) }}{% else %}{{ _("No plan uploaded yet") }}{% endif %} ·
+      {{ _("uploaded by {name} {at}", name=record.uploaded_by, at=record.uploaded_at|local("%Y-%m-%d")) }}{% else %}{{ _("No plan uploaded yet") }}{% endif %} ·
       <a href="{{ url_for('main.shop_plan_page') }}">{{ _("plan file") }}</a>. {{ _("Statuses and progress are set by the operator by hand: nothing is sent to or read from the machines.") }}</p>
   </div>
   <div class="sf-tools">

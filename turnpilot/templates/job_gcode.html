@@ -62,7 +62,7 @@
     {% set s = p.simulation|fromjson %}
     <tr>
       <td><a href="{{ url_for('main.gcode_program', program_id=p.id) }}">#{{ p.id }}</a> ({{ _("calculation v{v}", v=p.calculation_version) }})</td>
-      <td>{{ p.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td>{{ p.created_at|local("%Y-%m-%d %H:%M") }}</td>
       <td>{% if s.errors %}<span class="badge badge-failed">{{ _("{n} error(s)", n=s.errors|length) }}</span>{% endif %}
         {% if s.incomplete %}<span class="badge badge-failed">{{ _("part not complete") }}</span>{% endif %}
         {% if not s.errors and not s.incomplete %}<span class="badge badge-confirmed">{{ _("clean") }}</span>{% endif %}</td>

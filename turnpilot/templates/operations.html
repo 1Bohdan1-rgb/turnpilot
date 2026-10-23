@@ -46,7 +46,7 @@
         <div popover id="note-{{ op.id }}" class="note-pop">
           <strong>{{ _("Operation {n}", n=op.sequence) }}: {{ op.tool_type|label }}</strong>
           {% if op.note %}<div class="notes">{{ op.note }}</div>{% endif %}
-          {% if op.status == "skipped" %}<div class="muted">{{ _("skipped by") }} {{ op.skipped_by }}{% if op.skipped_at %}, {{ op.skipped_at.strftime("%Y-%m-%d") }}{% endif %}{% if op.skip_carried_from %} ({{ _("carried from v{v}", v=op.skip_carried_from) }}){% endif %}: {{ op.skipped_note }}</div>{% endif %}
+          {% if op.status == "skipped" %}<div class="muted">{{ _("skipped by") }} {{ op.skipped_by }}{% if op.skipped_at %}, {{ op.skipped_at|local("%Y-%m-%d") }}{% endif %}{% if op.skip_carried_from %} ({{ _("carried from v{v}", v=op.skip_carried_from) }}){% endif %}: {{ op.skipped_note }}</div>{% endif %}
         </div>{% endif %}
         {% if op.warning %}<div class="warning small">⚠ {{ op.warning }}</div>{% endif %}</td>
       <td>{% if op.turret_position %}<strong>T{{ op.turret_position }}</strong> {% endif %}{{ op.tool.name if op.tool else "—" }}</td>

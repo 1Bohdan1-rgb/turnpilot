@@ -36,7 +36,7 @@
       <td class="small">{{ r.catalogue }}{% if r.page %}, {{ _("p.") }} {{ r.page }}{% endif %}{% if r.pdf_page %} ({{ _("PDF p.") }} {{ r.pdf_page }}){% endif %}
         {% if r.quote %}<div class="muted">“{{ r.quote }}”</div>{% endif %}
         {% for c in checks %}<div class="warning">{{ c }}</div>{% endfor %}</td>
-      <td class="small">{{ r.origin|label }}{% if r.confirmed_at %}<br>{{ _("confirmed") }} {{ r.confirmed_at.strftime("%Y-%m-%d") }}{% endif %}</td>
+      <td class="small">{{ r.origin|label }}{% if r.confirmed_at %}<br>{{ _("confirmed") }} {{ r.confirmed_at|local("%Y-%m-%d") }}{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>

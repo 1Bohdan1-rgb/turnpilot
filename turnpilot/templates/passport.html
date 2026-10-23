@@ -19,7 +19,7 @@
       <td>{{ d.pages }}</td>
       <td>{{ d.text_pages }}{% if d.text_pages == 0 %} ({{ _("a scan") }}){% endif %}</td>
       <td>{{ d.selected_pages or "—" }}</td>
-      <td>{{ d.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td>{{ d.created_at|local("%Y-%m-%d %H:%M") }}</td>
     </tr>
   {% endfor %}
   </tbody>

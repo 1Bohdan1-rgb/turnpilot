@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 
 from flask_sqlalchemy import SQLAlchemy
 
+from . import localtime
+
 db = SQLAlchemy()
 
 FEATURE_TYPES = (
@@ -158,11 +160,11 @@ class MachineSpecSource(db.Model):
         if self.source == "passport":
             return f"passport p. {self.page}" if self.page else "passport"
         if self.source == "operator":
-            return f"entered by the operator {self.confirmed_at:%Y-%m-%d}"
+            return f"entered by the operator {localtime.local(self.confirmed_at, '%Y-%m-%d')}"
         if self.source == "demo":
             return "DEMO value, not from the machine"
         if self.source == "copied":
-            return f"copied from {self.quote} {self.confirmed_at:%Y-%m-%d}"
+            return f"copied from {self.quote} {localtime.local(self.confirmed_at, '%Y-%m-%d')}"
         return self.source
 
 

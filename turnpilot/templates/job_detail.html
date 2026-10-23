@@ -73,7 +73,7 @@
             </form></div>
         {% endif %}
         {% if f.type == "arc" and f.radius_source %}<div class="small muted">{{ _("R{r}: the operator's decision ({source}; dimension R{a}, geometry R{b}),", r=f.radius, source=radius_sources[f.radius_source], a=f.radius_dimension, b=f.radius_geometry) }}
-          {{ f.radius_decided_at.strftime("%Y-%m-%d %H:%M") }}{% if f.radius_note %}: {{ f.radius_note }}{% endif %}</div>
+          {{ f.radius_decided_at|local("%Y-%m-%d %H:%M") }}{% if f.radius_note %}: {{ f.radius_note }}{% endif %}</div>
           {% if arc_tops.get(f.id, {}).current %}<div class="warning small">{{ arc_tops[f.id].current }}</div>{% endif %}
           <details class="small"><summary>{{ _("Change the decision") }}</summary>
             {% set dim_r, geo_r = f.radius_dimension, f.radius_geometry %}
@@ -89,10 +89,10 @@
             <p class="muted">{{ _("A change recalculates the job: operations that stay the same keep their approval, the others are to be approved again; a program made before is out of date.") }}</p>
             {% if f.radius_decisions %}<ol class="muted">{% for d in f.radius_decisions %}
               <li>R{{ d.radius }} ({{ radius_sources[d.source] }}),
-                {{ d.decided_by or _("name not recorded") }}, {{ d.decided_at.strftime("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
+                {{ d.decided_by or _("name not recorded") }}, {{ d.decided_at|local("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
             {% endfor %}</ol>{% endif %}
           </details>{% endif %}
-        {% if f.type == "bore" %}<div class="small">{% if f.depth_mode %}<span class="muted">{{ _("depth {mode}: the operator's decision ({name}, {at})", mode=_(depth_modes[f.depth_mode]), name=f.depth_decided_by, at=f.depth_decided_at.strftime("%Y-%m-%d %H:%M")) }}</span>
+        {% if f.type == "bore" %}<div class="small">{% if f.depth_mode %}<span class="muted">{{ _("depth {mode}: the operator's decision ({name}, {at})", mode=_(depth_modes[f.depth_mode]), name=f.depth_decided_by, at=f.depth_decided_at|local("%Y-%m-%d %H:%M")) }}</span>
           <details><summary>{{ _("Change") }}</summary>{% else %}<div class="warning">{{ _("The depth {length}: to the full Ø or to the drill's point? Not programmed until you decide.", length=f.length) }}{% endif %}
             {% if depth_hints.get(f.id) %}<div class="muted">{{ depth_hints[f.id] }}</div>{% endif %}
             <form method="post" action="{{ url_for('main.choose_bore_depth', job_id=job.id, feature_id=f.id) }}" class="inline-form">
@@ -101,7 +101,7 @@
               <input name="decided_by" maxlength="100" placeholder="{{ names_req }}" aria-label="{{ _("Operator's name") }}" required>
             </form>
             {% if f.depth_decisions %}<ol class="muted">{% for d in f.depth_decisions %}
-              <li>{{ _("depth {mode}", mode=_(depth_modes[d.mode])) }}, {{ d.decided_by }}, {{ d.decided_at.strftime("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
+              <li>{{ _("depth {mode}", mode=_(depth_modes[d.mode])) }}, {{ d.decided_by }}, {{ d.decided_at|local("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
             {% endfor %}</ol>{% endif %}
             {% if f.depth_mode %}</details>{% else %}</div>{% endif %}</div>{% endif %}</td>
       <td>{{ f.across_flats if f.across_flats is not none else "" }}</td>
@@ -170,7 +170,7 @@
         <td><strong>T{{ s.position }}</strong></td>
         <td>{{ s.tool.name if s.tool else _("— empty —") }}{% if s.tool %} <span class="small muted">{{ s.tool.insert_code }}</span>{% endif %}</td>
         <td class="small">{% if s.change %}{{ s.change.machine_tool.name if s.change.machine_tool else _("empty") }} → {{ s.tool.name if s.tool else _("empty") }},
-          {{ s.change.decided_by }}, {{ s.change.created_at.strftime("%Y-%m-%d %H:%M") }}{% if s.change.note %}: {{ s.change.note }}{% endif %}{% else %}<span class="muted">{{ _("the machine's") }}</span>{% endif %}</td>
+          {{ s.change.decided_by }}, {{ s.change.created_at|local("%Y-%m-%d %H:%M") }}{% if s.change.note %}: {{ s.change.note }}{% endif %}{% else %}<span class="muted">{{ _("the machine's") }}</span>{% endif %}</td>
         <td>{% if s.change %}<form method="post" action="{{ url_for('main.undo_job_turret_change', job_id=job.id, change_id=s.change.id) }}" class="inline-form">
           <input name="decided_by" maxlength="100" placeholder="{{ _("operator's name") }}" aria-label="{{ _("Operator's name") }}" required>
           <button class="small">{{ _("Undo") }}</button></form>{% endif %}</td>
@@ -189,7 +189,7 @@
   {% set undone = job.turret_changes|rejectattr("active")|list %}
   {% if undone %}<details class="small"><summary>{{ _("Undone changes ({n})", n=undone|length) }}</summary><ul class="muted">
     {% for c in undone %}<li>T{{ c.position }}: {{ c.machine_tool.name if c.machine_tool else _("empty") }} → {{ c.tool.name if c.tool else _("empty") }},
-      {{ c.decided_by }} {{ c.created_at.strftime("%Y-%m-%d %H:%M") }}; {{ _("undone by") }} {{ c.removed_by }} {{ c.removed_at.strftime("%Y-%m-%d %H:%M") }}</li>{% endfor %}
+      {{ c.decided_by }} {{ c.created_at|local("%Y-%m-%d %H:%M") }}; {{ _("undone by") }} {{ c.removed_by }} {{ c.removed_at|local("%Y-%m-%d %H:%M") }}</li>{% endfor %}
   </ul></details>{% endif %}
 </div>
 

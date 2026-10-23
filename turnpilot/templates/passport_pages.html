@@ -30,7 +30,7 @@
     <strong>{{ _("{n} API call", n=estimate.calls) }}</strong> {{ _("to {model}, about {tokens} input tokens.", model=model, tokens=estimate.input_tokens) }}</p>
   <label class="inline"><input type="checkbox" name="paid" value="1"> {{ _("I start a paid reading (one API call)") }}</label>
   <button type="submit" class="js-reading">{{ _("Read") }}</button>
-  {% if document.status in ("read", "confirmed") %}<p class="muted small">{{ _("Read {at} (pages {pages}):", at=document.read_at.strftime("%Y-%m-%d %H:%M"), pages=document.read_pages) }} <a href="{{ url_for('main.passport_review', document_id=document.id) }}">{{ _("check the values") }}</a>; {{ _("reading again makes a new paid call.") }}</p>{% endif %}
+  {% if document.status in ("read", "confirmed") %}<p class="muted small">{{ _("Read {at} (pages {pages}):", at=document.read_at|local("%Y-%m-%d %H:%M"), pages=document.read_pages) }} <a href="{{ url_for('main.passport_review', document_id=document.id) }}">{{ _("check the values") }}</a>; {{ _("reading again makes a new paid call.") }}</p>{% endif %}
   {% if document.status == "failed" %}<p class="warning">{{ _("Last reading failed:") }} {{ document.error }}</p>{% endif %}
 </form>
 {% endif %}

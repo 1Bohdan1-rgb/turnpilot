@@ -36,7 +36,7 @@
 {% if extraction.is_cached %}
 <div class="flash cached-note">
   <span class="badge badge-cached">{{ _("cached") }}</span>
-  {{ _("This file was already read by {model} (upload #{n}, {at} UTC). The saved result is shown; no new API call was made.", model=extraction.model, n=extraction.cached_from_id, at=extraction.cached_from.created_at.strftime("%Y-%m-%d %H:%M")) }}
+  {{ _("This file was already read by {model} (upload #{n}, {at}). The saved result is shown; no new API call was made.", model=extraction.model, n=extraction.cached_from_id, at=extraction.cached_from.created_at|local("%Y-%m-%d %H:%M")) }}
   <form method="post" action="{{ url_for('main.read_again', extraction_id=extraction.id) }}" class="inline-form">
     <button type="submit" class="js-reading">{{ _("Read again") }}</button>
     <span class="muted small">{{ _("makes a new, paid API call") }}</span>

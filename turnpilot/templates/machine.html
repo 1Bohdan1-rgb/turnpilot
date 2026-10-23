@@ -135,7 +135,7 @@
 </form>
 {% endif %}
 {% if turret_copies %}<details class="card small"><summary>{{ _("Turret copies ({n})", n=turret_copies|length) }}</summary><ul>
-  {% for c in turret_copies %}<li>{{ c.copied_at.strftime("%Y-%m-%d %H:%M") }}: {{ _("from {machine}", machine=c.from_machine.name) }}, {{ c.copied_by }}
+  {% for c in turret_copies %}<li>{{ c.copied_at|local("%Y-%m-%d %H:%M") }}: {{ _("from {machine}", machine=c.from_machine.name) }}, {{ c.copied_by }}
     {% set before = c.before|fromjson %}{% set after = c.after|fromjson %}
     <span class="muted">— {{ _("changed:") }} {% for p, t in after.items() if before[p] != t %}T{{ p }} {{ tool_names.get(before[p], _("empty")) }} → {{ tool_names.get(t, _("empty")) }}{% if not loop.last %}, {% endif %}{% else %}{{ _("nothing") }}{% endfor %}</span>
     {% if c.programming %}{% set values = c.programming|fromjson %}<div class="muted">{{ _("programming values taken:") }}

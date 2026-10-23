@@ -33,6 +33,9 @@ def create_app(test_config=None, instance_path=None):
     app.jinja_env.globals["_"] = i18n.template_gettext
     app.jinja_env.filters["label"] = i18n.label
     app.jinja_env.globals.update(link=i18n.link, strong=i18n.strong)
+    from . import localtime
+
+    app.jinja_env.filters["local"] = localtime.local
 
     @app.context_processor
     def _language():

@@ -3,11 +3,11 @@
 {% block content %}
 <h1>{{ _("Check the machine data: {file}", file=document.original_filename) }}</h1>
 <p class="muted">{{ _("Read by {model} ({prompt}) from pages {pages},", model=document.model, prompt=document.prompt_version, pages=document.read_pages) }}
-  {{ document.read_at.strftime("%Y-%m-%d %H:%M") }} ·
+  {{ document.read_at|local("%Y-%m-%d %H:%M") }} ·
   <a href="{{ url_for('main.passport_file', document_id=document.id) }}" target="_blank">{{ _("open the PDF") }}</a> ·
   {{ _("nothing reaches the machine before you confirm it.") }}</p>
 {% if document.status == "confirmed" %}
-<div class="flash">{{ _("Confirmed {at}. Confirming again overwrites the values you tick.", at=document.confirmed_at.strftime("%Y-%m-%d %H:%M")) }}</div>
+<div class="flash">{{ _("Confirmed {at}. Confirming again overwrites the values you tick.", at=document.confirmed_at|local("%Y-%m-%d %H:%M")) }}</div>
 {% endif %}
 <p class="muted small">{{ _("Tick each value you have checked against the passport. A value you change is recorded as entered by the operator. A value the passport does not give is recorded as \"not in passport\" and the machine keeps what it has; nothing is guessed.") }} <span class="badge badge-check">{{ _("check") }}</span>: {{ _("the code could not confirm the quote or the number in it.") }}</p>
 

@@ -11,7 +11,7 @@ one operator field for the whole panel (in_form: the page around it holds the fo
   <h2>{{ _("Order {n}", n=order.id) }}: {{ order.quantity }} × <a href="{{ url_for('main.job_detail', job_id=order.job_id) }}">{{ order.job.name }}</a>
     {{ _("on {machine}", machine=order.machine.name) }}{% if order.status == "closed" %} ({{ _("closed") }}){% elif order.is_current %} ({{ _("running now") }}){% endif %}</h2>
   <p class="muted small">{{ _("Nothing is sent to or read from the machine: the operator records the progress here.") }}
-    {{ _("Created by {name} {at}.", name=order.created_by, at=order.created_at.strftime("%Y-%m-%d %H:%M")) }}</p>
+    {{ _("Created by {name} {at}.", name=order.created_by, at=order.created_at|local("%Y-%m-%d %H:%M")) }}</p>
   {% set ex = order.job.extraction %}
   {% if ex and ex.file_type != "dxf" and ex.sent_filename %}
     <p><a href="{{ url_for('main.extraction_file', extraction_id=ex.id, which='original') }}" target="_blank">
@@ -40,7 +40,7 @@ one operator field for the whole panel (in_form: the page around it holds the fo
         <tr{% if b.done %} class="changed"{% endif %}><td>{{ b.number }}</td><td class="small">{{ b.title }}</td>
           <td>{{ "%.1f"|format(b.seconds) }} s</td>
           <td>{% if b.done %}<span class="done-mark">✓</span> <span class="small">{{ b.mark.decided_by }},
-              {{ b.mark.decided_at.strftime("%Y-%m-%d %H:%M") }}</span>
+              {{ b.mark.decided_at|local("%Y-%m-%d %H:%M") }}</span>
             {% if order.status == "open" %}<button class="small" name="block" value="{{ b.number }}"
               formaction="{{ url_for('main.order_action', order_id=order.id, action='unmark') }}">{{ _("Cancel the mark") }}</button>{% endif %}
           {% elif order.status == "open" %}<button class="touch" name="block" value="{{ b.number }}"
@@ -65,8 +65,8 @@ one operator field for the whole panel (in_form: the page around it holds the fo
   </p>
   {% endif %}
   {% if order.events or order.marks %}<details class="small"><summary>{{ _("History ({n})", n=order.events|length + order.marks|length) }}</summary><ul class="muted">
-    {% for e in order.events %}<li>{{ e.decided_at.strftime("%Y-%m-%d %H:%M") }} {{ e.decided_by }}: {{ e.kind|label }} {{ e.value or "" }}</li>{% endfor %}
-    {% for m in order.marks %}<li>{{ m.decided_at.strftime("%Y-%m-%d %H:%M") }} {{ m.decided_by }}: N{{ m.block }} {{ _("done") if m.done else _("mark cancelled") }}</li>{% endfor %}
+    {% for e in order.events %}<li>{{ e.decided_at|local("%Y-%m-%d %H:%M") }} {{ e.decided_by }}: {{ e.kind|label }} {{ e.value or "" }}</li>{% endfor %}
+    {% for m in order.marks %}<li>{{ m.decided_at|local("%Y-%m-%d %H:%M") }} {{ m.decided_by }}: N{{ m.block }} {{ _("done") if m.done else _("mark cancelled") }}</li>{% endfor %}
   </ul></details>{% endif %}
 </div>
 {% if not in_form %}</form>{% endif %}

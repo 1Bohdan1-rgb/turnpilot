@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
-from . import catalogue_file, catalogue_reader, cutting_data, drawing_reader, dxf_adapter, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
+from . import catalogue_file, localtime, catalogue_reader, cutting_data, drawing_reader, dxf_adapter, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
 from .models import (
     CatalogueDocument, CuttingDataRow, DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, Tool, TurretSlot, db,
@@ -734,7 +734,7 @@ def gcode_readiness(job, machine):
     if copied:
         c = copied[-1]
         result.blockers.insert(0, f"{machine.name}'s turret was copied from {c.from_machine.name} by {c.copied_by} on "
-                                  f"{c.copied_at:%Y-%m-%d %H:%M}, after the calculation: calculate the job again")
+                                  f"{localtime.local(c.copied_at)}, after the calculation: calculate the job again")
     by_id = {op.id: op for op in job.current_operations}
     for op_id in result.usable:  # a bore's drill: the operator decides what the drawing's depth means
         op = by_id[op_id]
@@ -1103,6 +1103,8 @@ def part3d_data(record):
     states, computed_at = stock_states(record)
     settings = {row["name"]: row["value"] for row in json.loads(record.settings)}
     _, _, profile, _ = gcode_inputs(job, machine)
+    if computed_at and computed_at.endswith(" UTC"):  # kept as UTC text: shown in London's time
+        computed_at = localtime.local(datetime.strptime(computed_at[:-4], "%Y-%m-%d %H:%M"))
     return {"program": record.id, "states": states, "computed_at": computed_at,
             "final": [[round(z, 3), round(r, 3)] for z, r in profile.final_points],
             "bar_radius": planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
@@ -1141,13 +1143,13 @@ def gcode_stale(record, machine):
         if changed:
             d = changed[-1]
             reasons.append(f"the decision on the arc's radius was changed to R{d.radius:g} by {d.decided_by} on "
-                           f"{d.decided_at:%Y-%m-%d %H:%M}")
+                           f"{localtime.local(d.decided_at)}")
     for feature in job.active_features:
         if feature.depth_decided_at and record.created_at \
                 and feature.depth_decided_at.replace(tzinfo=None) > record.created_at.replace(tzinfo=None):
             reasons.append(f"the decision on the bore Ø{feature.diameter:g}'s depth "
                            f"({BORE_DEPTH_MODES[feature.depth_mode]}) was made by {feature.depth_decided_by} on "
-                           f"{feature.depth_decided_at:%Y-%m-%d %H:%M}")
+                           f"{localtime.local(feature.depth_decided_at)}")
     if job.tools_changed_since_calculation:
         reasons.append("tools changed since the calculation")
     made = record.created_at.replace(tzinfo=None) if record.created_at else None
@@ -1157,7 +1159,7 @@ def gcode_stale(record, machine):
     for c in turret_copies(record.machine or machine):
         if made and c.copied_at.replace(tzinfo=None) > made:
             reasons.append(f"the machine's turret was copied from {c.from_machine.name} by {c.copied_by} on "
-                           f"{c.copied_at:%Y-%m-%d %H:%M}")
+                           f"{localtime.local(c.copied_at)}")
     then = {row["name"]: (row["value"], row["source"]) for row in json.loads(record.settings)}
     now = {row["name"]: (row["value"], row["source"]) for row in gcode_settings(job, machine)}
     changed = [row["label"] for row in gcode_settings(job, machine) if then.get(row["name"]) != now[row["name"]]]
@@ -1299,7 +1301,7 @@ def take_stickout_hint(job, machine, name, value):
     job.gcode_setup_demo = False
     job.stickout_note = (f"{hint['length']:g} + {hint['face_stock']:g} + {hint['parting']:g} + {hint['clearance']:g}"
                          f"{' (safety)' if hint['from_safety'] else ''} = {hint['value']:g} mm, "
-                         f"{name} {datetime.now(timezone.utc):%Y-%m-%d %H:%M}")[:200]
+                         f"{name} {localtime.now_text()}")[:200]
     db.session.commit()
     return hint
 
@@ -2287,7 +2289,7 @@ def shop_machines():
             "x": place.x_mm if place else None, "y": place.y_mm if place else None,
             "rotation": place.rotation if place else 0,
             "changed_by": m.last_placement_record.placed_by if m.last_placement_record else None,
-            "changed_at": (m.last_placement_record.placed_at.strftime("%Y-%m-%d %H:%M")
+            "changed_at": (localtime.local(m.last_placement_record.placed_at)
                            if m.last_placement_record else None),
             "removed": bool(m.last_placement_record and m.last_placement_record.removed),
             "length": m.footprint_length_mm, "width": m.footprint_width_mm,

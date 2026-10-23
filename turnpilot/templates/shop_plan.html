@@ -14,7 +14,7 @@
   <thead><tr><th>{{ _("Plan") }}</th><th>{{ _("Size, mm") }}</th><th>{{ _("File") }}</th><th>{{ _("By") }}</th><th>{{ _("When") }}</th></tr></thead>
   <tbody>{% for p in plans %}<tr><td>{{ p.name }}{% if loop.first %} <strong>({{ _("shown") }})</strong>{% endif %}</td>
     <td>{{ "%g"|format(p.width_mm) }} × {{ "%g"|format(p.height_mm) }}</td><td>{{ p.filename or "" }}</td>
-    <td>{{ p.uploaded_by }}</td><td>{{ p.uploaded_at.strftime("%Y-%m-%d %H:%M") }}</td></tr>{% endfor %}</tbody>
+    <td>{{ p.uploaded_by }}</td><td>{{ p.uploaded_at|local("%Y-%m-%d %H:%M") }}</td></tr>{% endfor %}</tbody>
 </table></div>
 {% endif %}
 {% endblock %}

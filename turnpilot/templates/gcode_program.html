@@ -3,7 +3,7 @@
 {% block content %}
 <h1>{{ _("Program #{n}: {job}", n=record.id, job=job.name) }}</h1>
 <p class="muted">{{ record.dialect }} · {{ _("calculation v{v}", v=record.calculation_version) }} ·
-  {{ record.created_at.strftime("%Y-%m-%d %H:%M") }} · {{ _("{n} lines", n=lines|length) }} ·
+  {{ record.created_at|local("%Y-%m-%d %H:%M") }} · {{ _("{n} lines", n=lines|length) }} ·
   <a href="{{ url_for('main.job_gcode', job_id=job.id) }}">{{ _("G-code of the job") }}</a></p>
 {% include "_next_step.html" %}
 
@@ -30,7 +30,7 @@
 {% endif %}
 {% if record.status == "ready" %}
 <div class="banner banner-ok"><strong>{{ _("Ready to run") }}</strong>, {{ _("confirmed by") }} {{ record.confirmed_by }}
-  {{ record.confirmed_at.strftime("%Y-%m-%d %H:%M") }}.
+  {{ record.confirmed_at|local("%Y-%m-%d %H:%M") }}.
   {% if not stale %}<a href="{{ url_for('main.gcode_download', program_id=record.id) }}">{{ _("Download the .nc file") }}</a>.{% endif %}
   {{ _("The operator presses Start after the machine check.") }}</div>
 {% endif %}
