@@ -1032,7 +1032,6 @@ UK = {
     "the stock beyond Z0 to face off (the job's G-code set-up)": "припуск за Z0 на торцювання (налагодження G-коду завдання)",
     "the safety distance to the chuck jaws (Machine page, programming values)": "безпечна відстань до кулачків патрона (сторінка верстата, значення програмування)",
     # upload page
-    "Ready to run, confirmed by {name}. The program is not sent anywhere: download it, and the operator presses Start after the machine check.": "Готово до запуску, підтвердив(ла) {name}. Програма нікуди не надсилається: завантажте її, і оператор натисне «Пуск» після перевірки на верстаті.",
     "Upload a PNG, JPG, PDF or DXF drawing (up to {mb} MB).": "Завантажте креслення PNG, JPG, PDF або DXF (до {mb} МБ).",
     "A DXF is read by the program at once: no model, no paid call.": "DXF читає програма одразу: без моделі й без платного виклику.",
     "A PNG, JPG or PDF is read by Claude (3–7 minutes; for a PDF only the first page); a file already read by the same model is not sent again.": "PNG, JPG або PDF читає Claude (3–7 хвилин; у PDF — лише перша сторінка); файл, уже прочитаний тією самою моделлю, повторно не надсилається.",

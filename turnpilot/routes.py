@@ -1042,10 +1042,7 @@ def gcode_ready(program_id):
         services.mark_gcode_ready(record, record.machine or services.job_machine(record.job), request.form)
     except services.GcodeError as e:
         flash(_("Not ready to run: {reasons}.", reasons=e), "error")
-    else:
-        flash(_("Ready to run, confirmed by {name}. The program is not sent anywhere: download it, and the operator "
-                "presses Start after the machine check.", name=record.confirmed_by))
-    return redirect(url_for("main.gcode_program", program_id=record.id))
+    return redirect(url_for("main.gcode_program", program_id=record.id))  # the page's green banner says it
 
 
 @bp.route("/gcode/<int:program_id>/download")

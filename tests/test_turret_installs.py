@@ -39,7 +39,9 @@ def test_ready_to_run_waits_for_installed_and_offsets_measured(app, client):
     client.post(f"/jobs/{job.id}/turret/installed", data={"change_id": change.id, "decided_by": "Ivan", "back": back})
     assert change.install.installed_by == "Ivan" and services.not_installed(job, machine) == []
     response = client.post(f"/gcode/{record.id}/ready", data=ALL_CHECKS, follow_redirects=True)
-    assert "Ready to run, confirmed by Operator I." in response.get_data(as_text=True)
+    page = response.get_data(as_text=True)
+    assert "<strong>Ready to run</strong>, confirmed by Operator I" in page  # the banner, once: no flash as well
+    assert page.count("confirmed by Operator I") == 1
 
 
 def test_all_at_once_and_a_mark_cancelled(app, client):
