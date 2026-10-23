@@ -848,7 +848,8 @@ def jobs():
 @bp.route("/jobs/<int:job_id>")
 def job_detail(job_id):
     job = db.get_or_404(Job, job_id)
-    return render_template("job_detail.html", job=job, next_step=services.next_step(job), feature_types=FEATURE_TYPES, positions=POSITIONS,
+    return render_template("job_detail.html", job=job, next_step=services.next_step(job),
+                           stickout_hint=services.stickout_hint(job, services.job_machine(job)), feature_types=FEATURE_TYPES, positions=POSITIONS,
                            machine_warnings=services.machine_warnings(job, services.job_machine(job)),
                            suggested_free_end=services.suggest_free_end(job),
                            conflicts=services.radius_conflicts(job) if job.axial_order_known else {},
@@ -1069,11 +1070,29 @@ def gcode_setup(job_id):
     except FormError as e:
         flash(str(e), "error")
         return redirect(url_for("main.job_detail", job_id=job.id))
+    if stickout != job.stickout_mm:
+        job.stickout_note = None  # typed: not the hint's any more
     job.free_end, job.stickout_mm, job.face_stock_mm = free_end, stickout, face_stock
     job.gcode_setup_demo = False  # saved by the operator
     db.session.commit()
     flash(_("G-code set-up saved."))
     return redirect(url_for("main.job_detail", job_id=job.id))
+
+
+@bp.route("/jobs/<int:job_id>/stickout-hint", methods=["POST"])
+def take_stickout_hint(job_id):
+    """The operator takes the stick-out hint (length + parting width + margin) as the job's stick-out."""
+    job = db.get_or_404(Job, job_id)
+    try:
+        value = _number(request.form, "value", required=True)
+        hint = services.take_stickout_hint(job, services.job_machine(job), request.form.get("decided_by"), value)
+    except (FormError, services.StickoutError) as e:
+        flash(str(e), "error")
+    else:
+        flash(_("Stick-out {value} mm taken from the drawing ({length} + {parting} + {margin}).",
+                value=f"{hint['value']:g}", length=f"{hint['length']:g}", parting=f"{hint['parting']:g}",
+                margin=f"{hint['margin']:g}"))
+    return redirect(url_for("main.job_detail", job_id=job.id) + "#gcode-setup")
 
 
 def _is_inner(feature):

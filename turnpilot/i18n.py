@@ -1004,6 +1004,16 @@ UK = {
     "every position of this machine takes the other's tool (or empty), and the programming values the other has filled in (an empty one there leaves this machine's); kept in the history": "кожна позиція цього верстата бере інструмент іншого (або порожньо), а також заповнені на іншому значення програмування (порожнє там лишає значення цього верстата); зберігається в історії",
     "Programming values taken: {n}.": "Взято значень програмування: {n}.",
     "copied from {machine}": "скопійовано з {machine}",
+    # stick-out hint
+    "Stick-out taken from the drawing: {note}": "Виліт узято з креслення: {note}",
+    "Stick-out from the drawing": "Виліт з креслення",
+    "No hint: not known": "Підказки немає: невідомо",
+    "part length {length} + parting width {parting} + margin {margin} = {value} mm": "довжина деталі {length} + ширина відрізки {parting} + запас {margin} = {value} мм",
+    "Take {value} mm": "Взяти {value} мм",
+    "A hint only: it is never filled in by itself. Measure the stick-out on the machine.": "Лише підказка: сама вона ніколи не вписується. Виміряйте виліт на верстаті.",
+    "Stick-out {value} mm taken from the drawing ({length} + {parting} + {margin}).": "Виліт {value} мм узято з креслення ({length} + {parting} + {margin}).",
+    "Stick-out margin beyond the parting cut": "Запас вильоту за різом відрізки",
+    "the stick-out hint on the job page: part length + parting width + this; empty: no hint": "підказка вильоту на сторінці завдання: довжина деталі + ширина відрізки + це значення; порожньо: без підказки",
 }
 
 

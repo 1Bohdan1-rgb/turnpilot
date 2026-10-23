@@ -16,6 +16,7 @@ class MachineField:
     required: bool = False  # the planner cannot work without it (a value is kept, not cleared)
     help: str = ""
     options: tuple = ()  # "choice": the allowed values
+    in_program: bool = True  # a value the program uses (in its settings, a change makes a program out of date)
 
 
 MACHINE_FIELDS = (
@@ -74,6 +75,9 @@ PROGRAMMING_FIELDS = (
                  help="the part comes off cleanly"),
     MachineField("groove_dwell_s", "Dwell at a groove's bottom", "s", "float",
                  help="optional: empty, no dwell (G04)"),
+    MachineField("stickout_margin_mm", "Stick-out margin beyond the parting cut", "mm", "float",
+                 help="the stick-out hint on the job page: part length + parting width + this; empty: no hint",
+                 in_program=False),
 )
 FIELDS_BY_NAME = {f.name: f for f in MACHINE_FIELDS + PROGRAMMING_FIELDS}
 

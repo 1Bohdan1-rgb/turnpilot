@@ -1003,6 +1003,8 @@ def gcode_settings(job, machine):
     """The values a program uses, each with its source (the passport, the operator, DEMO)."""
     rows = []
     for field in (machine_spec.FIELDS_BY_NAME["max_rpm"],) + machine_spec.PROGRAMMING_FIELDS:
+        if not field.in_program:
+            continue
         value = getattr(machine, field.name)
         source = machine.source_of(field.name)
         rows.append({"name": field.name, "label": field.label, "unit": field.unit,
@@ -1220,6 +1222,53 @@ def set_gcode_demo(machine, job=None):
 
 
 PROFILE_TYPES = ("od_turn", "hex", "taper", "arc", "groove")
+
+
+class StickoutError(ValueError):
+    pass
+
+
+def stickout_hint(job, machine):
+    """The stick-out from the drawing: the part's length (its turned sections) + the parting insert's width + the
+    machine's margin (the operator's programming value). Never filled in by itself: the operator takes it. Returns
+    {"value", "length", "parting", "margin"} or {"missing": [what is not known, in words]}."""
+    missing = []
+    length = sum(f.length or 0 for f in job.active_features if f.type in PROFILE_TYPES)
+    if not job.axial_order_known or length <= 0:
+        missing.append("the part's length (a DXF job with its sections)")
+    parting = None
+    used = [op.tool for op in job.current_operations if op.tool_type == "parting" and op.tool is not None]
+    if used:
+        parting = used[0].insert_width
+    else:
+        widths = [s.tool.insert_width for s in job_turret(job, machine) if s.tool and s.tool.type == "parting"]
+        parting = widths[0] if widths else None
+    if parting is None:
+        missing.append("the parting insert's width (no parting tool with a width in the job's turret)")
+    margin = machine.stickout_margin_mm
+    if margin is None:
+        missing.append("the stick-out margin beyond the parting cut (Machine page, programming values)")
+    if missing:
+        return {"missing": missing}
+    return {"value": round(length + parting + margin, 3), "length": round(length, 3), "parting": parting,
+            "margin": margin}
+
+
+def take_stickout_hint(job, machine, name, value):
+    """The operator takes the hint as the job's stick-out (name required); `value` is the one shown, so a hint that
+    changed since is refused. The sum, the name and the time are kept with the value."""
+    name = (name or "").strip()[:100]
+    if not name:
+        raise StickoutError("The operator's name is required to take the stick-out")
+    hint = stickout_hint(job, machine)
+    if "missing" in hint or abs(hint["value"] - value) > 1e-9:
+        raise StickoutError("The hint changed since the page was shown: look at it again")
+    job.stickout_mm = hint["value"]
+    job.gcode_setup_demo = False
+    job.stickout_note = (f"{hint['length']:g} + {hint['parting']:g} + {hint['margin']:g} = {hint['value']:g} mm, "
+                         f"{name} {datetime.now(timezone.utc):%Y-%m-%d %H:%M}")[:200]
+    db.session.commit()
+    return hint
 
 
 def suggest_free_end(job):

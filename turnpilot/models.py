@@ -74,6 +74,7 @@ class Machine(db.Model):
     groove_reference = db.Column(db.String(12))
     parting_overshoot_mm = db.Column(db.Float)
     groove_dwell_s = db.Column(db.Float)  # optional: empty, no dwell at a groove's bottom
+    stickout_margin_mm = db.Column(db.Float)  # the stick-out hint: beyond the parting cut (the operator's)
 
     slots = db.relationship(
         "TurretSlot", back_populates="machine", order_by="TurretSlot.position", cascade="all, delete-orphan"
@@ -426,6 +427,7 @@ class Job(db.Model):
     # how far the part sticks out of the jaws, and the stock beyond Z0 to face off. Empty: no program.
     free_end = db.Column(db.String(5))
     stickout_mm = db.Column(db.Float)
+    stickout_note = db.Column(db.String(200))  # taken from the hint: its sum, who, when; empty: typed
     face_stock_mm = db.Column(db.Float)
     # The set-up was filled in by the demo command (`flask gcode-demo`), not by the operator: no program is ready to
     # run until the operator saves the set-up.

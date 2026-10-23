@@ -193,7 +193,7 @@
   </ul></details>{% endif %}
 </div>
 
-<h2>{{ _("G-code set-up") }}</h2>
+<h2 id="gcode-setup">{{ _("G-code set-up") }}</h2>
 <form method="post" action="{{ url_for('main.gcode_setup', job_id=job.id) }}" class="card grid-form">
   <label>{{ _("Free end (Z0) on the drawing") }}
     <select name="free_end">
@@ -208,8 +208,23 @@
   <label>{{ _("Stock beyond Z0 to face off, mm") }} <input name="face_stock_mm" type="number" step="any" min="0"
     value="{{ job.face_stock_mm if job.face_stock_mm is not none else '' }}"></label>
   <p class="muted small">{{ _("Z0 is on the free end face, X0 on the axis; Z is negative towards the chuck. Nothing here is guessed: a program is not built while a value is empty.") }}</p>
+  {% if job.stickout_note %}<p class="small muted">{{ _("Stick-out taken from the drawing: {note}", note=job.stickout_note) }}</p>{% endif %}
   <button type="submit">{{ _("Save the set-up") }}</button>
 </form>
+<div class="card stickout-hint">
+  <strong>{{ _("Stick-out from the drawing") }}</strong> <span class="badge badge-check">{{ _("check") }}</span>
+  {% if stickout_hint.missing %}
+  <p class="small muted">{{ _("No hint: not known") }}: {{ stickout_hint.missing|join("; ") }}.</p>
+  {% else %}{% set h = stickout_hint %}
+  <p class="small">{{ _("part length {length} + parting width {parting} + margin {margin} = {value} mm", length="%g"|format(h.length), parting="%g"|format(h.parting), margin="%g"|format(h.margin), value="%g"|format(h.value)) }}</p>
+  <form method="post" action="{{ url_for('main.take_stickout_hint', job_id=job.id) }}" class="inline-form">
+    <input type="hidden" name="value" value="{{ h.value }}">
+    <input name="decided_by" maxlength="100" placeholder="{{ _("operator's name (required)") }}" aria-label="{{ _("Operator's name") }}" required>
+    <button type="submit">{{ _("Take {value} mm", value="%g"|format(h.value)) }}</button>
+  </form>
+  {% endif %}
+  <p class="small muted">{{ _("A hint only: it is never filled in by itself. Measure the stick-out on the machine.") }}</p>
+</div>
 {% endif %}
 {% if job.current_operations %}
 <p class="muted small">{{ _("Recalculating archives the current operations. Their status and edit log stay in the history.") }}</p>
