@@ -1730,7 +1730,10 @@ def order_action(order_id, action):
                         "next one running with \"Running now\".", n=order.id, machine=order.machine.name,
                         orders=", ".join(f"{o.id} ({o.job.name})" for o in others)))
         elif action == "program":
-            services.take_latest_program(order, name)
+            cancelled = services.take_latest_program(order, name)
+            if cancelled:
+                flash(_("Program {n} taken. Marks cancelled, since their operation is another one in it now: {blocks}.",
+                        n=order.program_id, blocks=", ".join(f"N{b}" for b in cancelled)))
         else:
             abort(404)
     except (FormError, services.OrderError) as e:

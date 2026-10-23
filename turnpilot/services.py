@@ -1118,7 +1118,7 @@ def order_part3d(order):
         return {"error": f"No program taken by order {order.id}: no operations to show."}
     data = part3d_data(order.program)
     blocks = [s["n"] for s in data["states"][1:]]
-    done = order.done_blocks
+    done = valid_done_blocks(order, program_titles(order.program, order.machine))
     k = 0
     while k < len(blocks) and blocks[k] in done:
         k += 1
@@ -2166,7 +2166,7 @@ def mark_order_block(order, block, done, name):
     titles = {b["number"]: b["title"] for b in order_progress(order)["blocks"]}
     if block not in titles:
         raise OrderError(f"N{block} is not an operation of program {order.program_id}")
-    if (block in order.done_blocks) == done:
+    if (block in valid_done_blocks(order, {n: t[:200] for n, t in titles.items()})) == done:
         raise OrderError(f"N{block} is {'marked done' if done else 'not marked'} already")
     order.marks.append(OrderOperationMark(block=block, title=titles[block][:200], done=done, decided_by=name))
     db.session.commit()
@@ -2200,16 +2200,41 @@ def close_order(order, name):
     db.session.commit()
 
 
+def program_titles(record, machine):
+    """{block N: its title} of a program (the titles the operator's marks are checked against)."""
+    return {op.number: op.title[:200] for op in cycle_time(record, machine)["time"].operations if op.number is not None}
+
+
+def valid_done_blocks(order, titles):
+    """The blocks marked done whose mark was made on the same operation (the same title) as the program's now: a mark
+    made on another program's block N does not count for a different operation under the same N."""
+    marks = order.last_marks
+    return {n for n, m in marks.items() if m.done and titles.get(n) == (m.title or "")[:200]}
+
+
 def take_latest_program(order, name):
-    from .models import OrderEvent
+    """The order takes the job's newest program for its machine. A mark whose block is not the same operation in it
+    (another title under its N, or no such N) is cancelled with the reason: an old ✓ never stands on another
+    operation."""
+    from .models import OrderEvent, OrderOperationMark
 
     name = _name(name)
     program = latest_program(order.job, order.machine)
     if program is None:
         raise OrderError(f"The job has no program made for {order.machine.name}")
+    titles = program_titles(program, order.machine)
+    cancelled = []
+    for n, mark in sorted(order.last_marks.items()):
+        if mark.done and titles.get(n) != (mark.title or "")[:200]:
+            order.marks.append(OrderOperationMark(block=n, title=(mark.title or "")[:200], done=False, decided_by=name))
+            cancelled.append(n)
     order.program = program
     order.events.append(OrderEvent(kind="program", value=f"program {program.id}", decided_by=name))
+    if cancelled:
+        order.events.append(OrderEvent(kind="marks_cancelled", value=", ".join(f"N{n}" for n in cancelled)[:100],
+                                       decided_by=name))
     db.session.commit()
+    return cancelled
 
 
 def order_progress(order):
@@ -2223,8 +2248,9 @@ def order_progress(order):
     cycle = cycle_time(order.program, order.machine)
     time = cycle["time"]
     marks = order.last_marks
+    done = valid_done_blocks(order, {op.number: op.title[:200] for op in time.operations if op.number is not None})
     blocks = [{"number": op.number, "title": op.title, "seconds": op.total_s,
-               "done": op.number in marks and marks[op.number].done, "mark": marks.get(op.number)}
+               "done": op.number in done, "mark": marks.get(op.number)}
               for op in time.operations if op.number is not None]
     missing = [label for label, (value, _) in cycle["sources"].items() if value is None]
     return {"program": order.program, "blocks": blocks, "part_s": time.total_s,

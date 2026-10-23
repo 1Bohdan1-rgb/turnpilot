@@ -1044,6 +1044,8 @@ UK = {
     # running without an order
     "The status is \"running\", but no order runs on this machine: make the order running (\"Running now\") or set the status.": "Стан «працює», але на цьому верстаті не виконується жодне замовлення: зробіть замовлення поточним («Виконується зараз») або змініть стан.",
     "Order {n} was running on {machine}: no order runs there now. Open orders: {orders}. Make the next one running with \"Running now\".": "Замовлення {n} виконувалось на {machine}: тепер там не виконується жодне. Відкриті замовлення: {orders}. Зробіть наступне поточним кнопкою «Виконується зараз».",
+    # order marks
+    "Program {n} taken. Marks cancelled, since their operation is another one in it now: {blocks}.": "Програму {n} взято. Позначки скасовано, бо їхня операція в ній тепер інша: {blocks}.",
 }
 
 
@@ -1075,6 +1077,7 @@ LABELS = {
     "diameter": "діаметр", "length": "довжина", "radius": "радіус", "other": "інше",
     # an order's events (open / closed above)
     "created": "створено", "done": "виконано", "current": "виконується", "program": "взято програму",
+    "marks_cancelled": "скасовано позначки",
     # where a feature is (location, face, position)
     "external": "зовнішній", "internal": "внутрішній", "left": "ліворуч", "right": "праворуч",
     "external left": "зовнішній ліворуч", "external right": "зовнішній праворуч",
