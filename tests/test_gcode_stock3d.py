@@ -98,3 +98,27 @@ def test_an_old_program_gets_its_states_once(app, monkeypatch):
         raise AssertionError("simulated again")
     monkeypatch.setattr(services, "gcode_simulation", no_simulation)
     assert services.stock_states(record) == (expected, computed_at)
+
+
+def test_the_command_computes_the_states_of_old_programs_only(app):
+    machine = ready_machine()
+    job = make_job(**pin())
+    _, old = services.generate_gcode(job, machine)
+    _, new = services.generate_gcode(job, machine)
+    sim = json.loads(old.simulation)
+    expected = sim.pop("stock_by_block")
+    old.simulation = json.dumps(sim)
+    db.session.commit()
+    runner = app.test_cli_runner()
+    dry = runner.invoke(args=["stock-states", "--dry-run"])
+    assert dry.exit_code == 0 and "2 program(s), 1 without states" in dry.output
+    assert f"program {old.id} (job {job.id}): no states" in dry.output
+    assert "stock_by_block" not in json.loads(db.session.get(type(old), old.id).simulation)
+    before = new.simulation
+    result = runner.invoke(args=["stock-states"])
+    assert result.exit_code == 0 and f"program {old.id} (job {job.id}): {len(expected)} state(s)" in result.output
+    assert json.loads(db.session.get(type(old), old.id).simulation)["stock_by_block"] == expected
+    assert db.session.get(type(new), new.id).simulation == before  # it had its states: untouched
+    again = runner.invoke(args=["stock-states"])
+    assert "2 program(s), 0 without states" in again.output
+    assert "no program 999" in runner.invoke(args=["stock-states", "--program", "999"]).output

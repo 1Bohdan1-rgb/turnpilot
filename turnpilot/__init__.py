@@ -23,7 +23,7 @@ def create_app(test_config=None, instance_path=None):
     # The schema is managed by migrations (migrations/ folder), not by db.create_all().
     migrate.init_app(app, db, directory=os.path.join(os.path.dirname(app.root_path), "migrations"))
 
-    from .commands import gcode_demo_command
+    from .commands import gcode_demo_command, stock_states_command
     from .routes import bp
     from .seed import seed_command
 
@@ -39,6 +39,7 @@ def create_app(test_config=None, instance_path=None):
         return {"lang": i18n.current_language(), "js_strings": i18n.js_strings}
     app.cli.add_command(seed_command)
     app.cli.add_command(gcode_demo_command)
+    app.cli.add_command(stock_states_command)
 
     @app.errorhandler(RequestEntityTooLarge)
     def file_too_large(_error):
