@@ -99,7 +99,11 @@ def test_upload_drawing_from_the_card_plans_the_new_job_for_that_machine(app, cl
                            content_type="multipart/form-data")
     assert response.location.endswith(f"machine_id={lathe2.id}")
     (pin,) = _extractions()
-    assert "planned for <strong>Lathe 2</strong>" in client.get(response.location).get_data(as_text=True)
+    review = client.get(response.location).get_data(as_text=True)
+    assert "planned for <strong>Lathe 2</strong>" in review
+    # inside the form, so the form stays next to the drawing (the grid's two columns)
+    form = review.split('class="review-form">', 1)[1].split("</form>", 1)[0]
+    assert "planned for <strong>Lathe 2</strong>" in form
     client.post(f"/extractions/{pin.id}/confirm", data={**_confirm_form(pin), "machine_id": lathe2.id})
     job = db.session.execute(db.select(Job)).scalar_one()
     assert job.machine is lathe2 and services.job_machine(job) is lathe2

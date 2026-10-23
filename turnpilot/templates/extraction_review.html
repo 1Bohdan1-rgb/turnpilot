@@ -102,9 +102,10 @@
   </figure>
   {% endif %}
 
-  {% if for_machine %}<p class="warning">{{ _("The job will be planned for {machine} (from the shop page).", machine=strong(for_machine.name)) }}</p>{% endif %}
   <form method="post" action="{{ url_for('main.confirm_extraction', extraction_id=extraction.id) }}" class="review-form">
-    {% if for_machine %}<input type="hidden" name="machine_id" value="{{ for_machine.id }}">{% endif %}
+    {# inside the form: the form stays the grid's second column, next to the drawing / the dimensions #}
+    {% if for_machine %}<p class="warning for-machine">{{ _("The job will be planned for {machine} (from the shop page).", machine=strong(for_machine.name)) }}</p>
+    <input type="hidden" name="machine_id" value="{{ for_machine.id }}">{% endif %}
     <div class="card grid-form">
       <label>{{ _("Job name") }} <input name="name" value="{{ values.name }}" required></label>
       <label>{{ _("Material") }}
