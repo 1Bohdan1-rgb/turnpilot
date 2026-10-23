@@ -80,7 +80,8 @@ JS_KEYS = (
     "Left", "(incomplete: no rapids / tool changes without the passport's values)", "Time",
     "no program for this machine", "none running", "Next", "{n} pcs", "{n} done", "All orders left",
     "{n} order(s) without a program are not in it", "{pct}% done", "Upload drawing", "Machine page",
-    "Status and order", "Rotate 90°", "Take off the plan", "Rotation", "Place on the plan", "Write who changes",
+    "Status and order", "Rotate 90°",
+    "The status is \"running\", but no order runs on this machine: make the order running (\"Running now\") or set the status.", "Take off the plan", "Rotation", "Place on the plan", "Write who changes",
     "Dropped outside the plan: the machine stays where it was.", "Drop the machine on the plan.",
     "{name} placed at X {x}, Y {y} mm.",
     # the 3D view (static/part3d.js)
@@ -1040,6 +1041,9 @@ UK = {
     "Cutting data ranges": "Діапазони режимів",
     "Insert and holder": "Пластина й державка",
     "Sources of {name}": "Джерела: {name}",
+    # running without an order
+    "The status is \"running\", but no order runs on this machine: make the order running (\"Running now\") or set the status.": "Стан «працює», але на цьому верстаті не виконується жодне замовлення: зробіть замовлення поточним («Виконується зараз») або змініть стан.",
+    "Order {n} was running on {machine}: no order runs there now. Open orders: {orders}. Make the next one running with \"Running now\".": "Замовлення {n} виконувалось на {machine}: тепер там не виконується жодне. Відкриті замовлення: {orders}. Зробіть наступне поточним кнопкою «Виконується зараз».",
 }
 
 

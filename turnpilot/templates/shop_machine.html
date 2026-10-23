@@ -9,6 +9,7 @@
 <p class="small">{{ _("Status") }}: <strong>{{ (machine.status.status if machine.status else "free")|label }}</strong>{% if machine.status %}
   ({{ machine.status.decided_by }}, {{ machine.status.decided_at|local("%Y-%m-%d %H:%M") }}{% if machine.status.note %}: {{ machine.status.note }}{% endif %}){% endif %}
   · <a href="{{ url_for('main.machine', machine_id=machine.id) }}">{{ _("machine page") }}</a></p>
+{% if running_without_order %}<p class="warning">{{ _("The status is \"running\", but no order runs on this machine: make the order running (\"Running now\") or set the status.") }}</p>{% endif %}
 <p class="inline-form">
   <select name="status" aria-label="{{ _("Status") }}">{% for s in statuses %}<option value="{{ s }}" {% if machine.status and machine.status.status == s %}selected{% endif %}>{{ s|label }}</option>{% endfor %}</select>
   <input name="note" maxlength="200" placeholder="{{ _("note (optional)") }}" aria-label="{{ _("Note") }}">

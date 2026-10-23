@@ -1722,7 +1722,13 @@ def order_action(order_id, action):
         elif action == "current":
             services.make_order_current(order, name)
         elif action == "close":
+            was_current = order.is_current
             services.close_order(order, name)
+            others = services.machine_orders(order.machine) if was_current else []
+            if others:  # nothing is switched by itself: the operator chooses the next one
+                flash(_("Order {n} was running on {machine}: no order runs there now. Open orders: {orders}. Make the "
+                        "next one running with \"Running now\".", n=order.id, machine=order.machine.name,
+                        orders=", ".join(f"{o.id} ({o.job.name})" for o in others)))
         elif action == "program":
             services.take_latest_program(order, name)
         else:
@@ -1772,6 +1778,7 @@ def shop_machine(machine_id):
     machine = db.get_or_404(Machine, machine_id)
     order = services.current_order(machine)
     return render_template("shop_machine.html", machine=machine, order=order, statuses=MACHINE_STATUSES,
+                           running_without_order=services.running_without_order(machine),
                            progress=services.order_progress(order) if order else None,
                            orders=services.machine_orders(machine), fragment=bool(request.args.get("fragment")))
 

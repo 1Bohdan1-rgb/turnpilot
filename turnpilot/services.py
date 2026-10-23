@@ -2186,6 +2186,11 @@ def make_order_current(order, name):
     db.session.commit()
 
 
+def running_without_order(machine):
+    """The operator set the machine "running", but no order runs on it (e.g. the running one was closed)."""
+    return bool(machine.status and machine.status.status == "running" and current_order(machine) is None)
+
+
 def close_order(order, name):
     from .models import OrderEvent
 
@@ -2286,6 +2291,7 @@ def shop_machines():
             "kind_label": MACHINE_KINDS.get(m.machine_kind) if m.machine_kind else None,
             "control": m.control, "capacity": " · ".join(capacity),
             "status": STATUS_CLASS.get(status, "free"), "status_label": status, "alarm": status == "alarm",
+            "running_without_order": running_without_order(m),
             "status_by": m.status.decided_by if m.status else None,
             "status_note": m.status.note if m.status else None,
             "x": place.x_mm if place else None, "y": place.y_mm if place else None,

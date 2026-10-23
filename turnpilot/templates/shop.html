@@ -191,6 +191,7 @@
     const o = m.order, warn = [];
     if (!m.kind) warn.push(t("type not set (Machine page): drawn as a grey marker"));
     if (!m.length || !m.width) warn.push(t("footprint not set (passport or Machine page): not drawn to scale"));
+    if (m.running_without_order) warn.push(t("The status is \"running\", but no order runs on this machine: make the order running (\"Running now\") or set the status."));
     const pct = o ? Math.round(o.done / o.quantity * 100) : 0;
     document.getElementById("sf-card").innerHTML = `
       <div class="sf-kind">${esc(m.kind_label || t("type not set"))}</div>
