@@ -32,6 +32,7 @@ def create_app(test_config=None, instance_path=None):
 
     app.jinja_env.globals["_"] = i18n.template_gettext
     app.jinja_env.filters["label"] = i18n.label
+    app.jinja_env.filters.update(gen=i18n.generated, dxf=i18n.dxf_text, tr=i18n.gettext)
     app.jinja_env.globals.update(link=i18n.link, strong=i18n.strong)
     from . import localtime
 

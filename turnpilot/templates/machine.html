@@ -17,7 +17,7 @@
   {% for f in machine_fields %}
     {% set value = machine[f.name] %}
     {% set src = machine.source_of(f.name) %}
-    <label>{{ _(f.label) }}{% if f.unit %}, {{ f.unit }}{% endif %}
+    <label>{{ _(f.label) }}{% if f.unit %}, {{ _(f.unit) }}{% endif %}
       {% if f.kind == "bool" %}
         <select name="{{ f.name }}">
           <option value="" {% if value is none %}selected{% endif %}>{{ _("not known") }}</option>
@@ -30,7 +30,7 @@
         <input name="{{ f.name }}" type="number" step="{{ '1' if f.kind == 'int' else 'any' }}" min="0"
                value="{{ format_value(f, value) }}" placeholder="{{ _("not known") }}" {% if f.required %}required{% endif %}>
       {% endif %}
-      <span class="small muted">{{ src.label if src else _("seed") }}{% if src and src.quote %}: “{{ src.quote }}”{% endif %}{% if f.help %} · {{ _(f.help) }}{% endif %}</span>
+      <span class="small muted">{{ src.label|gen if src else _("seed") }}{% if src and src.quote %}: “{{ src.quote }}”{% endif %}{% if f.help %} · {{ _(f.help) }}{% endif %}</span>
     </label>
   {% endfor %}
   <p class="muted small">{{ _("Nothing here is guessed: an empty field is not known. When threading the feed is the pitch, so the Z axis moves at n·P mm/min; with a threading limit, thread operations keep within it, without one they ask you to check n·P. The spindle delivers power × efficiency; without the efficiency every roughing operation asks you to check the power. A value you change here is recorded as entered by the operator; values read from the passport show its page.") }}</p>
@@ -43,7 +43,7 @@
   {% for f in programming_fields %}
     {% set value = machine[f.name] %}
     {% set src = machine.source_of(f.name) %}
-    <label>{{ _(f.label) }}{% if f.unit %}, {{ f.unit }}{% endif %}
+    <label>{{ _(f.label) }}{% if f.unit %}, {{ _(f.unit) }}{% endif %}
       {% if f.kind == "choice" %}
         <select name="{{ f.name }}">
           <option value="" {% if value is none %}selected{% endif %}>{{ _("not set") }}</option>
@@ -52,7 +52,7 @@
       {% else %}
         <input name="{{ f.name }}" type="number" step="any" min="0" value="{{ format_value(f, value) }}" placeholder="{{ _("not set") }}">
       {% endif %}
-      <span class="small muted">{{ src.label if src else _("not set") }}{% if f.help %} · {{ _(f.help) }}{% endif %}</span>
+      <span class="small muted">{{ src.label|gen if src else _("not set") }}{% if f.help %} · {{ _(f.help) }}{% endif %}</span>
     </label>
   {% endfor %}
   <p class="muted small">{{ _("No catalogue or passport gives these: you enter them for this machine, and each is recorded as the operator's. There is no default: a program is not built while a value it needs is empty.") }}</p>

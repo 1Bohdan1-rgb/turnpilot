@@ -12,6 +12,8 @@ insert = пластина, roughing / finishing = чорнова / чистов�
 нарізання різьби, blank = заготовка, stick-out = виліт, process sheet = технологічний лист, order = замовлення,
 approve = затвердити, ready to run = готово до запуску, cutting data = режими різання, operator = оператор.
 """
+import re
+
 from flask import has_request_context, request
 from markupsafe import Markup
 
@@ -1021,6 +1023,19 @@ UK = {
     "{clearance} mm: the margin (not less than the safety distance to the jaws {safety} mm).": "{clearance} мм: запас (не менший за безпечну відстань до кулачків {safety} мм).",
     "The stick-out is measured from the jaws to the raw end face.": "Виліт міряється від кулачків до сирого торця.",
     "Stick-out {value} mm taken from the drawing ({sum}).": "Виліт {value} мм узято з креслення ({sum}).",
+    # units, sources
+    "kW": "кВт",
+    "mm/min": "мм/хв",
+    "s": "с",
+    "bar": "бар",
+    "operator": "оператор",
+    "demo": "ДЕМО",
+    # stick-out hint: what is missing
+    "the part's length (a DXF job with its sections)": "довжина деталі (завдання з DXF з його ділянками)",
+    "the parting insert's width (no parting tool with a width in the job's turret)": "ширина відрізної пластини (у револьверній головці завдання немає відрізного інструмента з шириною)",
+    "the stick-out margin beyond the parting cut (Machine page, programming values)": "запас вильоту за різом відрізки (сторінка верстата, значення програмування)",
+    "the stock beyond Z0 to face off (the job's G-code set-up)": "припуск за Z0 на торцювання (налагодження G-коду завдання)",
+    "the safety distance to the chuck jaws (Machine page, programming values)": "безпечна відстань до кулачків патрона (сторінка верстата, значення програмування)",
 }
 
 
@@ -1048,8 +1063,145 @@ LABELS = {
     "free": "вільний", "setting up": "налагодження", "running": "працює", "stopped": "зупинений", "alarm": "аварія",
     # blank shapes
     "round": "круг",
+    # DXF dimension kinds
+    "diameter": "діаметр", "length": "довжина", "radius": "радіус", "other": "інше",
+    # an order's events (open / closed above)
+    "created": "створено", "done": "виконано", "current": "виконується", "program": "взято програму",
     # where a feature is (location, face, position)
     "external": "зовнішній", "internal": "внутрішній", "left": "ліворуч", "right": "праворуч",
     "external left": "зовнішній ліворуч", "external right": "зовнішній праворуч",
     "internal left": "внутрішній ліворуч", "internal right": "внутрішній праворуч",
 }
+
+
+# --- texts the code writes that a person reads as the page's labels and states (not the planner's notes or the
+# simulation's messages, which stay in English): translated by their shape. `generated` is the filter `|gen`.
+def _labels(text):
+    """A comma-separated list of field labels (the fields' or the job set-up's)."""
+    return ", ".join(gettext(GEN_WORDS.get(part, part)) for part in text.split(", "))
+
+
+def _turret_line(text):
+    m = re.fullmatch(r"T(\d+): (.+?) -> (.+)", text)
+    if not m:
+        return text
+    def empty(s):
+        return gettext("empty") if s == "empty" else s
+    return f"T{m[1]}: {empty(m[2])} -> {empty(m[3])}"
+
+
+GEN_WORDS = {  # the job set-up's labels in readiness (lower case)
+    "free end (Z0)": "вільний торець (Z0)", "stick-out from the jaws": "виліт із кулачків",
+    "stock beyond Z0": "припуск за Z0",
+}
+
+GEN = [  # (pattern, Ukrainian with {1}, {2}…, {group: function} to translate a group)
+    # where a value comes from
+    (r"entered by the operator (\S+)", "введено оператором {1}", {}),
+    (r"copied from (.+) (\d{4}-\d\d-\d\d)", "скопійовано з {1} {2}", {}),
+    (r"passport p\. (\d+)", "паспорт, с. {1}", {}),
+    (r"passport", "паспорт", {}),
+    (r"not_in_passport", "немає в паспорті", {}),
+    (r"seed", "початкові дані", {}),
+    (r"the operator", "оператор", {}),
+    (r"DEMO value, not from the machine", "ДЕМО-значення, не з верстата", {}),
+    (r"TurnPilot's rule", "правило TurnPilot", {}),
+    (r"source not recorded", "джерело не записано", {}),
+    # why a program is out of date
+    (r"made for (.+); the job is planned for (.+) now", "складено для {1}; завдання тепер плановано для {2}", {}),
+    (r"the job was calculated again after this program", "завдання розраховано знову після цієї програми", {}),
+    (r"the decision on the arc's radius was changed to R(\S+) by (.+) on (.+)",
+     "рішення щодо радіуса дуги змінено на R{1}: {2}, {3}", {}),
+    (r"the decision on the bore Ø(\S+)'s depth \((.+)\) was made by (.+) on (.+)",
+     "рішення щодо глибини отвору Ø{1} ({2}) ухвалив(ла) {3}, {4}", {2: lambda s: gettext(s)}),
+    (r"tools changed since the calculation", "інструменти змінилися після розрахунку", {}),
+    (r"the job's turret set-up changed after this program",
+     "налагодження револьверної головки завдання змінилось після цієї програми", {}),
+    (r"the machine's turret was copied from (.+) by (.+) on (.+)",
+     "револьверну головку верстата скопійовано з {1} ({2}, {3})", {}),
+    (r"values changed since this program: (.+)", "значення змінилися після цієї програми: {1}", {1: _labels}),
+    # what blocks a program
+    (r"(.+)'s turret was copied from (.+) by (.+) on (.+), after the calculation: calculate the job again",
+     "револьверну головку {1} скопійовано з {2} ({3}, {4}) після розрахунку: розрахуйте завдання знову", {}),
+    (r"the calculation was made for (.+): calculate the job for (.+)",
+     "розрахунок зроблено для {1}: розрахуйте завдання для {2}", {}),
+    (r"no operations: calculate the job first", "немає операцій: спершу розрахуйте завдання", {}),
+    (r"operations not approved yet: (.+)", "операції ще не затверджено: {1}", {}),
+    (r"tools changed since the calculation \((.+)\): calculate again",
+     "інструменти змінилися після розрахунку ({1}): розрахуйте знову", {}),
+    (r"programming values not set on the Machine page: (.+)",
+     "на сторінці верстата не задано значення програмування: {1}", {1: _labels}),
+    (r"G-code set-up of the job not set: (.+)", "не задано налагодження G-коду завдання: {1}", {1: _labels}),
+    (r"skipped by the operator \((.+?)\): (.*)", "пропустив(ла) оператор ({1}): {2}", {}),
+    (r"no tool: not generated", "немає інструмента: не складено", {}),
+    # the operator's checklist
+    (r"Z0 is on the free end face and X0 on the axis; the free end is the right one",
+     "Z0 — на вільному торці, X0 — на осі; вільний торець вибрано правильно", {}),
+    (r"the tool numbers and offsets match the turret on the machine",
+     "номери інструментів і корекції відповідають револьверній головці на верстаті", {}),
+    (r"the stick-out and the jaws match the real clamping", "виліт і кулачки відповідають реальному затиску", {}),
+    (r"the spindle direction matches the way the tools are mounted",
+     "напрям обертання шпинделя відповідає тому, як встановлено інструменти", {}),
+    (r"the simulation is looked through; what is left for manual work is understood",
+     "моделювання переглянуто; зрозуміло, що лишилось для ручної роботи", {}),
+    (r"on the machine: the control's graphics, a dry run with an offset, single block, rapid 25%",
+     "на верстаті: графіка ЧПК, холостий прогін зі зсувом, покадровий режим, прискорені 25%", {}),
+    (r"the turret is set up for this job: (.+)", "револьверну головку налагоджено для цього завдання: {1}",
+     {1: lambda s: "; ".join(_turret_line(x) for x in s.split("; "))}),
+    (r"nose radius compensation G42: on the offset page (.+) \(R the nose radius, T the tip direction as the tool is mounted\)",
+     "компенсація радіуса при вершині G42: на сторінці корекцій {1} (R — радіус при вершині, T — напрям вершини, як "
+     "встановлено інструмент)", {}),
+    (r"T\d+: .+? -> .+", None, {}),  # a turret set-up line: _turret_line
+    # an order's history
+    (r"(\d+) on (.+)", "{1} на {2}", {}),
+    (r"(\d+) of (\d+)", "{1} з {2}", {}),
+    (r"program (\d+)", "№{1}", {}),
+    # the shop card
+    (r"([\d.]+) s", "{1} с", {}),
+]
+_GEN = [(re.compile(p), t, f) for p, t, f in GEN]
+
+
+def generated(text):
+    """The Ukrainian of a text the code wrote, when its shape is known; else as it is. English: as it is."""
+    if text is None or current_language() != "uk":
+        return text
+    text = str(text)
+    for pattern, template, groups in _GEN:
+        m = pattern.fullmatch(text)
+        if m:
+            if template is None:
+                return _turret_line(text)
+            out = template
+            for i, value in enumerate(m.groups(), 1):
+                out = out.replace("{%d}" % i, groups[i](value) if i in groups else value)
+            return out
+    return UK.get(text, text)
+
+
+_DXF = [  # the DXF binding table's words (written by the frozen dxf_reader): replaced inside the text
+    (r"\binside section (\d+)", r"всередині ділянки \1"), (r"\bsection (\d+) \(arc\)", r"ділянка \1 (дуга)"),
+    (r"\bchamfer of section (\d+) at x ", r"фаска ділянки \1 при x "), (r"\bsection (\d+)", r"ділянка \1"),
+    (r"\bboundary (\d+)", r"межа \1"), (r"\boutside the part", "поза деталлю"),
+    (r"\ban end is outside the part", "кінець поза деталлю"), (r"\bno chamfer under its points", "під точками немає фаски"),
+    (r"\bno section at x ", "немає ділянки при x "), (r"\btransition at x ", "перехід при x "),
+    (r"\bits point is on no arc", "його точка не лежить на дузі"),
+]
+
+
+def dxf_text(text):
+    """A binding text of the DXF review's table, in Ukrainian."""
+    if text is None or current_language() != "uk":
+        return text
+    out = str(text)
+    for pattern, repl in _DXF:
+        out = re.sub(pattern, repl, out)
+    return out
+
+
+def capacity(text):
+    """The shop card's capacity line ("Ø max 300 · bar Ø52 · turning length 500")."""
+    if current_language() != "uk":
+        return text
+    return (text.replace("Ø max ", "Ø макс. ").replace("bar Ø", "пруток Ø")
+            .replace("turning length ", "довжина точіння "))

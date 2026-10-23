@@ -10,7 +10,7 @@
 {% if demo %}
 <div class="banner banner-demo">
   <strong>{{ _("DEMO values, not from the machine:") }}</strong>
-  {% for row in demo %}{{ _(row.label) }} {{ row.value }}{% if row.unit %} {{ row.unit }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}.
+  {% for row in demo %}{{ _(row.label) }} {{ _(row.value) if row.name in ('free_end', 'stickout_reference', 'groove_reference') else row.value }}{% if row.unit %} {{ _(row.unit) }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}.
   {{ _("A program can be looked at, but it cannot be marked ready to run until the operator enters these values ({machine}, {setup}).", machine=link(url_for('main.machine'), _("Machine page")), setup=link(url_for('main.job_detail', job_id=job.id), _("G-code set-up of the job"))) }}
 </div>
 {% endif %}
@@ -18,7 +18,7 @@
 {% if readiness.blockers %}
 <div class="banner banner-stop">
   <strong>{{ _("No program yet:") }}</strong>
-  <ul>{% for b in readiness.blockers %}<li>{{ b }}</li>{% endfor %}</ul>
+  <ul>{% for b in readiness.blockers %}<li>{{ b|gen }}</li>{% endfor %}</ul>
 </div>
 {% else %}
 <form method="post" class="actions">
@@ -35,7 +35,7 @@
   {% for op_id, reason in readiness.skipped.items() %}
     {% set op = ops.get(op_id) %}
     <tr><td>{{ op.sequence if op else op_id }}</td><td>{{ op.tool_type|label if op else "" }}{% if op %} · {{ op.feature.type|label }}{% endif %}</td>
-      <td class="small">{{ reason }}</td></tr>
+      <td class="small">{{ reason|gen }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
@@ -47,8 +47,8 @@
   <tbody>
   {% for row in settings %}
     <tr class="{% if row.source == 'demo' and row.value != '' %}row-demo{% endif %}">
-      <td>{{ _(row.label) }}</td><td>{{ row.value or "—" }}{% if row.value and row.unit %} {{ row.unit }}{% endif %}</td>
-      <td class="small">{{ row.source_label }}</td></tr>
+      <td>{{ _(row.label) }}</td><td>{% if row.value %}{{ _(row.value) if row.name in ('free_end', 'stickout_reference', 'groove_reference') else row.value }}{% else %}—{% endif %}{% if row.value and row.unit %} {{ _(row.unit) }}{% endif %}</td>
+      <td class="small">{{ row.source_label|gen }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

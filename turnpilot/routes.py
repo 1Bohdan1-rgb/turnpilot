@@ -1756,6 +1756,10 @@ def shop():
         m["status_label"] = i18n.label(m["status_label"])
         if m["kind_label"]:
             m["kind_label"] = _(m["kind_label"])
+        m["capacity"] = i18n.capacity(m["capacity"])
+        for o in [m["order"]] + m.get("queue", []):
+            if o and o.get("part"):
+                o["part"] = i18n.generated(o["part"])
     return render_template("shop.html", record=record, plan=plan, statuses=MACHINE_STATUSES,
                            svg=shop_svg.plan_svg(plan) if plan else None,
                            view_box=shop_svg.view_box(plan) if plan else None,

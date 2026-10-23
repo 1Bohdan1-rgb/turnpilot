@@ -20,7 +20,7 @@
 <form method="post" class="card grid-form">
   <label>{{ _("Name") }} <input name="name" maxlength="100" required></label>
   {% for f in new_fields %}
-  <label>{{ _(f.label) }}{% if f.unit %}, {{ f.unit }}{% endif %}
+  <label>{{ _(f.label) }}{% if f.unit %}, {{ _(f.unit) }}{% endif %}
     <input name="{{ f.name }}" type="number" step="{{ '1' if f.kind == 'int' else 'any' }}" min="0" required></label>
   {% endfor %}
   <p class="muted small">{{ _("No value is filled in for you: type them from the machine's plate or passport. The new machine's turret is empty, its programming values and passport too; the tool library, materials and cutting data are shared by all machines.") }}</p>

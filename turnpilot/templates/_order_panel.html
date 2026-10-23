@@ -22,7 +22,7 @@ one operator field for the whole panel (in_form: the page around it holds the fo
   {% if not p.program %}
     <p class="warning">{{ _("No program made for {machine}: no operation list, no time. Make one on the job's {link}, then take it here.", machine=order.machine.name, link=link(url_for('main.job_gcode', job_id=order.job_id), _("G-code page"))) }}</p>
   {% else %}
-    {% if p.stale %}<p class="warning small">{{ _("Program {n} is out of date:", n=p.program.id) }} {{ p.stale|join("; ") }}.</p>{% endif %}
+    {% if p.stale %}<p class="warning small">{{ _("Program {n} is out of date:", n=p.program.id) }} {{ p.stale|map("gen")|join("; ") }}.</p>{% endif %}
     {% with job = order.job, installs = turret_installs(order.job, order.machine), in_form = True %}{% include "_turret_installs.html" %}{% endwith %}
     <div class="part3d" data-src="{{ url_for('main.order_part3d', order_id=order.id) }}" data-mode="order">
       <p class="small"><strong>{{ _("The part on the machine now") }}</strong> ({{ _("program {n}, the order's", n=p.program.id) }}):
@@ -38,7 +38,7 @@ one operator field for the whole panel (in_form: the page around it holds the fo
       <tbody>
       {% for b in p.blocks %}
         <tr{% if b.done %} class="changed"{% endif %}><td>{{ b.number }}</td><td class="small">{{ b.title }}</td>
-          <td>{{ "%.1f"|format(b.seconds) }} s</td>
+          <td>{{ "%.1f"|format(b.seconds) }} {{ _("s") }}</td>
           <td>{% if b.done %}<span class="done-mark">✓</span> <span class="small">{{ b.mark.decided_by }},
               {{ b.mark.decided_at|local("%Y-%m-%d %H:%M") }}</span>
             {% if order.status == "open" %}<button class="small" name="block" value="{{ b.number }}"
@@ -48,10 +48,10 @@ one operator field for the whole panel (in_form: the page around it holds the fo
       {% endfor %}
       </tbody>
     </table>
-    <p>{{ _("Part:") }} <strong>{{ "%.1f"|format(p.part_s) }} s</strong> · {{ _("done {done} of {quantity}", done=order.done, quantity=order.quantity) }} ·
+    <p>{{ _("Part:") }} <strong>{{ "%.1f"|format(p.part_s) }} {{ _("s") }}</strong> · {{ _("done {done} of {quantity}", done=order.done, quantity=order.quantity) }} ·
       {{ _("left:") }} <strong>{{ mmss(p.left_s) }}</strong>
       {% if p.demo %}<span class="warning small">{{ _("DEMO machine values: not this machine's time") }}</span>
-      {% elif not p.complete %}<span class="warning small">{{ _("time incomplete: {missing} not set (no passport): rapids / tool changes are not in it", missing=p.missing|join(", ")) }}</span>
+      {% elif not p.complete %}<span class="warning small">{{ _("time incomplete: {missing} not set (no passport): rapids / tool changes are not in it", missing=p.missing|map("tr")|join(", ")) }}</span>
       {% elif p.estimate %}<span class="muted small">{{ _("without the passport — an estimate") }}</span>{% endif %}</p>
     <p class="muted small">{{ _("\"Left\" counts the finished parts only: (all − done) × the part's time. The marks above are the progress of the part on the machine now; they do not change \"left\" until \"Parts done\" is saved.") }}</p>
   {% endif %}
@@ -65,7 +65,7 @@ one operator field for the whole panel (in_form: the page around it holds the fo
   </p>
   {% endif %}
   {% if order.events or order.marks %}<details class="small"><summary>{{ _("History ({n})", n=order.events|length + order.marks|length) }}</summary><ul class="muted">
-    {% for e in order.events %}<li>{{ e.decided_at|local("%Y-%m-%d %H:%M") }} {{ e.decided_by }}: {{ e.kind|label }} {{ e.value or "" }}</li>{% endfor %}
+    {% for e in order.events %}<li>{{ e.decided_at|local("%Y-%m-%d %H:%M") }} {{ e.decided_by }}: {{ e.kind|label }} {{ e.value|gen if e.value else "" }}</li>{% endfor %}
     {% for m in order.marks %}<li>{{ m.decided_at|local("%Y-%m-%d %H:%M") }} {{ m.decided_by }}: N{{ m.block }} {{ _("done") if m.done else _("mark cancelled") }}</li>{% endfor %}
   </ul></details>{% endif %}
 </div>

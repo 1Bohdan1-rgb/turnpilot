@@ -20,7 +20,7 @@
       {% set f = row.field %}
       <tr class="{% if not row.value.found %}not-in-passport{% elif row.value.checks %}has-check{% endif %}">
         <td>{% if row.value.found %}<input type="checkbox" name="confirm-{{ f.name }}" value="1">{% endif %}</td>
-        <td>{{ _(f.label) }}{% if f.unit %}, {{ f.unit }}{% endif %}</td>
+        <td>{{ _(f.label) }}{% if f.unit %}, {{ _(f.unit) }}{% endif %}</td>
         <td>
           {% if row.value.found %}
             <input name="value-{{ f.name }}" value="{{ format_value(f, row.value.value) }}" size="12">
@@ -37,7 +37,7 @@
         </td>
         <td>{{ row.value.page or "" }}{% if row.value.quote_checked %} ✅{% endif %}</td>
         <td class="small">{{ row.value.quote }}</td>
-        <td class="small">{{ format_value(f, row.current) or "—" }}{% if row.source %} <span class="muted">({{ row.source.label }})</span>{% endif %}</td>
+        <td class="small">{{ format_value(f, row.current) or "—" }}{% if row.source %} <span class="muted">({{ row.source.label|gen }})</span>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>

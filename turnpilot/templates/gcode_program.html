@@ -10,12 +10,12 @@
 {% if demo %}
 <div class="banner banner-demo">
   <strong>{{ _("DEMO values, not from the machine's passport or the operator:") }}</strong>
-  {% for row in demo %}{{ _(row.label) }} {{ row.value }}{% if row.unit %} {{ row.unit }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}.
+  {% for row in demo %}{{ _(row.label) }} {{ _(row.value) if row.name in ('free_end', 'stickout_reference', 'groove_reference') else row.value }}{% if row.unit %} {{ _(row.unit) }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}.
   {{ _("\"Ready to run\" is not possible until the operator enters them ({machine}, {setup}) and the program is generated again.", machine=link(url_for('main.machine'), _("Machine page")), setup=link(url_for('main.job_detail', job_id=job.id), _("G-code set-up"))) }}
 </div>
 {% endif %}
 {% if stale %}
-<div class="banner banner-stop"><strong>{{ _("Out of date:") }}</strong> {{ stale|join("; ") }}. {{ _("Generate it again.") }}</div>
+<div class="banner banner-stop"><strong>{{ _("Out of date:") }}</strong> {{ stale|map("gen")|join("; ") }}. {{ _("Generate it again.") }}</div>
 {% endif %}
 {% if sim.incomplete %}
 <div class="banner banner-stop"><strong>{{ _("PART NOT COMPLETE.") }}</strong>
@@ -50,20 +50,20 @@
     <tbody>
     {% for op in ct.operations %}
       <tr><td>{{ op.number if op.number is not none else "" }}</td><td class="small">{{ op.title }}</td>
-        <td>{{ "%.1f"|format(op.cut_s) }} s</td><td>{{ "%.1f"|format(op.thread_s) if op.thread_s else "" }}{% if op.thread_s %} s{% endif %}</td>
-        <td>{% if op.rapid_s is not none %}{{ "%.1f"|format(op.rapid_s) }} s{% else %}<span class="muted small">{{ _("not set") }}
-          (X {{ "%.0f"|format(op.rapid_x_mm) }} / Z {{ "%.0f"|format(op.rapid_z_mm) }} mm)</span>{% endif %}</td>
-        <td>{% if op.tool_changes %}{% if op.tool_change_s is not none %}{{ "%.1f"|format(op.tool_change_s) }} s{% else %}<span class="muted small">{{ op.tool_changes }} × {{ _("not set") }}</span>{% endif %}{% endif %}</td>
-        <td>{{ "%.1f"|format(op.dwell_s) ~ " s" if op.dwell_s else "" }}</td>
+        <td>{{ "%.1f"|format(op.cut_s) }} {{ _("s") }}</td><td>{{ "%.1f"|format(op.thread_s) if op.thread_s else "" }}{% if op.thread_s %} {{ _("s") }}{% endif %}</td>
+        <td>{% if op.rapid_s is not none %}{{ "%.1f"|format(op.rapid_s) }} {{ _("s") }}{% else %}<span class="muted small">{{ _("not set") }}
+          (X {{ "%.0f"|format(op.rapid_x_mm) }} / Z {{ "%.0f"|format(op.rapid_z_mm) }} {{ _("mm") }})</span>{% endif %}</td>
+        <td>{% if op.tool_changes %}{% if op.tool_change_s is not none %}{{ "%.1f"|format(op.tool_change_s) }} {{ _("s") }}{% else %}<span class="muted small">{{ op.tool_changes }} × {{ _("not set") }}</span>{% endif %}{% endif %}</td>
+        <td>{{ ("%.1f"|format(op.dwell_s) ~ " " ~ _("s")) if op.dwell_s else "" }}</td>
         <td><strong>{{ mmss(op.total_s) }}</strong></td></tr>
     {% endfor %}
     </tbody>
   </table>
-  <p><strong>{{ _("Part: {t}", t=mmss(ct.total_s)) }}</strong> ({{ "%.1f"|format(ct.total_s) }} s){% if not ct.complete %},
+  <p><strong>{{ _("Part: {t}", t=mmss(ct.total_s)) }}</strong> ({{ "%.1f"|format(ct.total_s) }} {{ _("s") }}){% if not ct.complete %},
     {{ _("without the parts not set") }}{% endif %} · <strong>{{ _("order of {n}: {t}", n=cycle.quantity, t=mmss(cycle.order_s)) }}</strong>
     ({{ "%.2f"|format(cycle.order_s / 3600) }} {{ _("h") }})</p>
   <p class="muted small">{{ _("From the program's text: feeds by f·n (G96: n from the diameter, up to G50), G92 at n·P, rapids per axis, G04, one tool change per T. Not counted: acceleration of the axes and the spindle, M01, loading the part or feeding the bar, and the moves to and from the reference point (taken as part of the tool change).") }}
-    {{ _("Values:") }} {% for label, (v, src) in cycle.sources.items() %}{{ _(label) }} {{ v if v is not none else "—" }} ({{ src or (_("source not recorded") if v is not none else _("not set")) }}){% if not loop.last %}; {% endif %}{% endfor %}.</p>
+    {{ _("Values:") }} {% for label, (v, src) in cycle.sources.items() %}{{ _(label) }} {{ v if v is not none else "—" }} ({{ _(src) if src else (_("source not recorded") if v is not none else _("not set")) }}){% if not loop.last %}; {% endif %}{% endfor %}.</p>
   {% endif %}
 </div>
 
@@ -100,12 +100,12 @@
 {% endif %}
 {% if sim.skipped %}
 <h2>{{ _("Operations not in the program") }}</h2>
-<ul class="card checks">{% for op_id, reason in sim.skipped.items() %}<li>{{ _("operation {n}", n=op_id) }}: {{ reason }}</li>{% endfor %}</ul>
+<ul class="card checks">{% for op_id, reason in sim.skipped.items() %}<li>{{ _("operation {n}", n=op_id) }}: {{ reason|gen }}</li>{% endfor %}</ul>
 {% endif %}
 
 {% if sim.turret_setup %}
 <h2>{{ _("Turret set-up for this job") }}</h2>
-<ul class="card checks">{% for line in sim.turret_setup %}<li>{{ line }}</li>{% endfor %}</ul>
+<ul class="card checks">{% for line in sim.turret_setup %}<li>{{ line|gen }}</li>{% endfor %}</ul>
 {% endif %}
 
 {% with back = url_for('main.gcode_program', program_id=record.id) ~ '#installs', in_form = False %}{% include "_turret_installs.html" %}{% endwith %}
@@ -114,7 +114,7 @@
 <form method="post" action="{{ url_for('main.gcode_ready', program_id=record.id) }}" class="card">
   {% for key, text in checklist %}
     <label class="check-item"><input type="checkbox" name="check-{{ key }}" value="1" {% if ticked.get(key) %}checked{% endif %}
-      {% if record.status == "ready" %}disabled{% endif %}> {{ text }}</label>
+      {% if record.status == "ready" %}disabled{% endif %}> {{ text|gen }}</label>
   {% endfor %}
   <label>{{ _("Operator") }} <input name="confirmed_by" value="{{ record.confirmed_by or '' }}" maxlength="100" {% if record.status == "ready" %}disabled{% endif %}></label>
   {% set blocked = sim.errors or sim.incomplete or demo or stale or not_installed %}

@@ -80,9 +80,9 @@
       {% for d in dxf_report.dims %}
         <tr class="{% if d.inner %}dxf-inner{% elif not d.bound %}dxf-unbound{% endif %}">
           <td>{{ d.text }}</td>
-          <td>{{ d.kind }}</td>
+          <td>{{ d.kind|label }}</td>
           <td>
-            {% if d.inner %}{{ _("inner profile: not read") }}{% elif not d.bound %}⚠ {{ _("not bound:") }} {{ d.binding }}{% else %}{{ d.binding }}{% endif %}
+            {% if d.inner %}{{ _("inner profile: not read") }}{% elif not d.bound %}⚠ {{ _("not bound:") }} {{ d.binding|dxf }}{% else %}{{ d.binding|dxf }}{% endif %}
             {% for f in d.flags %}<div class="warning small">⚠ {{ f }}</div>{% endfor %}
           </td>
         </tr>

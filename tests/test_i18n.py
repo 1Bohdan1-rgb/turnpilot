@@ -120,3 +120,33 @@ def test_every_page_renders_in_ukrainian(app):
         response = client.get(url)
         assert response.status_code == 200, url
         assert 'lang="uk"' in response.get_data(as_text=True)
+
+
+def test_generated_labels_and_states_in_ukrainian(app):
+    """What the code writes that reads as the page's labels or states: by its shape; notes stay English."""
+    with app.test_request_context(headers={"Cookie": "lang=uk"}):
+        g = i18n.generated
+        assert g("entered by the operator 2026-10-14") == "введено оператором 2026-10-14"
+        assert g("copied from Lathe 1 (Bohdan) 2026-10-23") == "скопійовано з Lathe 1 (Bohdan) 2026-10-23"
+        assert g("seed") == "початкові дані" and g("the operator") == "оператор"
+        assert g("the job was calculated again after this program") == "завдання розраховано знову після цієї програми"
+        assert g("values changed since this program: Spindle direction for a right-hand tool, Stick-out measured to") \
+            == "значення змінилися після цієї програми: Напрям обертання шпинделя для правого інструмента, Виліт міряється до"
+        assert g("skipped by the operator (Bohdan): no centring") == "пропустив(ла) оператор (Bohdan): no centring"
+        assert g("the tool numbers and offsets match the turret on the machine").startswith("номери інструментів")
+        assert g("T4: empty -> Grooving 3 mm (Bohdan, 2026-10-22)") == "T4: порожньо -> Grooving 3 mm (Bohdan, 2026-10-22)"
+        assert g("program 16") == "№16" and g("50 on Lathe 1") == "50 на Lathe 1" and g("12.1 s") == "12.1 с"
+        assert g("Rapid traverse X") == "Прискорене переміщення X"
+        assert g("check the spindle power: Pc 8 kW") == "check the spindle power: Pc 8 kW"  # a note: as it is
+        assert i18n.dxf_text("section 8") == "ділянка 8" and i18n.dxf_text("section 3 (arc)") == "ділянка 3 (дуга)"
+        assert i18n.dxf_text("boundary 0 → inside section 2") == "межа 0 → всередині ділянки 2"
+        assert i18n.label("diameter") == "діаметр"
+    with app.test_request_context(headers={"Cookie": "lang=en"}):
+        assert i18n.generated("seed") == "seed" and i18n.dxf_text("section 8") == "section 8"
+
+
+def test_units_and_sources_on_the_machine_page_in_ukrainian(app):
+    page = app.test_client().get("/machines/1").get_data(as_text=True)
+    assert "Макс. частота обертання шпинделя, об/хв" in page and ", rpm" not in page
+    assert "Потужність шпинделя S1 (тривала), кВт" in page and "Тиск МОР, бар" in page
+    assert "entered by the operator" not in page
