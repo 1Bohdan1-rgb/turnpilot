@@ -567,6 +567,9 @@ def _tool_fields(form):
         insert_width=_number(form, "insert_width"),
         diameter=_number(form, "diameter"),
         max_depth=_number(form, "max_depth"),
+        max_depth_source=form.get("max_depth_source", "").strip()[:200] or None,
+        spindle_direction=_spindle_direction(form),
+        spindle_direction_source=form.get("spindle_direction_source", "").strip()[:200] or None,
         holder_code=_holder_code(form),
         max_ramp_angle=_ramp_angle(form),
         max_ramp_source=form.get("max_ramp_source", "").strip()[:200] or None,
@@ -581,6 +584,13 @@ def _tool_fields(form):
         source=form.get("source", "").strip()[:300] or None,
         **values,
     )
+
+
+def _spindle_direction(form):
+    value = form.get("spindle_direction", "").strip().upper() or None
+    if value not in (None, "M03", "M04"):
+        raise FormError("The spindle direction is M03 or M04 (empty: not known)")
+    return value
 
 
 def _point_angle(form):

@@ -184,7 +184,8 @@ class Tool(db.Model):
     insert_width = db.Column(db.Float)  # mm, grooving / parting inserts
     diameter = db.Column(db.Float)  # mm, drills: the hole they make
     max_depth = db.Column(db.Float)  # mm, drills: the deepest hole they reach (e.g. 3 × D for a 3×D drill);
-    # grooving: the holder's max cutting depth
+    # grooving: the holder's max cutting depth; boring: the bar's overhang as it is clamped (the deepest it reaches)
+    max_depth_source = db.Column(db.String(200))  # where max_depth comes from (catalogue page, the operator's set-up)
     holder_code = db.Column(db.String(50))  # the holder's code, the operator's (e.g. RF123E08-2525B); empty: not known
     # Turning tools: the steepest angle (degrees to the axis) the insert in its holder may cut going down towards
     # the chuck (the catalogue's max in-copying angle). Empty: not known, no such move is programmed for it.
@@ -198,6 +199,10 @@ class Tool(db.Model):
     # Boring tools: the smallest bore the holder goes into (the catalogue's DMIN), with its source. Empty: not known.
     min_bore_diameter = db.Column(db.Float)
     min_bore_source = db.Column(db.String(200))
+    # Boring tools: the spindle direction for this bar as it is mounted ("M03" / "M04"), the operator's, with its
+    # source. Empty: not known, no boring with it is generated (no default: a bar may be mounted upside down).
+    spindle_direction = db.Column(db.String(3))
+    spindle_direction_source = db.Column(db.String(200))
     # Drills: the point angle (the catalogue's SIG, e.g. 140°) and its source. Empty: not known, a bore cannot be
     # drilled "to the full Ø" with it (the point's length is not known).
     point_angle_deg = db.Column(db.Float)
@@ -513,6 +518,18 @@ class Feature(db.Model):
     depth_mode = db.Column(db.String(20))
     depth_decided_by = db.Column(db.String(100))
     depth_decided_at = db.Column(db.DateTime)
+    # Bore: where it is on the drawing (no default): the end face it opens at ("left" / "right"; "both": through),
+    # how far from that face it starts (a stepped bore's narrower part starts deeper), its bottom ("flat": a face, or
+    # a step to a narrower bore; "drill_point": what the drill's point leaves; empty for a through bore), the cone
+    # angle drawn at a drill-point bottom (information only), and where the position comes from ("dxf": the file's
+    # geometry, confirmed with the review; "operator": typed on the job page), who and when.
+    bore_open_end = db.Column(db.String(10))
+    bore_from_mm = db.Column(db.Float)
+    bore_bottom = db.Column(db.String(20))
+    bore_cone_angle = db.Column(db.Float)
+    bore_position_source = db.Column(db.String(20))
+    bore_position_by = db.Column(db.String(100))
+    bore_position_at = db.Column(db.DateTime)
     confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 

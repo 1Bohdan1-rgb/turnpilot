@@ -546,6 +546,14 @@ UK = {
     "Insert width, mm (grooving/parting)": "Ширина пластини, мм (канавка/відрізання)",
     "Diameter, mm (drills)": "Діаметр, мм (свердла)",
     "Max depth, mm (drills; grooving: the holder's)": "Макс. глибина, мм (свердла; канавка: державки)",
+    "Max depth, mm (drills; grooving: the holder's; boring: the bar's overhang as clamped)":
+        "Макс. глибина, мм (свердла; канавка: державки; розточування: виліт борштанги, як її затиснуто)",
+    "Source of the max depth (catalogue page; boring: who measured the overhang)":
+        "Джерело макс. глибини (сторінка каталогу; розточування: хто виміряв виліт)",
+    "Spindle direction for this bar (boring: as it is mounted; empty: not known, no boring is generated)":
+        "Напрям шпинделя для цієї борштанги (розточування: як її встановлено; порожньо: невідомо, розточування не генерується)",
+    "Source of the spindle direction (who set it, how the bar is mounted)":
+        "Джерело напряму шпинделя (хто задав, як встановлено борштангу)",
     "Holder code (the operator's; e.g. RF123E08-2525B)": "Код державки (оператора; напр. RF123E08-2525B)",
     "RMPX — max in-copying angle, ° (turning: down towards the chuck; catalogue, for the holder)": "RMPX — макс. кут врізання при копіюванні, ° (точіння: вниз у бік патрона; каталог, для державки)",
     "Source of RMPX (catalogue page, holder)": "Джерело RMPX (сторінка каталогу, державка)",

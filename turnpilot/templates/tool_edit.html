@@ -19,8 +19,10 @@
     <input name="insert_width" type="number" step="any" min="0" value="{{ tool.insert_width if tool.insert_width is not none else '' }}"></label>
   <label>{{ _("Diameter, mm (drills)") }}
     <input name="diameter" type="number" step="any" min="0" value="{{ tool.diameter if tool.diameter is not none else '' }}"></label>
-  <label>{{ _("Max depth, mm (drills; grooving: the holder's)") }}
+  <label>{{ _("Max depth, mm (drills; grooving: the holder's; boring: the bar's overhang as clamped)") }}
     <input name="max_depth" type="number" step="any" min="0" value="{{ tool.max_depth if tool.max_depth is not none else '' }}"></label>
+  <label>{{ _("Source of the max depth (catalogue page; boring: who measured the overhang)") }}
+    <input name="max_depth_source" maxlength="200" value="{{ tool.max_depth_source or '' }}"></label>
   <label>{{ _("Holder code (the operator's; e.g. RF123E08-2525B, the shank size is the operator's choice)") }}
     <input name="holder_code" maxlength="50" value="{{ tool.holder_code or '' }}"></label>
   <label>{{ _("Nose radius rε, mm (empty: from the insert code)") }}
@@ -39,6 +41,13 @@
     <input name="min_bore_diameter" type="number" step="any" min="0" value="{{ tool.min_bore_diameter if tool.min_bore_diameter is not none else '' }}"></label>
   <label>{{ _("Source of DMIN (catalogue page, holder)") }}
     <input name="min_bore_source" maxlength="200" value="{{ tool.min_bore_source or '' }}"></label>
+  <label>{{ _("Spindle direction for this bar (boring: as it is mounted; empty: not known, no boring is generated)") }}
+    <select name="spindle_direction">
+      <option value="" {% if not tool.spindle_direction %}selected{% endif %}>—</option>
+      {% for d in ("M03", "M04") %}<option value="{{ d }}" {% if tool.spindle_direction == d %}selected{% endif %}>{{ d }}</option>{% endfor %}
+    </select></label>
+  <label>{{ _("Source of the spindle direction (who set it, how the bar is mounted)") }}
+    <input name="spindle_direction_source" maxlength="200" value="{{ tool.spindle_direction_source or '' }}"></label>
   <label>{{ _("Point angle, ° (drills: the catalogue's SIG)") }}
     <input name="point_angle_deg" type="number" step="any" min="60" max="180" value="{{ tool.point_angle_deg if tool.point_angle_deg is not none else '' }}"></label>
   <label>{{ _("Source of the point angle (catalogue page)") }}
