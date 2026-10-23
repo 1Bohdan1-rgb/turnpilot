@@ -813,7 +813,9 @@ def job_profile(job, radius_of=None):
                                      length=f.length, pitch=f.pitch, radius=radius_of.get(f.id, f.radius),
                                      face=f.face, location=f.location, across_flats=f.across_flats,
                                      arc_convex=f.arc_convex,
-                                     drawn_radius=radius_of.get(f.id, f.drawn_radius), tolerance=f.tolerance)
+                                     drawn_radius=radius_of.get(f.id, f.drawn_radius), tolerance=f.tolerance,
+                                     bore_open_end=f.bore_open_end, bore_from=f.bore_from_mm,
+                                     bore_bottom=f.bore_bottom)
                 for f in job.active_features]
     return gprofile.build(features, job.free_end or "left")
 
@@ -1007,7 +1009,10 @@ def gcode_simulation(job, machine, text, profile=None):
                 slot.tool.type, slot.tool.ap_max, slot.tool.insert_width, slot.tool.max_ramp_angle,
                 slot.tool.nose_radius or planner.insert_nose_radius(slot.tool.insert_code), slot.tool.tip_direction,
                 slot.tool.name, slot.tool.insert_code, slot.tool.entering_angle_deg,
-                planner.insert_shape(slot.tool.insert_code))
+                planner.insert_shape(slot.tool.insert_code), diameter=slot.tool.diameter,
+                point_angle=slot.tool.point_angle_deg, dmin=slot.tool.min_bore_diameter,
+                overhang=slot.tool.max_depth if slot.tool.type in gsim.BORING_TYPES else None,
+                spindle=slot.tool.spindle_direction)
     data = gsim.SimInput(
         profile=profile, stock_radius=planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
         face_stock=job.face_stock_mm or 0.0, stickout=jaws_below_z0(job.stickout_mm, job.face_stock_mm),

@@ -1,9 +1,9 @@
 """The stock after each operation, for the 3D view: the simulation's own grid (gcode/simulate.py, the radius per z
-every 0.01 mm) at the end of every block N, nothing else. Only the outer radius: the simulation does not keep an
-inner one, so holes and flats are not in it.
+every 0.01 mm) at the end of every block N, nothing else: the outer radius, and the hole's (0: solid) when a block
+has one. Flats are not in it.
 
 A state is a polyline (z, r) from the stock's end face (z_top) to the jaws, simplified (Douglas-Peucker) to within
-SIMPLIFY_MM of the grid.
+SIMPLIFY_MM of the grid; "inner" the hole's polyline the same way, only in a state that has a hole.
 """
 from __future__ import annotations
 
@@ -53,5 +53,10 @@ def states(result, dz: float) -> list[dict]:
     """[{n, title, points}]: the bar (n None), then the stock at the end of every block in program order."""
     out = [{"n": None, "title": "BAR", "points": polyline(result.initial_stock, result.z_top, dz)}]
     for block in result.blocks:
-        out.append({"n": block.number, "title": block.title, "points": polyline(block.stock, result.z_top, dz)})
+        state = {"n": block.number, "title": block.title, "points": polyline(block.stock, result.z_top, dz)}
+        if any(r > 0 for r in block.bore):
+            # the hole only where there is material around it (cut off beyond the part: none)
+            hole = [min(r, s) for r, s in zip(block.bore, block.stock)]
+            state["inner"] = polyline(hole, result.z_top, dz)
+        out.append(state)
     return out

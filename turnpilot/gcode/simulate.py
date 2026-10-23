@@ -23,6 +23,19 @@ Material left on the part makes the program incomplete ("part not complete"), ap
 below the finished profile by more than BELOW_FINAL_MM, by any part of a tool (the insert's edge beside its nose too),
 is an error naming the line that first cut there.
 The stock at the end of every block N is kept (SimResult.blocks): the part after each operation, for the 3D view.
+
+The inside: a second radius per z, the hole (0: solid). The material of a cell lies between the hole and the outer
+stock. A drill is its own shape on the axis: its full Ø, and its point's cone when its point angle is known (without
+it the full Ø reaches the point). A boring bar is its tip point, or its nose circle when rε and T are known (G41 /
+G42 as outside), its trailing edge as outside but towards the axis, and its head: DMIN, the smallest bore the holder
+goes into, taken as the room the bar needs across the axis from its edge (edge at r: the other side reaches DMIN − r).
+Errors inside: a rapid through material (the bottom, a wall), a drill whose body meets material, a cut beyond the
+finished bore (by more than BELOW_FINAL_MM; below a drill-point bottom only the drill may go, within D/2), the bar's
+head against the wall across the axis, a bar going deeper than its overhang (or the overhang not set, or DMIN not
+set), a bar run with a spindle direction other than the one the operator set for it (or none set), a cut deeper than
+the bar's ap max. Material left inside a bore makes the program incomplete; within rε of a bore's inner corner it is
+a warning (the nose radius). The inside is checked only when the profile's inner profile is known (every bore placed,
+no internal thread); a drill still meets its own hole either way.
 """
 from __future__ import annotations
 
@@ -38,6 +51,8 @@ BELOW_FINAL_MM = 0.01  # stock below the finished profile by more than this, wha
 TOL = 0.002  # mm
 HOME = (1e6, 1e6)  # the reference point: far beyond the part in +X and +Z
 NOSE_TYPES = ("facing", "turning_rough", "turning_finish")  # simulated as a nose circle when rε and T are known
+BORING_TYPES = ("boring", "boring_rough")  # inside; a nose circle too when rε and T are known
+INNER_TYPES = ("drilling",) + BORING_TYPES
 
 
 @dataclass(frozen=True)
@@ -52,6 +67,11 @@ class ToolInfo:
     insert_code: str | None = None
     entering_angle: float | None = None  # turning: κr of the insert in its holder (the operator's)
     shape: tuple[float, float] | None = None  # turning: (point angle ε, edge length) from the insert code
+    diameter: float | None = None  # drills: the hole they make
+    point_angle: float | None = None  # drills: the point angle, degrees
+    dmin: float | None = None  # boring: the smallest bore the holder goes into
+    overhang: float | None = None  # boring: how deep the bar reaches as it is clamped (its max depth)
+    spindle: str | None = None  # boring: the spindle direction the operator set for this bar
 
     @property
     def trailing(self) -> tuple[float, float] | None:
@@ -96,6 +116,7 @@ class BlockState:
     number: int  # the block's N
     title: str  # its comment
     stock: list[float]  # the stock's radius per grid z at the end of the block
+    bore: list[float] = field(default_factory=list)  # the hole's radius per grid z (0: solid)
 
 
 @dataclass
@@ -109,6 +130,7 @@ class SimResult:
     z_top: float = 0.0
     initial_stock: list[float] = field(default_factory=list)  # the bar, before the first block
     blocks: list[BlockState] = field(default_factory=list)  # the stock at the end of each block, in program order
+    final_bore: list[float] = field(default_factory=list)  # the hole the program leaves (0: solid)
 
     @property
     def ok(self) -> bool:
@@ -131,7 +153,13 @@ class _Sim:
         self.below: dict[int, tuple[int, int | None]] = {}  # cell -> (line, tool) that first cut it below the profile
         self.gouge_lines: set[int] = set()  # lines already reported as cutting below the finished profile
         self.final = [data.profile.final(self.z(i)) for i in range(count)]
-        self.hole = 0.0  # the drilled depth on the axis (z of the bottom)
+        self.bore = [0.0] * count  # the hole's radius per cell
+        profile = data.profile
+        self.inner_known = profile.inner_known
+        self.inner = [profile.inner(self.z(i)) for i in range(count)] if self.inner_known else None
+        self.drill_zone = [profile.drill_zone(self.z(i)) for i in range(count)] if self.inner_known else None
+        self.beyond: dict[int, tuple[int, int | None]] = {}  # cell -> (line, tool) that first cut beyond the bore
+        self.inner_nose_used: set[float] = set()
         self.r = SimResult(z_top=self.z_top)
         self.pos = HOME
         self.tool: int | None = None
@@ -180,9 +208,15 @@ class _Sim:
     def nose(self) -> tuple[float, int] | None:
         """(rε, T) when the current tool is simulated as its nose circle."""
         info = self.info
-        if info and info.tool_type in NOSE_TYPES and info.nose_radius and info.tip_direction in TIP_FROM_CENTRE:
+        if info and info.tool_type in NOSE_TYPES + BORING_TYPES and info.nose_radius \
+                and info.tip_direction in TIP_FROM_CENTRE:
             return info.nose_radius, info.tip_direction
         return None
+
+    @property
+    def inside(self) -> bool:
+        """The tool works inside: a drill or a boring bar."""
+        return bool(self.info and self.info.tool_type in INNER_TYPES)
 
     def footprint(self, z: float) -> tuple[float, float]:
         """The z range the tool cuts at its programmed point (an insert's width for grooving / parting)."""
@@ -217,21 +251,22 @@ class _Sim:
 
     def _rapid_clear(self, x0, z0, x1, z1) -> bool:
         """A straight rapid from (x0, z0) to (x1, z1) stays out of the material (the drill in its own hole)."""
-        drilling = self.info and self.info.tool_type == "drilling"
         if abs(z1 - z0) < 1e-9:  # radial: the lower end matters
             r = min(x0, x1) / 2
-            if drilling and abs(r) < TOL and z0 >= self.hole - TOL:
-                return True
             return z0 > self.z_top + TOL or not self._stock_above(z0, max(r, 0.0))
         for z, x in self._path_points(x0, z0, x1, z1):
             r = x / 2
-            if drilling and abs(r) < TOL and z >= self.hole - TOL:
-                continue
             if self._stock_above(z, max(r, 0.0)):
                 return False
         return True
 
     def rapid(self, line: int, x: float, z: float) -> None:
+        if self.info and self.info.tool_type in BORING_TYPES:
+            self._inner_rapid(line, x, z)
+            return
+        if self.info and self.info.tool_type == "drilling" and abs(x) < TOL and abs(self.pos[0]) < TOL:
+            self._drill_rapid(line, z)
+            return
         if self.nose:
             self._nose_rapid(line, x, z)
             return
@@ -294,7 +329,9 @@ class _Sim:
         for k in range(1, steps + 1):
             t = t0 + sweep * k / steps
             tips.append((cz + radius * math.cos(t), cr + radius * math.sin(t)) if k < steps else (z, r1))
-        if self.nose:
+        if self.info and self.info.tool_type in BORING_TYPES:
+            self._inner_cut(line, x, z, tips, "arc")
+        elif self.nose:
             self._nose_cut(line, x, z, tips, "arc")
         else:
             for zz, rr in tips[1:]:
@@ -304,6 +341,9 @@ class _Sim:
     def cut(self, line: int, x: float, z: float, kind: str = "feed", record: bool = True) -> None:
         x0, z0 = self.pos
         info = self.info
+        if info and info.tool_type in BORING_TYPES and record:
+            self._inner_cut(line, x, z, [(z0, x0 / 2), (z, x / 2)], kind)
+            return
         if self.nose and kind == "feed" and record:
             self._nose_cut(line, x, z, [(z0, x0 / 2), (z, x / 2)], kind)
             return
@@ -318,7 +358,7 @@ class _Sim:
         if drilling:
             if abs(x) > TOL or abs(x0) > TOL:
                 self.error(line, "the drill is off the axis")
-            self.hole = min(self.hole, z)
+            self._drill_cut(line, z0, z)
         else:
             points = self._path_points(x0, z0, x, z)
             excess = []  # (z, material above the tip) along a move towards the chuck
@@ -455,7 +495,7 @@ class _Sim:
         def close(cancelled: bool) -> None:
             info = self.d.tools.get(run_tool)
             self.comp_lines.update(m.line for m in run)
-            if not run or not (info and info.tool_type in NOSE_TYPES and info.nose_radius
+            if not run or not (info and info.tool_type in NOSE_TYPES + BORING_TYPES and info.nose_radius
                                and info.tip_direction in TIP_FROM_CENTRE):
                 return
             paths, errors = compensated_paths(run, comp, info.nose_radius, info.tip_direction, cancelled)
@@ -505,10 +545,10 @@ class _Sim:
                 if motion not in (0, 1):
                     self.error(n, f"{side} on G0{motion}: the start-up needs a G00 / G01 move")
                 info = self.d.tools.get(tool)
-                if not (info and info.tool_type in NOSE_TYPES and info.nose_radius
+                if not (info and info.tool_type in NOSE_TYPES + BORING_TYPES and info.nose_radius
                         and info.tip_direction is not None):
                     self.error(n, f"{side} with a tool that has no nose radius and tip direction T, or is not a "
-                                  "turning tool")
+                                  "turning or boring tool")
                 comp, run, run_tool = side, [move], tool
             elif side and comp is not None and side != comp:
                 self.error(n, f"{side} while {comp} is on: the side changes only after G40")
@@ -549,7 +589,7 @@ class _Sim:
         error. Shorter runs are a face's allowance taken across (an axial cut); a 45° chamfer up to 3 mm cut in one
         pass is a warning (the chip is a triangle)."""
         info = self.info
-        if not info or info.tool_type not in ("turning_rough", "turning_finish") or not info.edge:
+        if not info or info.tool_type not in ("turning_rough", "turning_finish") + BORING_TYPES or not info.edge:
             return
         limit, depth, run = info.edge + 0.01, 0.0, []
         for zz, e in excess + [(None, 0.0)]:
@@ -736,7 +776,15 @@ class _Sim:
             for m in ln.m:
                 if m in (3, 4):
                     direction = f"M0{m}"
-                    if direction != self.d.spindle:
+                    info = self.info
+                    if info and info.tool_type in BORING_TYPES:
+                        if info.spindle is None:
+                            self.error(n, f"{direction}: the spindle direction for T{self.tool:02d} (a boring bar) is "
+                                          "not set: the operator's, on the tool page")
+                        elif direction != info.spindle:
+                            self.error(n, f"{direction}: the operator's direction for T{self.tool:02d} (a boring bar) "
+                                          f"is {info.spindle}")
+                    elif direction != self.d.spindle:
                         self.error(n, f"{direction}: the operator's direction for a right-hand tool is "
                                       f"{self.d.spindle}")
                     self.spindle_on = direction
@@ -780,7 +828,7 @@ class _Sim:
 
     def _close_block(self) -> None:
         if self.block is not None:
-            self.r.blocks.append(BlockState(self.block[0], self.block[1], list(self.stock)))
+            self.r.blocks.append(BlockState(self.block[0], self.block[1], list(self.stock), list(self.bore)))
             self.block = None
 
     def thread(self, line: int, x: float, z: float, pitch: float | None) -> None:
@@ -860,7 +908,10 @@ class _Sim:
     def finish(self) -> None:
         length = self.d.profile.length
         self.r.final_stock = list(self.stock)
+        self.r.final_bore = list(self.bore)
         self._below_final()
+        self._beyond_bore()
+        self._inner_leftover()
         # the material a nose circle leaves in an inner corner (within rε·√2 of it, at most rε thick): a warning,
         # not a part left unfinished
         nose = min(self.nose_used) if self.nose_used else None
@@ -892,6 +943,268 @@ class _Sim:
             self.r.incomplete.append(f"PART NOT COMPLETE: material left from Z{fanuc.number(z0)} to "
                                      f"Z{fanuc.number(z1)} (up to {excess:.2f} mm per side): operations not in the "
                                      f"program, or manual")
+
+
+    # the inside --------------------------------------------------------------------------------------------
+    def _in_part(self, i: int) -> bool:
+        z = self.z(i)
+        return -self.d.profile.length + TOL < z < TOL
+
+    def _raise(self, i: int, r: float, line: int, drill: bool = False) -> None:
+        """The hole at cell i opened to r; the first line that opens it beyond the finished bore is kept."""
+        self.bore[i] = r
+        if not self.inner_known or i in self.beyond or not self._in_part(i) or self.stock[i] <= r - TOL:
+            return
+        limit = self.inner[i]
+        if self.drill_zone[i]:
+            limit = math.inf if drill else max(limit, 0.0)
+        if r > limit + BELOW_FINAL_MM:
+            self.beyond[i] = (line, self.tool)
+
+    def _drill_r(self, h: float) -> float:
+        """The drill's radius h above its point: its cone, then its full Ø (no point angle: the full Ø to the point)."""
+        info = self.info
+        r = (info.diameter or 0.0) / 2
+        if info.point_angle and info.point_angle < 180:
+            return min(r, max(h, 0.0) * math.tan(math.radians(info.point_angle / 2)))
+        return r
+
+    def _point_length(self) -> float:
+        info = self.info
+        if info.point_angle and info.point_angle < 180 and info.diameter:
+            return info.diameter / 2 / math.tan(math.radians(info.point_angle / 2))
+        return 0.0
+
+    def _drill_fits(self, line: int, z: float) -> bool:
+        """The drill with its point at z on the axis meets no material (its body in its own hole)."""
+        top = self.z_top if z < self.z_top else z
+        for j in self.indices(z, top):
+            need = self._drill_r(self.z(j) - z)
+            if self.stock[j] > self.bore[j] + TOL and self.bore[j] < need - TOL and self.stock[j] > TOL:
+                self.error(line, f"G00 through material: the drill meets material at Z{fanuc.number(self.z(j))}")
+                return False
+        return True
+
+    def _drill_rapid(self, line: int, z: float) -> None:
+        x0, z0 = self.pos
+        z0c = min(z0, self.z_top + 50)
+        if z < z0c:  # going in: the body at the end covers every cell it passed
+            self._drill_fits(line, z)
+        self.r.segments.append(Segment("rapid", x0, z0c, 0.0, z, line, self.tool))
+        self.check_bounds(line, 0.0, z)
+        self.pos = (0.0, z)
+
+    def _drill_cut(self, line: int, z0: float, z: float) -> None:
+        """The drill fed to z: its body opens the hole from its point up."""
+        if z >= z0 - 1e-9:
+            return
+        for j in self.indices(z, min(max(z0, z) + self._point_length() + DZ, self.z_top)):
+            r = self._drill_r(self.z(j) - z)
+            if r > self.bore[j] + 1e-9:
+                self._raise(j, r, line, drill=True)
+
+    def _cells(self, cz: float, cr: float, radius: float):
+        """(cell, lowest r, highest r) a point (radius 0) or a circle covers."""
+        if radius <= 0:
+            i = self.index(cz)
+            return [] if i is None else [(i, cr, cr)]
+        out = []
+        for i in self.indices(cz - radius, cz + radius):
+            half = math.sqrt(max(radius * radius - (self.z(i) - cz) ** 2, 0.0))
+            out.append((i, cr - half, cr + half))
+        return out
+
+    def _meets(self, cz: float, cr: float, radius: float, r_lo: float | None = None) -> bool:
+        """The point / circle at (cz, cr) (a radial sweep: from r_lo up to cr) overlaps material."""
+        for i, low, high in self._cells(cz, cr, radius):
+            if r_lo is not None:
+                low = min(low, r_lo - radius)
+            if self.stock[i] > self.bore[i] + TOL and high > self.bore[i] + TOL and low < self.stock[i] - TOL:
+                return True
+        return False
+
+    def _inner_rapid(self, line: int, x: float, z: float) -> None:
+        x0, z0 = self.pos
+        x0, z0, xc, zc = min(x0, 2e5), min(z0, self.z_top + 50), min(x, 2e5), min(z, self.z_top + 50)
+        radius = self.nose[0] if self.nose else 0.0
+        tips = [(z0, x0 / 2), (zc, xc / 2)]
+        path = self._centre_path(line, tips) if self.nose else tips
+        paths = [path]
+        if line not in self.comp_paths and abs(xc - x0) > 1e-9 and abs(zc - z0) > 1e-9:
+            (za, ra), (zb, rb) = path[0], path[-1]
+            paths = [[(za, ra), (za, rb), (zb, rb)], [(za, ra), (zb, ra), (zb, rb)], path]
+        for legs in paths:
+            hit = False
+            for (za, ra), (zb, rb) in zip(legs, legs[1:]):
+                if abs(zb - za) < 1e-9:  # radial: the whole sweep at that z
+                    hit = self._meets(za, max(ra, rb), radius, min(ra, rb))
+                else:
+                    hit = any(self._meets(zz, rr, radius) for zz, rr in self._samples([(za, ra), (zb, rb)], dense=False))
+                if hit:
+                    break
+            if hit:
+                self.error(line, "G00 through material" + (" (if the axes move one after the other)"
+                                                           if len(legs) == 3 else ""))
+        if path:
+            self._bar_checks(line, path[0], radius)
+            self._bar_checks(line, path[-1], radius)
+            self._overhang(line, path, radius)
+            if self.nose:
+                self._nose_bounds(line, path, radius)
+        self.check_bounds(line, x, z, jaws=not self.nose)
+        self.r.segments.append(Segment("rapid", x0, z0, x, z, line, self.tool))
+        self.pos = (x, z)
+
+    def _inner_cut(self, line: int, x: float, z: float, tips: list[tuple[float, float]], kind: str) -> None:
+        """A boring bar's feed or arc: it opens the hole to its point / nose circle along its path; beyond the finished
+        bore it is an error (kept per cell, reported at the end)."""
+        x0, z0 = self.pos
+        info = self.info
+        if self.spindle_on is None:
+            self.error(line, "a cutting move with the spindle stopped")
+        if kind == "feed" and self.feed is None:
+            self.error(line, "G01 without a feed (F)")
+        if x0 >= HOME[0] or z0 >= HOME[1]:
+            self.error(line, "a cutting move straight from the reference point")
+        radius = self.nose[0] if self.nose else 0.0
+        path = self._centre_path(line, tips) if self.nose else [(tz, tr) for tz, tr in tips]
+        if self.nose:
+            self._nose_bounds(line, path, radius)
+            self.inner_nose_used.add(radius)
+        self.check_bounds(line, x, z, jaws=not self.nose)
+        if path:
+            self._bar_checks(line, path[0], radius)
+            self._overhang(line, path, radius)
+        samples = self._samples(path)
+        excess = []
+        if z < z0 - 1e-9:  # material ahead of the edge along a cut towards the chuck
+            for zz, rr in samples[:-1]:
+                i = self.index(zz)
+                if i is not None and self.stock[i] > self.bore[i] + TOL:
+                    excess.append((zz, rr + radius - self.bore[i]))
+        radial = abs(x - x0) > 1e-9
+        for zz, rr in samples:
+            for i, _, high in self._cells(zz, rr, radius):
+                if high > self.bore[i] + 1e-9:
+                    self._raise(i, high, line)
+            if radial and info.edge:
+                self._inner_edge(line, zz, rr, radius, info.edge)
+        self._check_depth(line, excess, x0, z0, x, z)
+        if path:
+            self._bar_checks(line, path[-1], radius)
+        self.r.segments.append(Segment(kind, x0, z0, x, z, line, self.tool))
+        self.pos = (x, z)
+
+    def _inner_edge(self, line: int, cz: float, cr: float, radius: float, flat: float) -> None:
+        """A boring insert's trailing edge beside its nose / tip, going towards +Z and towards the axis at
+        180° − κr − ε (ToolInfo.trailing); else a flat `flat` long at the nose's highest point (cautious)."""
+        trailing = self.info.trailing
+        if trailing is None:
+            top = cr + radius
+            for i in self.indices(cz, cz + flat):
+                if self.bore[i] < top - 1e-9:
+                    self._raise(i, top, line)
+            return
+        angle, length = trailing
+        if angle <= 0.0:
+            return
+        a = math.radians(angle)
+        tz, tr = cz + radius * math.sin(a), cr + radius * math.cos(a)
+        slope = math.tan(a)
+        for i in self.indices(tz, tz + length * math.cos(a)):
+            high = tr - (self.z(i) - tz) * slope
+            if high > self.bore[i] + 1e-9:
+                self._raise(i, high, line)
+
+    def _overhang(self, line: int, path, radius: float) -> None:
+        info = self.info
+        deepest = min(zz for zz, _ in path) - radius
+        if deepest >= -TOL:
+            return
+        if info.overhang is None:
+            self.error(line, f"T{self.tool:02d}: the bar's overhang (its max depth) is not set: how deep it may go is "
+                             "not known")
+        elif -deepest > info.overhang + TOL:
+            self.error(line, f"T{self.tool:02d}: goes {-deepest:.2f} mm deep, the bar's overhang reaches "
+                             f"{info.overhang:g}")
+
+    def _bar_checks(self, line: int, centre: tuple[float, float], radius: float) -> None:
+        """The bar's head with its edge at the point / circle: across the axis it reaches DMIN − (the edge's r); every
+        cell from its tip up to the end face must leave it room."""
+        info = self.info
+        cz, cr = centre
+        tip = cz - radius
+        if tip >= self.z_top - TOL or cz >= HOME[1] / 2:
+            return
+        if info.dmin is None:
+            self.error(line, f"T{self.tool:02d}: DMIN of the bar is not set: whether its head fits the hole is not "
+                             "known")
+            return
+        edge = cr + radius
+        far = info.dmin - edge
+        for j in self.indices(tip, self.z_top):
+            if self.stock[j] > self.bore[j] + TOL and self.bore[j] < far - TOL:
+                self.error(line, f"the bar (DMIN {info.dmin:g}) meets the wall across the axis at "
+                                 f"Z{fanuc.number(self.z(j))}: the hole is D{fanuc.number(2 * self.bore[j])} there, the "
+                                 f"bar with its edge at D{fanuc.number(2 * edge)} takes {far:.2f} on the other side")
+                return
+
+    def _beyond_bore(self) -> None:
+        runs = []
+        for i in sorted(self.beyond):
+            line, tool = self.beyond[i]
+            limit = self.inner[i] if not self.drill_zone[i] else 0.0
+            depth = self.bore[i] - limit
+            if runs and runs[-1][0] == line and runs[-1][3] == i - 1:
+                runs[-1][3], runs[-1][4] = i, max(runs[-1][4], depth)
+            else:
+                runs.append([line, tool, i, i, depth])
+        for line, tool, first, last, depth in runs:
+            info = self.d.tools.get(tool)
+            message = (f"cuts beyond the finished bore from Z{fanuc.number(self.z(first))} to "
+                       f"Z{fanuc.number(self.z(last))}, up to {depth:.2f} mm per side (more than {BELOW_FINAL_MM:g})")
+            if tool is not None:
+                message += f", by T{tool:02d}" + (f" {info.name}" if info and info.name else "")
+            if info and info.tool_type in BORING_TYPES and info.edge and info.trailing is None:
+                message += (f" (the insert's edge beside the nose is taken as {info.edge:g} mm along Z: κr of the "
+                            "holder is not set)")
+            bores = [b for b in self.d.profile.bores if b.z_bottom - TOL <= self.z(first) <= b.z_top + TOL]
+            if bores:
+                message += "; the drawing's tolerance there (for reference): " + "; ".join(
+                    f"D{fanuc.number(b.diameter)} {b.tolerance or 'none given'}" for b in bores)
+            self.error(line, message)
+
+    def _inner_leftover(self) -> None:
+        """Material left inside the bores: the part is not complete (in a bore's inner corner within rε: a warning)."""
+        if not self.inner_known or not self.d.profile.bores:
+            return
+        nose = min(self.inner_nose_used) if self.inner_nose_used else None
+        corners = [(b.z_bottom, b.diameter / 2) for b in self.d.profile.bores if b.bottom != "through"]
+        run, fillets, left = None, {}, []
+        for i in range(len(self.bore)):
+            need = self.inner[i]
+            excess = need - self.bore[i]
+            if need <= 0 or not self._in_part(i) or self.stock[i] <= need + TOL:
+                excess = 0.0
+            z = self.z(i)
+            corner = next((c for c in corners if math.hypot(z - c[0], need - c[1]) <= nose * math.sqrt(2) + 0.02),
+                          None) if nose and 0.01 < excess <= nose + 0.01 else None
+            if corner is not None:
+                fillets[corner] = max(fillets.get(corner, 0.0), excess)
+            if excess > 0.01 and corner is None:
+                run = [z, z, excess] if run is None else [run[0], z, max(run[2], excess)]
+            elif run is not None:
+                left.append(run)
+                run = None
+        if run is not None:
+            left.append(run)
+        for (z, r), excess in sorted(fillets.items(), reverse=True):
+            self.warning(0, f"the bore's inner corner at Z{fanuc.number(z)} D{fanuc.number(2 * r)} keeps the nose "
+                            f"radius R{nose:g} (up to {excess:.2f} mm): the drawn corner is sharp, check")
+        for z0, z1, excess in left:
+            self.r.incomplete.append(f"PART NOT COMPLETE: material left in the bore from Z{fanuc.number(z0)} to "
+                                     f"Z{fanuc.number(z1)} (up to {excess:.2f} mm per side): operations not in the "
+                                     "program, or manual")
 
 
 def simulate(text: str, data: SimInput) -> SimResult:

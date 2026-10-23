@@ -1,6 +1,14 @@
 """The part's outer profile from the part zero: Z0 on the free end face, X0 on the axis, Z negative towards the
 chuck. Built from the confirmed rows of a DXF job (in their order along the axis), never from a drawing directly.
 
+The inner profile (bores) is kept beside it: each bore with its place (from the face it opens at, its start and its
+bottom) as a cylinder from z_top down to z_bottom. inner(z) is the radius a bore has at z when finished (a mouth
+chamfer included; 0: no bore there): no tool may cut beyond it, and the material inside it is to be removed. Below a
+drill-point bottom only the drill may go, within D/2 of the bottom (any point of 90° or more). A bore the free end
+cannot reach (it opens at the chuck end, or a wider one lies beyond a narrower one) is kept with its problem: it is not
+programmed and its material stays. The inner profile is known only when every bore has its place and no internal
+thread is on the part; otherwise the simulation does not check inside (inner_known False).
+
 Each section is a list of segments from its free-end side to its chuck side: lines (cylinders, tapers, chamfers)
 and arcs (arc sections and fillets, with their centre). Two radii along z come from them:
 - turned(z): what the turning passes leave (finishing contour): a groove is bridged at the diameter it is cut
@@ -39,6 +47,29 @@ class FeatureData:
     arc_convex: bool | None = None  # arc / fillet: bulging away from the axis
     drawn_radius: float | None = None  # arc from a DXF: the radius drawn (it may differ from the dimension)
     tolerance: str | None = None  # the drawing's tolerance of the row (shown in the messages, not used to cut)
+    bore_open_end: str | None = None  # bore: "left" / "right" on the drawing, the face its start is measured from
+    bore_from: float | None = None  # bore: its start from that face
+    bore_bottom: str | None = None  # bore: "flat" / "drill_point" / "through"
+
+
+@dataclass
+class Bore:
+    """A bore of the inner profile from the part zero: z_top nearer the free end, z_bottom deeper (both ≤ 0)."""
+    feature_id: int
+    diameter: float
+    z_top: float
+    z_bottom: float
+    bottom: str  # "flat" / "drill_point" / "through"
+    tolerance: str | None = None
+    chamfer: float = 0.0  # a 45° chamfer at its mouth (a bore that starts at the free end face)
+    problem: str | None = None  # why it is not programmed
+
+    def r_at(self, z: float) -> float:
+        """The finished radius at z (the mouth chamfer widens it towards Z0)."""
+        r = self.diameter / 2
+        if self.chamfer and z > -self.chamfer:
+            r += self.chamfer + min(z, 0.0)
+        return r
 
 
 @dataclass(frozen=True)
@@ -188,6 +219,37 @@ class Profile:
     warnings: list[str] = field(default_factory=list)
     turned_points: list[tuple[float, float]] = field(default_factory=list)  # (z, r), z falling
     final_points: list[tuple[float, float]] = field(default_factory=list)
+    bores: list[Bore] = field(default_factory=list)  # from the free end inwards
+    inner_known: bool = True  # every bore placed and no internal thread: the simulation checks inside
+
+    def bore_of(self, feature_id: int) -> Bore | None:
+        return next((b for b in self.bores if b.feature_id == feature_id), None)
+
+    def inner(self, z: float) -> float:
+        """The finished radius of the bores at z; 0 where there is none (at a step: the wider one)."""
+        radii = [b.r_at(z) for b in self.bores if b.z_bottom - EPS <= z <= b.z_top + EPS]
+        return max(radii, default=0.0)
+
+    def drill_zone(self, z: float) -> bool:
+        """Below a drill-point bottom, within D/2 of it: where the drill's point may go (no other tool)."""
+        return any(b.bottom == "drill_point" and b.z_bottom - b.diameter / 2 - EPS <= z < b.z_bottom - EPS
+                   for b in self.bores)
+
+    def inner_points(self) -> list[tuple[float, float]]:
+        """The finished inner profile (z, r) from Z0 inwards, for the drawings (its mouth chamfer included)."""
+        out: list[tuple[float, float]] = []
+        for b in self.bores:
+            r = b.diameter / 2
+            if b.chamfer:
+                out += [(b.z_top, r + b.chamfer), (b.z_top - b.chamfer, r)]
+            elif not out or abs(out[-1][0] - b.z_top) > EPS:
+                out += [(b.z_top, 0.0), (b.z_top, r)]
+            else:
+                out.append((b.z_top, r))
+            out.append((b.z_bottom, r))
+        if out:
+            out.append((out[-1][0], 0.0))
+        return out
 
     def section_of(self, feature_id: int) -> Section | None:
         return next((s for s in self.sections if feature_id in (s.feature_id, s.thread_feature_id)), None)
@@ -301,7 +363,48 @@ def build(features: list[FeatureData], free_end: str) -> Profile:
     profile = Profile(sections, round(-z, 6), warnings)
     profile.turned_points = _points(sections, final=False)
     profile.final_points = _points(sections, final=True)
+    profile.bores, profile.inner_known = _bores(features, free_end, profile.length, warnings)
     return profile
+
+
+def _bores(features: list[FeatureData], free_end: str, length: float, warnings: list[str]):
+    """The bores from the part zero, and whether the inner profile is known (every bore placed, no internal thread)."""
+    known = True
+    bores: list[Bore] = []
+    for f in features:
+        if f.type == "thread" and f.location == "internal":
+            known = False  # not in the inner profile (the drilling block says so)
+        if f.type != "bore":
+            continue
+        if not (f.diameter and f.length) or f.bore_open_end is None or f.bore_from is None or f.bore_bottom is None:
+            known = False  # not placed: not bored by the program (its operations say so), the inside not checked
+            continue
+        start, end = f.bore_from, f.bore_from + f.length
+        if f.bore_open_end == free_end:
+            z_top, z_bottom = -start, -end
+        else:  # measured from the chuck end
+            z_top, z_bottom = -(length - end), -(length - start)
+        bottom = f.bore_bottom
+        bores.append(Bore(f.id, f.diameter, round(z_top, 6), round(z_bottom, 6), bottom, f.tolerance))
+    bores.sort(key=lambda b: -b.z_top)
+    for f in features:  # an internal chamfer at the mouth of the bore that opens at the free end
+        if f.type == "chamfer" and f.location == "internal" and f.length and bores and bores[0].z_top > -EPS:
+            if f.face == free_end or f.face is None:
+                bores[0].chamfer = f.length
+    at, wide, problem = 0.0, math.inf, None
+    for b in bores:
+        if problem is None and abs(b.z_top - at) > 0.01:
+            problem = ("it opens at the chuck end: needs a second set-up (not planned)" if at == 0.0 else
+                       f"it does not join the bore before it (Z{at:g}): not reached from the free end")
+        if problem is None and b.diameter > wide + 0.001:
+            problem = "wider than the bore before it (an undercut): not reached from the free end"
+        if problem is None and b.bottom == "through" and abs(b.z_bottom + length) > 0.01:
+            problem = f"a through bore that ends at Z{b.z_bottom:g}, not at the part's end Z{-length:g}: check its place"
+        b.problem = problem
+        if problem:
+            warnings.append(f"bore D{b.diameter:g} (row {b.feature_id}): {problem}")
+        at, wide = b.z_bottom, b.diameter
+    return bores, known
 
 
 def _turned_end(section: Section, chuck_side: bool) -> float | None:

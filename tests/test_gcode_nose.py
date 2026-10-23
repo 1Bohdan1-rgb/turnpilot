@@ -117,7 +117,7 @@ def test_compensation_with_a_tool_without_t(pin):
     job, machine, text, _ = pin
     finishing_tool(tip_direction=None)
     found = messages(simulate(job, machine, text))
-    assert "G42 with a tool that has no nose radius and tip direction T, or is not a turning tool" in found
+    assert "G42 with a tool that has no nose radius and tip direction T, or is not a turning or boring tool" in found
 
 
 def test_a_tip_direction_the_simulation_does_not_know(pin):
