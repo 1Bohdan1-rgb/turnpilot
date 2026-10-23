@@ -846,7 +846,7 @@ def jobs():
 @bp.route("/jobs/<int:job_id>")
 def job_detail(job_id):
     job = db.get_or_404(Job, job_id)
-    return render_template("job_detail.html", job=job, feature_types=FEATURE_TYPES, positions=POSITIONS,
+    return render_template("job_detail.html", job=job, next_step=services.next_step(job), feature_types=FEATURE_TYPES, positions=POSITIONS,
                            machine_warnings=services.machine_warnings(job, services.job_machine(job)),
                            suggested_free_end=services.suggest_free_end(job),
                            conflicts=services.radius_conflicts(job) if job.axial_order_known else {},
@@ -989,7 +989,7 @@ def job_gcode(job_id):
     ops = {op.id: op for op in job.current_operations}
     programs = db.session.execute(db.select(GcodeProgram).filter_by(job_id=job.id)
                                   .order_by(GcodeProgram.id.desc())).scalars().all()
-    return render_template("job_gcode.html", job=job, readiness=readiness, settings=settings, ops=ops,
+    return render_template("job_gcode.html", job=job, next_step=services.next_step(job), readiness=readiness, settings=settings, ops=ops,
                            demo=services.demo_settings(settings), programs=programs)
 
 
@@ -1023,7 +1023,7 @@ def gcode_program(program_id):
     for line, message in sim["warnings"]:
         flagged.setdefault(line, []).append(("warning", message))
     return render_template(
-        "gcode_program.html", record=record, job=job, sim=sim, settings=settings, stale=stale, drawing=drawing,
+        "gcode_program.html", record=record, job=job, next_step=services.next_step(job), sim=sim, settings=settings, stale=stale, drawing=drawing,
         errors=greport.group(sim["errors"]), warnings=greport.group(sim["warnings"]), lines=lines,
         flagged=flagged, demo=services.demo_settings(settings), checklist=services.gcode_checklist(record),
         cycle=services.cycle_time(record, machine),
@@ -1206,7 +1206,7 @@ def calculate(job_id):
 def operations(job_id):
     job = db.get_or_404(Job, job_id)
     machine = services.job_machine(job)
-    return render_template("operations.html", job=job, machine=machine,
+    return render_template("operations.html", job=job, next_step=services.next_step(job), machine=machine,
                            machine_warnings=services.machine_warnings(job, machine), setup=_setup_view(job))
 
 

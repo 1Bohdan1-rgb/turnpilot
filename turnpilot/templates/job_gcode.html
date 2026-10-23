@@ -4,6 +4,7 @@
 <h1>{{ _("G-code") }}: {{ job.name }}</h1>
 <p class="muted"><a href="{{ url_for('main.job_detail', job_id=job.id) }}">{{ _("job") }}</a> ·
   <a href="{{ url_for('main.operations', job_id=job.id) }}">{{ _("operations") }}</a></p>
+{% include "_next_step.html" %}
 <p class="muted small">{{ _("A program is built by the code from the approved operations, from the part zero (Z0 on the free end face, X0 on the axis), for the outer profile and drilling on the axis. It is simulated, the operator checks it, and only then it can be downloaded. Nothing is sent to the machine: the operator presses Start.") }}</p>
 
 {% if demo %}

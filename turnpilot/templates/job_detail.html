@@ -8,6 +8,7 @@
   {{ _("blank") }} {{ job.blank_label }} × {{ job.blank_length|round(2) }} {{ _("mm") }}
   {% if job.extraction %}· {{ _("created from drawing") }} <a href="{{ url_for('main.extraction_file', extraction_id=job.extraction.id, which='original') }}" target="_blank">{{ job.extraction.original_filename }}</a>{% endif %}
 </p>
+{% include "_next_step.html" %}
 <form method="post" action="{{ url_for('main.set_job_machine', job_id=job.id) }}" class="inline-form">
   <label class="small">{{ _("Planned for the machine") }}
     <select name="machine_id" aria-label="{{ _("Machine") }}">{% for m in machines %}<option value="{{ m.id }}" {% if m.id == job_machine.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select></label>
@@ -18,7 +19,7 @@
 <div class="warning">{{ _("The current calculation was made for {old}: Calculate again for {new} (its turret and limits).", old=job.calculated_machine.name, new=job_machine.name) }}</div>{% endif %}
 {% for w in machine_warnings %}<div class="flash flash-error machine-warning">⚠ {{ w }}</div>{% endfor %}
 
-<h2>{{ _("Orders") }}</h2>
+<h2 id="orders">{{ _("Orders") }}</h2>
 <div class="card">
   {% set orders = job_orders %}
   {% if orders %}<ul>{% for o in orders %}<li><a href="{{ url_for('main.order_detail', order_id=o.id) }}">{{ _("Order {n}", n=o.id) }}</a>:
@@ -118,7 +119,7 @@
 <p class="muted">{{ _("No features yet.") }}</p>
 {% endif %}
 
-<h3>{{ _("Add feature") }}</h3>
+<h3 id="add-feature">{{ _("Add feature") }}</h3>
 <form method="post" action="{{ url_for('main.add_feature', job_id=job.id) }}" class="card grid-form">
   <label>{{ _("Type") }}
     <select name="type">{% for t in feature_types %}<option value="{{ t }}">{{ t|label }}</option>{% endfor %}</select>

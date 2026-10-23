@@ -982,6 +982,22 @@ UK = {
     "Notes of operation {n}": "Примітки операції {n}",
     "width": "ширина",
     "depth/side": "глибина/бік",
+    # next step
+    "Next step": "Наступний крок",
+    "Add the features": "Додайте елементи",
+    "Calculate the job": "Розрахувати завдання",
+    "Accept the turret set-up": "Прийняти налагодження револьверної головки",
+    "Operation {n} has no tool: set up the turret or skip it": "Операція {n} без інструмента: налагодьте револьверну головку або пропустіть її",
+    "Approve the operations ({n} left)": "Затвердити операції (лишилося {n})",
+    "G-code: see what blocks the program": "G-код: що заважає скласти програму",
+    "Generate the G-code": "Скласти G-код",
+    "Generate the G-code again (program {n} is out of date)": "Скласти G-код знову (програма {n} застаріла)",
+    "Program {n}: fix what the simulation found": "Програма {n}: виправте те, що знайшло моделювання",
+    "Program {n}: mark the tools installed at the machine": "Програма {n}: позначте інструменти встановленими на верстаті",
+    "Program {n}: check it and mark it ready to run": "Програма {n}: перевірте й позначте «готово до запуску»",
+    "Create an order": "Створити замовлення",
+    "Order {n}: take the latest program": "Замовлення {n}: взяти останню програму",
+    "Order {n}: mark the progress at the machine": "Замовлення {n}: відмічайте хід роботи на верстаті",
 }
 
 

@@ -9,6 +9,7 @@
   <a href="{{ url_for('main.job_detail', job_id=job.id) }}">{{ _("back to features") }}</a>
   {% if job.archived_operations %}· <a href="{{ url_for('main.history', job_id=job.id) }}">{{ _("calculation history") }}</a>{% endif %}
 </p>
+{% include "_next_step.html" %}
 <p class="actions"><a class="button" href="{{ url_for('main.job_gcode', job_id=job.id) }}">{{ _("G-code") }}</a></p>
 {% if job.current_operations %}<p class="muted small">{{ _("Calculation version {v}", v=job.last_calculation_version) }}</p>{% endif %}
 {% for w in machine_warnings %}<div class="flash flash-error machine-warning">⚠ {{ w }}</div>{% endfor %}

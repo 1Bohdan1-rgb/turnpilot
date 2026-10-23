@@ -1956,6 +1956,84 @@ def latest_program(job, machine):
                               .order_by(GcodeProgram.id.desc())).scalars().first()
 
 
+# The job's next step, so the operator does not look for where to click: accept the set-up → approve the operations →
+# G-code → ready to run → order. One step, the first not done; the page it is done on. The label is a text of the
+# interface (i18n): `values` fill it.
+NEXT_STEP_LABELS = {
+    "features": "Add the features",
+    "calculate": "Calculate the job",
+    "setup": "Accept the turret set-up",
+    "no_tool": "Operation {n} has no tool: set up the turret or skip it",
+    "approve": "Approve the operations ({n} left)",
+    "blocked": "G-code: see what blocks the program",
+    "generate": "Generate the G-code",
+    "regenerate": "Generate the G-code again (program {n} is out of date)",
+    "fix": "Program {n}: fix what the simulation found",
+    "installed": "Program {n}: mark the tools installed at the machine",
+    "ready": "Program {n}: check it and mark it ready to run",
+    "order": "Create an order",
+    "order_program": "Order {n}: take the latest program",
+    "progress": "Order {n}: mark the progress at the machine",
+}
+
+
+@dataclass
+class NextStep:
+    key: str
+    endpoint: str
+    args: dict
+    anchor: str = ""
+    values: dict = field(default_factory=dict)
+    post: bool = False  # the step is a button (POST to the endpoint), not a link
+
+    @property
+    def label(self):
+        return NEXT_STEP_LABELS[self.key]
+
+
+def next_step(job):
+    """The first step not done for this job on its machine (None: nothing left to do: the order is closed)."""
+    from .models import Order
+
+    machine = job_machine(job)
+    to_job = {"job_id": job.id}
+    if not job.active_features:
+        return NextStep("features", "main.job_detail", to_job, "add-feature")
+    ops = job.current_operations
+    if (not ops or job.calculated_machine_id not in (None, machine.id) or job.tools_changed_since_calculation):
+        return NextStep("calculate", "main.calculate", to_job, post=True)
+    if turret_setup_proposal(job, machine).rows:
+        return NextStep("setup", "main.job_detail", to_job, "setup")
+    no_tool = [op for op in ops if op.tool_id is None and op.status != "skipped"]
+    if no_tool:
+        return NextStep("no_tool", "main.operations", to_job, values={"n": no_tool[0].sequence})
+    pending = [op for op in ops if op.status not in ("approved", "skipped")]
+    if pending:
+        return NextStep("approve", "main.operations", to_job, values={"n": len(pending)})
+    record = latest_program(job, machine)
+    if record is None or gcode_stale(record, machine):
+        if gcode_readiness(job, machine).blockers:
+            return NextStep("blocked", "main.job_gcode", to_job)
+        if record is None:
+            return NextStep("generate", "main.job_gcode", to_job, post=True)
+        return NextStep("regenerate", "main.job_gcode", to_job, values={"n": record.id}, post=True)
+    to_program = {"program_id": record.id}
+    if record.status != "ready":
+        sim = json.loads(record.simulation)
+        if sim.get("errors") or sim.get("incomplete"):
+            return NextStep("fix", "main.gcode_program", to_program, values={"n": record.id})
+        if not_installed(job, machine):
+            return NextStep("installed", "main.gcode_program", to_program, "installs", {"n": record.id})
+        return NextStep("ready", "main.gcode_program", to_program, "ready", {"n": record.id})
+    order = db.session.execute(db.select(Order).filter_by(job_id=job.id, machine_id=machine.id, status="open")
+                               .order_by(Order.id.desc())).scalars().first()
+    if order is None:
+        return NextStep("order", "main.job_detail", to_job, "orders")
+    if order.program_id != record.id:
+        return NextStep("order_program", "main.order_detail", {"order_id": order.id}, values={"n": order.id})
+    return NextStep("progress", "main.order_detail", {"order_id": order.id}, values={"n": order.id})
+
+
 def create_order(job, machine, quantity, name):
     from .models import Order, OrderEvent
 

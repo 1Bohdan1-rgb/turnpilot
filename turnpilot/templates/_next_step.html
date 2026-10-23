@@ -1,0 +1,9 @@
+{# The job's next step (services.next_step): one button, so the operator does not look for where to click. #}
+{% if next_step %}{% set step = next_step %}
+<div class="next-step" role="navigation" aria-label="{{ _("Next step") }}">
+  <span class="next-step-label">{{ _("Next step") }}</span>
+  {% if step.post %}<form method="post" action="{{ url_for(step.endpoint, **step.args) }}" class="next-step-form">
+    <button type="submit" class="primary touch">{{ _(step.label, **step.values) }} →</button></form>
+  {% else %}<a class="button primary touch" href="{{ url_for(step.endpoint, **step.args) }}{{ '#' ~ step.anchor if step.anchor else '' }}">{{ _(step.label, **step.values) }} →</a>{% endif %}
+</div>
+{% endif %}

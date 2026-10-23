@@ -5,6 +5,7 @@
 <p class="muted">{{ record.dialect }} · {{ _("calculation v{v}", v=record.calculation_version) }} ·
   {{ record.created_at.strftime("%Y-%m-%d %H:%M") }} · {{ _("{n} lines", n=lines|length) }} ·
   <a href="{{ url_for('main.job_gcode', job_id=job.id) }}">{{ _("G-code of the job") }}</a></p>
+{% include "_next_step.html" %}
 
 {% if demo %}
 <div class="banner banner-demo">
@@ -109,7 +110,7 @@
 
 {% with back = url_for('main.gcode_program', program_id=record.id) ~ '#installs', in_form = False %}{% include "_turret_installs.html" %}{% endwith %}
 
-<h2>{{ _("Operator's check") }}</h2>
+<h2 id="ready">{{ _("Operator's check") }}</h2>
 <form method="post" action="{{ url_for('main.gcode_ready', program_id=record.id) }}" class="card">
   {% for key, text in checklist %}
     <label class="check-item"><input type="checkbox" name="check-{{ key }}" value="1" {% if ticked.get(key) %}checked{% endif %}
