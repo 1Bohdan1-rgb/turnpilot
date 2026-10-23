@@ -67,7 +67,7 @@
         {% if op.status == "skipped" %}
         <form method="post" action="{{ url_for('main.unskip_operation', op_id=op.id) }}" class="inline-form">
           <input name="skipped_by" maxlength="100" placeholder="{{ _("operator's name") }}" aria-label="{{ _("Operator's name") }}" required>
-          <button type="submit" class="small">{{ _("Unskip") }}</button>
+          <button type="submit" class="touch">{{ _("Unskip") }}</button>
         </form>
         {% else %}
         <details class="small skip"><summary class="touch">{{ _("Skip") }}</summary>

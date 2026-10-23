@@ -2210,9 +2210,11 @@ def take_latest_program(order, name):
 def order_progress(order):
     """The order's operations (the program's blocks) with the operator's marks, the part's time, and the time left
     = (quantity − done) × the part's time. Without a program: no operations, no time."""
+    latest = latest_program(order.job, order.machine)
+    newer = latest is not None and latest.id != order.program_id  # "take the latest program" is the next step
     if order.program is None:
         return {"program": None, "blocks": [], "part_s": None, "left_s": None, "complete": False,
-                "estimate": True, "demo": False, "missing": []}
+                "estimate": True, "demo": False, "missing": [], "newer_program": newer}
     cycle = cycle_time(order.program, order.machine)
     time = cycle["time"]
     marks = order.last_marks
@@ -2223,7 +2225,7 @@ def order_progress(order):
     return {"program": order.program, "blocks": blocks, "part_s": time.total_s,
             "left_s": (order.quantity - order.done) * time.total_s, "complete": time.complete,
             "estimate": cycle["estimate"], "demo": cycle["demo"], "missing": missing,
-            "stale": gcode_stale(order.program, order.machine)}
+            "stale": gcode_stale(order.program, order.machine), "newer_program": newer}
 
 
 # --- the shop page -----------------------------------------------------------------------------------------------

@@ -19,7 +19,7 @@ operator field (decided_by); else this partial has its own. job, installs, back.
         <td>{{ d.t_word }}{% if d.offset_page %}<br><span class="small">{{ _("offset page {page} (G42)", page=d.offset_page) }}</span>{% endif %}</td>
         <td>{% if c.install %}<span class="done-mark">✓</span> <span class="small">{{ c.install.installed_by }},
             {{ c.install.installed_at|local("%Y-%m-%d %H:%M") }}</span>
-          <button class="small" formaction="{{ url_for('main.undo_turret_installed', job_id=job.id, install_id=c.install.id) }}">{{ _("Cancel the mark") }}</button>
+          <button class="touch" formaction="{{ url_for('main.undo_turret_installed', job_id=job.id, install_id=c.install.id) }}">{{ _("Cancel the mark") }}</button>
           {% else %}<button class="touch" name="change_id" value="{{ c.id }}" formaction="{{ url_for('main.turret_installed', job_id=job.id) }}">{{ _("Installed, X / Z offsets measured") }}</button>{% endif %}</td>
       </tr>
     {% endfor %}

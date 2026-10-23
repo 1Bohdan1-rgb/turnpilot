@@ -41,7 +41,7 @@ one operator field for the whole panel (in_form: the page around it holds the fo
           <td>{{ "%.1f"|format(b.seconds) }} {{ _("s") }}</td>
           <td>{% if b.done %}<span class="done-mark">✓</span> <span class="small">{{ b.mark.decided_by }},
               {{ b.mark.decided_at|local("%Y-%m-%d %H:%M") }}</span>
-            {% if order.status == "open" %}<button class="small" name="block" value="{{ b.number }}"
+            {% if order.status == "open" %}<button class="touch" name="block" value="{{ b.number }}"
               formaction="{{ url_for('main.order_action', order_id=order.id, action='unmark') }}">{{ _("Cancel the mark") }}</button>{% endif %}
           {% elif order.status == "open" %}<button class="touch" name="block" value="{{ b.number }}"
               formaction="{{ url_for('main.order_action', order_id=order.id, action='mark') }}">{{ _("Done") }}</button>{% endif %}</td></tr>
@@ -60,8 +60,8 @@ one operator field for the whole panel (in_form: the page around it holds the fo
     <label class="small">{{ _("Parts done") }} <input name="done" type="number" min="0" max="{{ order.quantity }}" step="1" value="{{ order.done }}"></label>
     <button class="touch" formaction="{{ url_for('main.order_action', order_id=order.id, action='done') }}">{{ _("Save parts done") }}</button>
     {% if not order.is_current %}<button class="touch" formaction="{{ url_for('main.order_action', order_id=order.id, action='current') }}">{{ _("Running now on {machine}", machine=order.machine.name) }}</button>{% endif %}
-    <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='program') }}">{{ _("Take the latest program") }}</button>
-    <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='close') }}">{{ _("Close the order") }}</button>
+    <button class="touch{% if p.newer_program or p.stale %} primary{% endif %}" formaction="{{ url_for('main.order_action', order_id=order.id, action='program') }}">{{ _("Take the latest program") }}</button>
+    <button class="touch" formaction="{{ url_for('main.order_action', order_id=order.id, action='close') }}">{{ _("Close the order") }}</button>
   </p>
   {% endif %}
   {% if order.events or order.marks %}<details class="small"><summary>{{ _("History ({n})", n=order.events|length + order.marks|length) }}</summary><ul class="muted">
