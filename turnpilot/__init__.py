@@ -28,6 +28,15 @@ def create_app(test_config=None, instance_path=None):
     from .seed import seed_command
 
     app.register_blueprint(bp)
+    from . import i18n
+
+    app.jinja_env.globals["_"] = i18n.template_gettext
+    app.jinja_env.filters["label"] = i18n.label
+    app.jinja_env.globals.update(link=i18n.link, strong=i18n.strong)
+
+    @app.context_processor
+    def _language():
+        return {"lang": i18n.current_language(), "js_strings": i18n.js_strings}
     app.cli.add_command(seed_command)
     app.cli.add_command(gcode_demo_command)
 

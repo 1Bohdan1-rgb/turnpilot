@@ -16,6 +16,7 @@ from flask import (
     url_for,
 )
 
+from . import i18n
 from . import catalogue_reader, cutting_data as cd, drawing_reader, number_check, passport_reader, planner, services
 from .gcode import report as greport
 from .extraction_schema import (
@@ -52,6 +53,17 @@ from .models import (
 )
 
 bp = Blueprint("main", __name__)
+_ = i18n.gettext
+
+
+@bp.route("/lang/<code>")
+def set_language(code):
+    """The interface's language, kept in a cookie for a year; back to the page it was chosen on."""
+    if code not in i18n.LANGUAGES:
+        abort(404)
+    response = redirect(_local(request.args.get("next")) or url_for("main.index"))
+    response.set_cookie(i18n.COOKIE, code, max_age=365 * 24 * 3600, samesite="Lax")
+    return response
 
 
 @bp.app_context_processor

@@ -1,30 +1,30 @@
 {% extends "base.html" %}
-{% block title %}Jobs{% endblock %}
+{% block title %}{{ _("Jobs") }}{% endblock %}
 {% block content %}
-<h1>Jobs</h1>
+<h1>{{ _("Jobs") }}</h1>
 
-<h2>New job</h2>
-<p class="muted">Enter the job by hand, or <a href="{{ url_for('main.upload_drawing') }}">create it from a drawing</a>.</p>
+<h2>{{ _("New job") }}</h2>
+<p class="muted">{{ _("Enter the job by hand, or {link}.", link=link(url_for('main.upload_drawing'), _("create it from a drawing"))) }}</p>
 <form method="post" class="card grid-form">
-  <label>Name <input name="name" required></label>
-  <label>Material
+  <label>{{ _("Name") }} <input name="name" required></label>
+  <label>{{ _("Material") }}
     <select name="material_id" required>
       {% for m in materials %}<option value="{{ m.id }}">{{ m.name }} (ISO {{ m.iso_group }}, {{ m.hardness_hb }} HB)</option>{% endfor %}
     </select>
   </label>
-  <label>Quantity <input name="quantity" type="number" min="1" value="1"></label>
-  <label>Blank shape
-    <select name="blank_shape">{% for s in blank_shapes %}<option {% if s == "round" %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+  <label>{{ _("Quantity") }} <input name="quantity" type="number" min="1" value="1"></label>
+  <label>{{ _("Blank shape") }}
+    <select name="blank_shape">{% for s in blank_shapes %}<option value="{{ s }}" {% if s == "round" %}selected{% endif %}>{{ s|label }}</option>{% endfor %}</select>
   </label>
-  <label>Blank Ø (hex bar: S across flats), mm <input name="blank_diameter" type="number" step="any" min="0" required></label>
-  <label>Blank length, mm <input name="blank_length" type="number" step="any" min="0" required></label>
-  <button type="submit">Create job</button>
+  <label>{{ _("Blank Ø (hex bar: S across flats), mm") }} <input name="blank_diameter" type="number" step="any" min="0" required></label>
+  <label>{{ _("Blank length, mm") }} <input name="blank_length" type="number" step="any" min="0" required></label>
+  <button type="submit">{{ _("Create job") }}</button>
 </form>
 
-<h2>Existing jobs</h2>
+<h2>{{ _("Existing jobs") }}</h2>
 {% if jobs %}
 <table class="card">
-  <thead><tr><th>Name</th><th>Material</th><th>Qty</th><th>Blank × L</th><th>Features</th><th>Operations</th></tr></thead>
+  <thead><tr><th>{{ _("Name") }}</th><th>{{ _("Material") }}</th><th>{{ _("Qty") }}</th><th>{{ _("Blank × L") }}</th><th>{{ _("Features") }}</th><th>{{ _("Operations") }}</th></tr></thead>
   <tbody>
   {% for job in jobs %}
     <tr>
@@ -39,6 +39,6 @@
   </tbody>
 </table>
 {% else %}
-<p class="muted">No jobs yet.</p>
+<p class="muted">{{ _("No jobs yet.") }}</p>
 {% endif %}
 {% endblock %}

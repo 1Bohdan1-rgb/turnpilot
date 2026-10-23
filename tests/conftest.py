@@ -26,7 +26,11 @@ def app(tmp_path):
 
 @pytest.fixture
 def client(app):
-    return app.test_client()
+    """In English: the tests check the texts as written in the code (the interface defaults to Ukrainian,
+    tests/test_i18n.py checks that)."""
+    client = app.test_client()
+    client.set_cookie("lang", "en")
+    return client
 
 
 def make_response(tool_input=None, stop_reason="tool_use", text=None, usage=None, tool_name="record_part"):

@@ -37,6 +37,10 @@ body {
 .topbar a { color: #e6e9ef; text-decoration: none; }
 .topbar nav { display: flex; gap: 16px; }
 .brand { font-weight: 700; font-size: 17px; }
+.topbar-tools { margin-left: auto; display: flex; gap: 12px; align-items: center; }
+.lang-switch { display: inline-flex; border: 1px solid #4a5366; border-radius: 6px; overflow: hidden; }
+.lang-switch a { padding: 4px 10px; font-size: 13px; }
+.lang-switch a[aria-current] { background: #e6e9ef; color: #1d2330; font-weight: 600; }
 
 main { max-width: 1200px; margin: 0 auto; padding: 16px 24px 48px; }
 

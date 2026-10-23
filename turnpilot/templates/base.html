@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TurnPilot{% endblock %} · TurnPilot</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>window.TP_TEXT = {{ js_strings()|tojson }}; window.t = k => window.TP_TEXT[k] ?? k;</script>
   <script type="importmap">{"imports": {"three": "{{ url_for('static', filename='vendor/three/three.module.min.js') }}"}}</script>
   <script type="module" src="{{ url_for('static', filename='part3d.js') }}"></script>
 </head>
@@ -12,12 +13,18 @@
   <header class="topbar">
     <a class="brand" href="{{ url_for('main.index') }}">TurnPilot</a>
     <nav>
-      <a href="{{ url_for('main.shop') }}">Shop</a>
-      <a href="{{ url_for('main.machines') }}">Machines</a>
-      <a href="{{ url_for('main.cutting_data') }}">Cutting data</a>
-      <a href="{{ url_for('main.jobs') }}">Jobs</a>
-      <a href="{{ url_for('main.upload_drawing') }}">Upload drawing</a>
+      <a href="{{ url_for('main.shop') }}">{{ _("Shop") }}</a>
+      <a href="{{ url_for('main.machines') }}">{{ _("Machines") }}</a>
+      <a href="{{ url_for('main.cutting_data') }}">{{ _("Cutting data") }}</a>
+      <a href="{{ url_for('main.jobs') }}">{{ _("Jobs") }}</a>
+      <a href="{{ url_for('main.upload_drawing') }}">{{ _("Upload drawing") }}</a>
     </nav>
+    <div class="topbar-tools">
+      <span class="lang-switch" role="group" aria-label="{{ _("Language") }}">
+        {% for code, label in [("uk", "UA"), ("en", "EN")] %}<a href="{{ url_for('main.set_language', code=code, next=request.full_path) }}"
+          {% if lang == code %}aria-current="true"{% endif %} lang="{{ code }}">{{ label }}</a>{% endfor %}
+      </span>
+    </div>
   </header>
   <main>
     {% with messages = get_flashed_messages(with_categories=true) %}

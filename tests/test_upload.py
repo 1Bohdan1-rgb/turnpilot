@@ -622,7 +622,7 @@ def test_stale_pending_reading_does_not_block(app, client):
 def test_read_buttons_are_blocked_after_click(app, client):
     page = _squash(client.get("/jobs/upload").data.decode())
     assert 'id="read-button"' in page
-    assert "button.disabled = true;" in page and 'button.textContent = "Reading…";' in page
+    assert "button.disabled = true;" in page and 'button.textContent = t("Reading…");' in page
 
     _use_model(app, THREADED_SHAFT)
     _upload(client)
