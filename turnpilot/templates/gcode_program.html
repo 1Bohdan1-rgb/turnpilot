@@ -118,7 +118,7 @@
   <label>{{ _("Operator") }} <input name="confirmed_by" value="{{ record.confirmed_by or '' }}" maxlength="100" {% if record.status == "ready" %}disabled{% endif %}></label>
   {% set blocked = sim.errors or sim.incomplete or demo or stale or not_installed %}
   {% if record.status != "ready" %}
-  <button type="submit" class="primary" {% if blocked %}disabled{% endif %}>{{ _("Ready to run") }}</button>
+  <button type="submit" class="primary touch" {% if blocked %}disabled{% endif %}>{{ _("Ready to run") }}</button>
   {% if blocked %}<p class="small warning">{{ _("Not possible:") }}
     {% if sim.errors %}{{ _("the simulation found errors;") }} {% endif %}{% if sim.incomplete %}{{ _("the part is not complete;") }} {% endif %}
     {% if demo %}{{ _("DEMO values are used;") }} {% endif %}{% if stale %}{{ _("the program is out of date;") }} {% endif %}

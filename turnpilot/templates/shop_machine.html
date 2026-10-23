@@ -12,7 +12,7 @@
 <p class="inline-form">
   <select name="status" aria-label="{{ _("Status") }}">{% for s in statuses %}<option value="{{ s }}" {% if machine.status and machine.status.status == s %}selected{% endif %}>{{ s|label }}</option>{% endfor %}</select>
   <input name="note" maxlength="200" placeholder="{{ _("note (optional)") }}" aria-label="{{ _("Note") }}">
-  <button class="small" formaction="{{ url_for('main.shop_machine_action', machine_id=machine.id, action='status') }}">{{ _("Set the status") }}</button>
+  <button class="touch" formaction="{{ url_for('main.shop_machine_action', machine_id=machine.id, action='status') }}">{{ _("Set the status") }}</button>
 </p>
 {% if order %}
   {% set back = url_for("main.shop", open=machine.id) %}{% set in_form = True %}
@@ -24,6 +24,6 @@
 {% if others %}<h3>{{ _("Other open orders here") }}</h3>
 <ul>{% for o in others %}<li><a href="{{ url_for('main.order_detail', order_id=o.id) }}">{{ _("Order {n}", n=o.id) }}</a>: {{ o.job.name }},
   {{ _("{done} of {quantity}", done=o.done, quantity=o.quantity) }}
-  <button class="small" formaction="{{ url_for('main.order_action', order_id=o.id, action='current') }}">{{ _("Running now") }}</button></li>{% endfor %}</ul>{% endif %}
+  <button class="touch" formaction="{{ url_for('main.order_action', order_id=o.id, action='current') }}">{{ _("Running now") }}</button></li>{% endfor %}</ul>{% endif %}
 </form>
 {% endblock %}

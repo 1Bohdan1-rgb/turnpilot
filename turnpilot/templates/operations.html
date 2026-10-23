@@ -59,7 +59,7 @@
       <td class="row-actions">
         {% if op.status not in ("approved", "skipped") and op.tool %}
         <form method="post" action="{{ url_for('main.approve_operation', op_id=op.id) }}">
-          <button type="submit">{{ _("Approve") }}</button>
+          <button type="submit" class="touch">{{ _("Approve") }}</button>
         </form>
         {% endif %}
         <a class="button" href="{{ url_for('main.edit_operation', op_id=op.id) }}">{{ _("Edit") }}</a>
@@ -69,11 +69,11 @@
           <button type="submit" class="small">{{ _("Unskip") }}</button>
         </form>
         {% else %}
-        <details class="small"><summary>{{ _("Skip") }}</summary>
+        <details class="small skip"><summary class="touch">{{ _("Skip") }}</summary>
           <form method="post" action="{{ url_for('main.skip_operation', op_id=op.id) }}">
             <input name="note" maxlength="200" placeholder="{{ _("why (required)") }}" aria-label="{{ _("Why") }}" required>
             <input name="skipped_by" maxlength="100" placeholder="{{ _("operator's name") }}" aria-label="{{ _("Operator's name") }}" required>
-            <button type="submit" class="small">{{ _("Skip: leave out of the program") }}</button>
+            <button type="submit" class="touch">{{ _("Skip: leave out of the program") }}</button>
           </form></details>
         {% endif %}
       </td>

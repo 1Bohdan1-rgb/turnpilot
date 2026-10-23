@@ -380,6 +380,10 @@ main:has(.shop-floor) { max-width:none; }  /* the shop page uses the window's wi
 .legend .key.k3-final { background: transparent; border: 2px solid var(--p3d-final); height: 10px; }
 
 /* buttons at the machine: big enough for a finger (44 × 44 px at least) */
-button.touch { min-height: 44px; min-width: 44px; padding: 10px 16px; font-size: 15px; }
+button.touch, summary.touch { min-height: 44px; min-width: 44px; padding: 10px 16px; font-size: 15px; }
+summary.touch { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--field); cursor: pointer; list-style: none; }
+summary.touch::-webkit-details-marker { display: none; }
+details.skip[open] form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .installs tr.pending td { background: var(--warn-bg); }
 .installs h3 { margin: 12px 0 6px; }

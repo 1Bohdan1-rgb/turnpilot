@@ -43,7 +43,7 @@ one operator field for the whole panel (in_form: the page around it holds the fo
               {{ b.mark.decided_at.strftime("%Y-%m-%d %H:%M") }}</span>
             {% if order.status == "open" %}<button class="small" name="block" value="{{ b.number }}"
               formaction="{{ url_for('main.order_action', order_id=order.id, action='unmark') }}">{{ _("Cancel the mark") }}</button>{% endif %}
-          {% elif order.status == "open" %}<button class="small" name="block" value="{{ b.number }}"
+          {% elif order.status == "open" %}<button class="touch" name="block" value="{{ b.number }}"
               formaction="{{ url_for('main.order_action', order_id=order.id, action='mark') }}">{{ _("Done") }}</button>{% endif %}</td></tr>
       {% endfor %}
       </tbody>
@@ -58,8 +58,8 @@ one operator field for the whole panel (in_form: the page around it holds the fo
   {% if order.status == "open" %}
   <p class="inline-form">
     <label class="small">{{ _("Parts done") }} <input name="done" type="number" min="0" max="{{ order.quantity }}" step="1" value="{{ order.done }}"></label>
-    <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='done') }}">{{ _("Save parts done") }}</button>
-    {% if not order.is_current %}<button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='current') }}">{{ _("Running now on {machine}", machine=order.machine.name) }}</button>{% endif %}
+    <button class="touch" formaction="{{ url_for('main.order_action', order_id=order.id, action='done') }}">{{ _("Save parts done") }}</button>
+    {% if not order.is_current %}<button class="touch" formaction="{{ url_for('main.order_action', order_id=order.id, action='current') }}">{{ _("Running now on {machine}", machine=order.machine.name) }}</button>{% endif %}
     <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='program') }}">{{ _("Take the latest program") }}</button>
     <button class="small" formaction="{{ url_for('main.order_action', order_id=order.id, action='close') }}">{{ _("Close the order") }}</button>
   </p>
