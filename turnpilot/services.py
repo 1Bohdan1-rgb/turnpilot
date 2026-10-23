@@ -2200,6 +2200,19 @@ def close_order(order, name):
     db.session.commit()
 
 
+def actual_vc(op):
+    """(Vc the spindle gives, the diameter it is on) when n is below the Vc asked for (capped at the machine's max
+    RPM): Vc = π · D · n / 1000 on the operation's reference diameter (the one n is calculated on: facing, the
+    blank's Ø; roughing, the Ø before the first pass; finishing and others, the feature's Ø; grooving, the Ø it is
+    cut from). None when n gives the Vc asked for."""
+    import math
+
+    if op.vc is None or op.n is None or not op.ref_diameter:
+        return None
+    vc = math.pi * op.ref_diameter * op.n / 1000
+    return (round(vc, 1), op.ref_diameter) if op.vc - vc > 0.5 else None
+
+
 def program_titles(record, machine):
     """{block N: its title} of a program (the titles the operator's marks are checked against)."""
     return {op.number: op.title[:200] for op in cycle_time(record, machine)["time"].operations if op.number is not None}

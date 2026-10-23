@@ -1223,7 +1223,7 @@ def calculate(job_id):
 def operations(job_id):
     job = db.get_or_404(Job, job_id)
     machine = services.job_machine(job)
-    return render_template("operations.html", job=job, next_step=services.next_step(job), machine=machine,
+    return render_template("operations.html", job=job, next_step=services.next_step(job), actual_vc=services.actual_vc, machine=machine,
                            machine_warnings=services.machine_warnings(job, machine), setup=_setup_view(job))
 
 

@@ -50,7 +50,8 @@
         </div>{% endif %}
         {% if op.warning %}<div class="warning small">⚠ {{ op.warning }}</div>{% endif %}</td>
       <td>{% if op.turret_position %}<strong>T{{ op.turret_position }}</strong> {% endif %}{{ op.tool.name if op.tool else "—" }}</td>
-      <td>{{ op.vc if op.vc is not none else "—" }}</td>
+      <td>{{ op.vc if op.vc is not none else "—" }}{% set real = actual_vc(op) %}{% if real %}
+        <div class="small warning" title="{{ _("n is capped at the machine's max {rpm} rpm: on Ø{d} (the diameter n is calculated on) Vc = π · Ø · n / 1000 = {vc} m/min; in G96 it changes along the cut.", rpm=machine.max_rpm, d="%g"|format(real[1]), vc=real[0]) }}">→ {{ real[0] }} {{ _("on Ø{d}", d="%g"|format(real[1])) }}</div>{% endif %}</td>
       <td>{{ op.n if op.n is not none else "—" }}</td>
       <td>{{ op.f if op.f is not none else "—" }}</td>
       <td>{{ op.ap if op.ap is not none else "—" }}</td>

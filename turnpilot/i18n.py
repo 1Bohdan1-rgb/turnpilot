@@ -1046,6 +1046,9 @@ UK = {
     "Order {n} was running on {machine}: no order runs there now. Open orders: {orders}. Make the next one running with \"Running now\".": "Замовлення {n} виконувалось на {machine}: тепер там не виконується жодне. Відкриті замовлення: {orders}. Зробіть наступне поточним кнопкою «Виконується зараз».",
     # order marks
     "Program {n} taken. Marks cancelled, since their operation is another one in it now: {blocks}.": "Програму {n} взято. Позначки скасовано, бо їхня операція в ній тепер інша: {blocks}.",
+    # actual Vc
+    "n is capped at the machine's max {rpm} rpm: on Ø{d} (the diameter n is calculated on) Vc = π · Ø · n / 1000 = {vc} m/min; in G96 it changes along the cut.": "n обмежено максимумом верстата {rpm} об/хв: на Ø{d} (діаметрі, на якому розраховано n) Vc = π · Ø · n / 1000 = {vc} м/хв; у G96 вона змінюється вздовж проходу.",
+    "on Ø{d}": "на Ø{d}",
 }
 
 
