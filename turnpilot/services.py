@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
-from . import catalogue_file, localtime, catalogue_reader, cutting_data, drawing_reader, dxf_adapter, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
+from . import catalogue_file, localtime, catalogue_reader, cutting_data, drawing_reader, dxf_adapter, dxf_inner, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
 from .models import (
     CatalogueDocument, CuttingDataRow, DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, Tool, TurretSlot, db,
@@ -25,7 +25,7 @@ MATERIAL_ALIASES = {
 FILE_TYPE_BY_EXTENSION = {"png": "png", "jpg": "jpeg", "jpeg": "jpeg", "pdf": "pdf", "dxf": "dxf"}
 
 # The code that reads a DXF (reader + its mapping to rows): recorded as the "prompt version" of a DXF reading.
-DXF_SOURCES = (dxf_reader.__file__, dxf_input.__file__, dxf_adapter.__file__)
+DXF_SOURCES = (dxf_reader.__file__, dxf_input.__file__, dxf_adapter.__file__, dxf_inner.__file__)
 
 # A second upload of a file that is still being read within this time is rejected (double submit).
 IN_FLIGHT_SECONDS = 120
@@ -642,6 +642,53 @@ def decide_bore_depth(feature, mode, name, note=None):
                                                      decided_by=name, decided_at=now))
     feature.depth_mode, feature.depth_decided_by, feature.depth_decided_at = mode, name, now
     db.session.commit()
+
+
+BORE_OPEN_ENDS = {"left": "the left end face", "right": "the right end face"}
+BORE_BOTTOMS = {"flat": "flat (a face, or a step to a narrower bore)", "drill_point": "the drill's point",
+                "through": "none: through to the other end face"}
+
+
+class BorePositionError(ValueError):
+    pass
+
+
+def set_bore_position(feature, open_end, from_mm, bottom, name, source="operator", cone_angle=None):
+    """Where a bore is on the drawing: the end face it opens at (a through bore: the face its start is measured
+    from), its start from that face, its bottom ("through" for a through bore). The operator's (a name required), or the DXF's geometry confirmed with the review (source "dxf")."""
+    name = (name or "").strip()[:100] or None
+    if source == "operator" and not name:
+        raise BorePositionError("The operator's name is required for the bore's position")
+    if open_end not in BORE_OPEN_ENDS:
+        raise BorePositionError("Choose the end face the bore opens at")
+    if from_mm is None or from_mm < 0:
+        raise BorePositionError("The bore's start from that face is a distance in mm, 0 or more")
+    if bottom not in BORE_BOTTOMS:
+        raise BorePositionError("Choose the bore's bottom: flat, the drill's point, or through")
+    feature.bore_open_end, feature.bore_from_mm, feature.bore_bottom = open_end, from_mm, bottom
+    feature.bore_cone_angle = cone_angle if bottom == "drill_point" else None
+    feature.bore_position_source, feature.bore_position_by = source, name
+    feature.bore_position_at = datetime.now(timezone.utc)
+
+
+def dxf_bore_positions(extraction):
+    """{row index: the bore's position read from the DXF} of a DXF part's review rows (dxf_inner)."""
+    report = dxf_report(extraction)
+    if not extraction.is_dxf or not report:
+        return {}
+    return {i: row["inner"] for i, row in enumerate(report["rows"]) if row.get("inner")}
+
+
+def bore_position_text(feature):
+    """"opens at the right end face, from 0 mm, bottom: the drill's point" (English: the job page translates it)."""
+    if feature.bore_open_end is None:
+        return None
+    text = f"opens at {BORE_OPEN_ENDS[feature.bore_open_end]}, from {feature.bore_from_mm:g} mm"
+    if feature.bore_bottom:
+        text += f", bottom: {BORE_BOTTOMS[feature.bore_bottom]}"
+        if feature.bore_cone_angle:
+            text += f" (drawn {feature.bore_cone_angle:g}°)"
+    return text
 
 
 def drill_point_length(diameter, angle):
@@ -1943,7 +1990,9 @@ def read_dxf(name, extension, data, sha256, instance_path):
                   sha256=sha256, prompt_version=dxf_code_version(), read_mode="dxf")
     try:
         reader_path, adapted = dxf_adapter.prepare(path)  # a SolidWorks sheet rewritten the KOMPAS way
-        results = dxf_input.part_results(dxf_reader.read_dxf(reader_path))
+        reading = dxf_reader.read_dxf(reader_path)
+        results = dxf_input.part_results(reading)
+        dxf_inner.add_inner(reading, results)  # the bores, beside the frozen reader (in-sample, see dxf_inner)
         for result in results:  # what the adapter did, for the review page
             result.data.warnings[:0] = adapted.warnings
             result.data.material = result.data.material or adapted.material

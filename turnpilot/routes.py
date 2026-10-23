@@ -872,6 +872,7 @@ def job_detail(job_id):
                            depth_hints=services.bore_depth_hints(job),
                            arc_tops=services.arc_top_warnings(job) if job.axial_order_known else {},
                            depth_modes=services.BORE_DEPTH_MODES,
+                           bore_open_ends=services.BORE_OPEN_ENDS, bore_bottoms=services.BORE_BOTTOMS,
                            library=db.session.execute(db.select(Tool).filter_by(is_retired=False)
                                                       .order_by(Tool.name)).scalars().all())
 
@@ -1136,6 +1137,26 @@ def choose_bore_depth(job_id, feature_id):
     else:
         flash(_("Bore Ø{d}: depth {mode} ({name}).", d=f"{feature.diameter:g}", mode=_(services.BORE_DEPTH_MODES[mode]),
                 name=feature.depth_decided_by))
+    return redirect(url_for("main.job_detail", job_id=job_id))
+
+
+@bp.route("/jobs/<int:job_id>/features/<int:feature_id>/bore-position", methods=["POST"])
+def set_bore_position(job_id, feature_id):
+    """A bore's place on the drawing, typed by the operator with a name (a bore entered by hand, or a correction)."""
+    feature = db.get_or_404(Feature, feature_id)
+    if feature.job_id != job_id or feature.type != "bore":
+        abort(404)
+    form = request.form
+    try:
+        services.set_bore_position(feature, form.get("open_end"), _number(form, "from_mm", positive=False),
+                                   form.get("bottom") or None, form.get("decided_by"))
+    except (services.BorePositionError, FormError) as e:
+        db.session.rollback()
+        flash(str(e), "error")
+    else:
+        db.session.commit()
+        flash(_("Bore Ø{d}: its place on the drawing is saved ({name}). Calculate the job again.",
+                d=f"{feature.diameter:g}", name=feature.bore_position_by))
     return redirect(url_for("main.job_detail", job_id=job_id))
 
 
@@ -1624,6 +1645,7 @@ def confirm_extraction(extraction_id):
         job = _job_from_form(form)
         features = []
         shapes = services.dxf_arc_shapes(extraction, current_app.instance_path)
+        positions = services.dxf_bore_positions(extraction)
         for i in range(_number(form, "feature_count", int, positive=False) or 0):
             if not form.get(f"f{i}-include"):
                 continue
@@ -1634,6 +1656,10 @@ def confirm_extraction(extraction_id):
                 raise FormError(f"Feature {i + 1}: {e}") from None
             if feature.type == "arc" and i in shapes:
                 feature.drawn_radius = shapes[i].get("drawn_radius")  # compared with the dimension (the profile)
+            if feature.type == "bore" and i in positions:  # where the DXF has it, confirmed with the review
+                p = positions[i]
+                services.set_bore_position(feature, p["open_end"], p["from"], p["bottom"], None, source="dxf",
+                                           cone_angle=p.get("cone_angle"))
             features.append(feature)
         # The checkboxes add facing/parting only when the drawing rows do not already have them.
         if form.get("add_face") and not any(f.type == "face" for f in features):

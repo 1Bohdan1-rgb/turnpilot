@@ -545,6 +545,25 @@ UK = {
     "ISO groups": "Групи ISO",
     "Insert width, mm (grooving/parting)": "Ширина пластини, мм (канавка/відрізання)",
     "Diameter, mm (drills)": "Діаметр, мм (свердла)",
+    "inner": "внутрішній",
+    "inner profile: a bore row (in-sample)": "внутрішній профіль: рядок отвору (in-sample)",
+    "Place: {where}": "Місце: {where}",
+    "from the DXF, confirmed with the review; in-sample: check it on the drawing": "з DXF, підтверджено під час перевірки; in-sample: перевірте на кресленні",
+    "the operator's ({name}, {at})": "оператора ({name}, {at})",
+    "Where is the bore on the drawing (the end face it opens at, its start, its bottom)? Not bored by a program until it is set.": "Де отвір на кресленні (торець, з якого він відкритий, його початок, дно)? Програма його не розточує, доки це не задано.",
+    "Opens at": "Відкритий з",
+    "from the face, mm": "від торця, мм",
+    "Bottom": "Дно",
+    "Save the place": "Зберегти місце",
+    "Bore Ø{d}: its place on the drawing is saved ({name}). Calculate the job again.": "Отвір Ø{d}: його місце на кресленні збережено ({name}). Розрахуйте завдання знову.",
+    "the left end face": "лівого торця",
+    "the right end face": "правого торця",
+    "none: through to the other end face": "немає: наскрізний до другого торця",
+    "flat (a face, or a step to a narrower bore)": "пласке (торець або уступ до вужчого отвору)",
+    "the drill's point": "вершина свердла",
+    "opens at {face}, from {mm} mm": "відкритий з {face}, від {mm} мм",
+    ", bottom: {bottom}": ", дно: {bottom}",
+    " (drawn {angle}°)": " (накреслено {angle}°)",
     "Max depth, mm (drills; grooving: the holder's)": "Макс. глибина, мм (свердла; канавка: державки)",
     "Max depth, mm (drills; grooving: the holder's; boring: the bar's overhang as clamped)":
         "Макс. глибина, мм (свердла; канавка: державки; розточування: виліт борштанги, як її затиснуто)",
@@ -728,7 +747,7 @@ UK = {
     "job created": "завдання створено",
     "Read from a {cad} DXF": "Прочитано з DXF {cad}",
     "drawn at {scale}:1, brought to 1:1": "накреслено в {scale}:1, зведено до 1:1",
-    "the outer profile and its dimensions only. Material, quantity, roughness and the blank are not in the DXF: fill them in. Bores and other inner features are not read: add them by hand. Each row shows its section (§) and the dimensions it was taken from; a value not given directly by a dimension is marked {check}, with the reason under the row.": "лише зовнішній профіль і його розміри. Матеріалу, кількості, шорсткості й заготовки в DXF немає: заповніть їх. Отвори й інші внутрішні елементи не читаються: додайте їх вручну. Кожен рядок показує свою ділянку (§) і розміри, з яких його взято; значення, не задане прямо розміром, позначено {check}, з причиною під рядком.",
+    "the outer profile, the bores and their dimensions. The bores are read in-sample (no blind check of the inner profile yet): check them on the drawing. Material, quantity, roughness and the blank are not in the DXF: fill them in. Internal grooves, threads and tapers are not read: add them by hand. Each row shows its section (§) and the dimensions it was taken from; a value not given directly by a dimension is marked {check}, with the reason under the row.": "зовнішній профіль, отвори і їхні розміри. Отвори прочитано in-sample (сліпої перевірки внутрішнього профілю ще немає): перевірте їх на кресленні. Матеріалу, кількості, шорсткості й заготовки в DXF немає: заповніть їх. Внутрішні канавки, різьби й конуси не читаються: додайте їх вручну. Кожен рядок показує свою ділянку (§) і розміри, з яких його взято; значення, не задане прямо розміром, позначено {check}, з причиною під рядком.",
     "read by {model}": "прочитано {model}",
     "prompt": "промпт",
     "mode": "режим",
@@ -1218,6 +1237,21 @@ def dxf_text(text):
     out = str(text)
     for pattern, repl in _DXF:
         out = re.sub(pattern, repl, out)
+    return out
+
+
+def bore_place(feature):
+    """A bore's place on the drawing in words ("opens at the right end face, from 0 mm, bottom: the drill's point")."""
+    from .services import BORE_BOTTOMS, BORE_OPEN_ENDS
+
+    if feature.bore_open_end is None:
+        return ""
+    out = gettext("opens at {face}, from {mm} mm", face=gettext(BORE_OPEN_ENDS[feature.bore_open_end]),
+                  mm=f"{feature.bore_from_mm:g}")
+    if feature.bore_bottom:
+        out += gettext(", bottom: {bottom}", bottom=gettext(BORE_BOTTOMS[feature.bore_bottom]))
+        if feature.bore_cone_angle:
+            out += gettext(" (drawn {angle}°)", angle=f"{feature.bore_cone_angle:g}")
     return out
 
 

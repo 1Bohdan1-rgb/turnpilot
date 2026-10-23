@@ -103,7 +103,20 @@
             {% if f.depth_decisions %}<ol class="muted">{% for d in f.depth_decisions %}
               <li>{{ _("depth {mode}", mode=_(depth_modes[d.mode])) }}, {{ d.decided_by }}, {{ d.decided_at|local("%Y-%m-%d %H:%M") }}{% if d.note %}: {{ d.note }}{% endif %}</li>
             {% endfor %}</ol>{% endif %}
-            {% if f.depth_mode %}</details>{% else %}</div>{% endif %}</div>{% endif %}</td>
+            {% if f.depth_mode %}</details>{% else %}</div>{% endif %}</div>
+          <div class="small">{% if f.bore_open_end %}<span class="muted">{{ _("Place: {where}", where=f|bore_place) }}
+            {% if f.bore_position_source == "dxf" %}({{ _("from the DXF, confirmed with the review; in-sample: check it on the drawing") }}){% else %}({{ _("the operator's ({name}, {at})", name=f.bore_position_by, at=f.bore_position_at|local("%Y-%m-%d %H:%M")) }}){% endif %}</span>
+            <details><summary>{{ _("Change") }}</summary>{% else %}<div class="warning">{{ _("Where is the bore on the drawing (the end face it opens at, its start, its bottom)? Not bored by a program until it is set.") }}{% endif %}
+            <form method="post" action="{{ url_for('main.set_bore_position', job_id=job.id, feature_id=f.id) }}" class="inline-form">
+              <select name="open_end" aria-label="{{ _("Opens at") }}" required><option value="">{{ _("Opens at") }}…</option>
+                {% for key, text in bore_open_ends.items() %}<option value="{{ key }}" {% if f.bore_open_end == key %}selected{% endif %}>{{ _(text) }}</option>{% endfor %}</select>
+              <input name="from_mm" type="number" step="any" min="0" value="{{ f.bore_from_mm if f.bore_from_mm is not none else '' }}" placeholder="{{ _("from the face, mm") }}" aria-label="{{ _("from the face, mm") }}" required>
+              <select name="bottom" aria-label="{{ _("Bottom") }}" required><option value="">{{ _("Bottom") }}…</option>
+                {% for key, text in bore_bottoms.items() %}<option value="{{ key }}" {% if f.bore_bottom == key %}selected{% endif %}>{{ _(text) }}</option>{% endfor %}</select>
+              <input name="decided_by" maxlength="100" placeholder="{{ names_req }}" aria-label="{{ _("Operator's name") }}" required>
+              <button class="small">{{ _("Save the place") }}</button>
+            </form>
+            {% if f.bore_open_end %}</details>{% else %}</div>{% endif %}</div>{% endif %}</td>
       <td>{{ f.across_flats if f.across_flats is not none else "" }}</td>
       <td>{{ "%.2f"|format(f.confidence) if f.confidence is not none else "" }}</td>
       <td>

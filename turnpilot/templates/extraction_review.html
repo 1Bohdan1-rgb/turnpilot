@@ -22,7 +22,7 @@
 </nav>
 {% endif %}
 <div class="flash dxf-note">
-  <strong>{{ _("Read from a {cad} DXF", cad=(dxf_report or {}).get("cad") or "KOMPAS-3D") }}{% if dxf_report and dxf_report.get("scale") and dxf_report.get("scale") != 1 %} ({{ _("drawn at {scale}:1, brought to 1:1", scale="%g"|format(dxf_report.get("scale"))) }}){% endif %}:</strong> {{ _("the outer profile and its dimensions only. Material, quantity, roughness and the blank are not in the DXF: fill them in. Bores and other inner features are not read: add them by hand. Each row shows its section (§) and the dimensions it was taken from; a value not given directly by a dimension is marked {check}, with the reason under the row.", check=('<span class="badge badge-check">%s</span>'|safe) % _("check")) }}
+  <strong>{{ _("Read from a {cad} DXF", cad=(dxf_report or {}).get("cad") or "KOMPAS-3D") }}{% if dxf_report and dxf_report.get("scale") and dxf_report.get("scale") != 1 %} ({{ _("drawn at {scale}:1, brought to 1:1", scale="%g"|format(dxf_report.get("scale"))) }}){% endif %}:</strong> {{ _("the outer profile, the bores and their dimensions. The bores are read in-sample (no blind check of the inner profile yet): check them on the drawing. Material, quantity, roughness and the blank are not in the DXF: fill them in. Internal grooves, threads and tapers are not read: add them by hand. Each row shows its section (§) and the dimensions it was taken from; a value not given directly by a dimension is marked {check}, with the reason under the row.", check=('<span class="badge badge-check">%s</span>'|safe) % _("check")) }}
 </div>
 {% else %}
 <p class="muted">
@@ -82,7 +82,7 @@
           <td>{{ d.text }}</td>
           <td>{{ d.kind|label }}</td>
           <td>
-            {% if d.inner %}{{ _("inner profile: not read") }}{% elif not d.bound %}⚠ {{ _("not bound:") }} {{ d.binding|dxf }}{% else %}{{ d.binding|dxf }}{% endif %}
+            {% if d.inner and d.inner_row %}{{ _("inner profile: a bore row (in-sample)") }}{% elif d.inner %}{{ _("inner profile: not read") }}{% elif not d.bound %}⚠ {{ _("not bound:") }} {{ d.binding|dxf }}{% else %}{{ d.binding|dxf }}{% endif %}
             {% for f in d.flags %}<div class="warning small">⚠ {{ f }}</div>{% endfor %}
           </td>
         </tr>
@@ -171,7 +171,7 @@
         <tr class="{% if row.low_confidence %}low-confidence{% endif %}">
           <td><input type="checkbox" name="f{{ i }}-include" value="1" {% if row.include %}checked{% endif %}></td>
           {% if extraction.is_dxf %}<td class="dxf-section">
-            {{ row.dxf_section if row.dxf_section is not none else "" }}
+            {% if row.dxf_section == "inner" %}{{ _("inner") }}{% else %}{{ row.dxf_section if row.dxf_section is not none else "" }}{% endif %}
             {% if row.dxf_notes %}<span class="badge badge-check" title="{{ row.dxf_notes|join('; ') }}">{{ _("check") }}</span>{% endif %}
           </td>{% endif %}
           <td>

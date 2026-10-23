@@ -99,10 +99,11 @@ def test_review_page_of_a_dxf_part(client, no_api, tmp_path):
     page = client.get(f"/extractions/{first.id}/review").get_data(as_text=True)
     assert "read from the DXF geometry by the code" in page and "Image sent to the model" not in page
     assert "2 parts on this sheet" in page and f"/extractions/{second.id}/review" in page
-    assert "Dimensions → sections" in page and "inner profile: not read" in page
+    assert "Dimensions → sections" in page and "inner profile: a bore row (in-sample)" in page
     assert "geometry 30 ≠ text 30.2" in page  # in the binding table and under the groove row
     assert "from Ø40h12" in page and 'value="Завіса (part 1)"' in page
-    assert "DXF warnings" in page and "Ø10H11 is on the inner profile" in page
+    assert "from Ø10H11, 15" in page and "no blind check yet" in page  # the bore row (dxf_inner)
+    assert "Ø10H11 is on the inner profile" not in page
     assert "Read again" not in page
 
 
