@@ -61,6 +61,7 @@
     machine: id => `/machines/${id}`,
     place: id => `/shop/machines/${id}/place`,
     upload: id => `/jobs/upload?machine_id=${id}`,
+    part3d: id => `/orders/${id}/part3d.json`,
   };
   const SNAP = 100;  // mm
   const LABEL = {running: t("Running"), setup: t("Setup"), stopped: t("Stopped"), free: t("Free")};
@@ -211,6 +212,13 @@
         ${m.all_left !== null ? `<dt>${esc(t("All orders left"))}</dt><dd>${esc(m.all_left)}${m.all_incomplete ? " " + esc(t("(incomplete: no rapids / tool changes without the passport's values)")) : ""}${m.all_without_program ? " · " + esc(t("{n} order(s) without a program are not in it", {n: m.all_without_program})) : ""}</dd>` : ""}
       </dl>
       ${o ? `<div class="sf-bar" role="img" aria-label="${esc(t("{pct}% done", {pct: pct}))}"><i class="sf-${m.status}" style="width:${pct}%"></i></div>` : ""}
+      ${o && !o.no_program ? `<div class="part3d sf-part3d" data-src="${URLS.part3d(o.id)}" data-mode="order">
+        <p class="sf-note">${esc(t("The part on the machine now"))}: ${esc(t("by the operator's marks, not from the machine."))}
+          ${esc(t("Outer profile only: bores and flats are not shown."))}</p>
+        <div class="part3d-view"></div>
+        <p class="sf-note legend"><span class="key k3-done"></span> ${esc(t("marked done"))} <span class="key k3-next"></span>
+          ${esc(t("the next operation"))} <span class="key k3-bar"></span> ${esc(t("not machined yet"))}</p>
+        <p class="small warning part3d-info"></p></div>` : ""}
       <div class="sf-btns">
         <a class="sf-button" href="${URLS.upload(m.id)}">${esc(t("Upload drawing"))}</a>
         <a class="sf-button ghost" href="${URLS.machine(m.id)}">${esc(t("Machine page"))}</a>
@@ -224,6 +232,7 @@
         <label>${esc(t("Rotation"))} <select name="r">${[0, 90, 180, 270].map(r => `<option ${r === m.rotation ? "selected" : ""}>${r}</option>`).join("")}</select></label>
         <button type="submit" class="sf-button ghost">${esc(t("Place on the plan"))}</button>
       </form>` : ""}`;
+    if (window.turnpilotPart3d) window.turnpilotPart3d.mountAll(document.getElementById("sf-card"));
     const form = document.getElementById("sf-place");
     if (form) form.addEventListener("submit", e => {
       e.preventDefault();

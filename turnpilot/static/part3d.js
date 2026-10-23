@@ -85,6 +85,28 @@ async function load() {
   return three;
 }
 
+// One WebGL renderer for the page (a browser allows only a few contexts): every view renders with it and copies the
+// picture into its own 2D canvas.
+let shared = null;
+function sharedRenderer(THREE) {
+  if (!shared) shared = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
+  return shared;
+}
+const views = new Set();
+
+// the camera at the part's size: the whole part (from the end face to the jaws, the bar's Ø) in the view
+function fitCamera(camera, controls, span, radius) {
+  const r = Math.hypot(span / 2, radius) * 1.08;
+  const vfov = camera.fov * Math.PI / 180, hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+  const dist = r / Math.sin(Math.min(vfov, hfov) / 2);
+  const dir = {x: 0.18, y: 0.45, z: 0.87};  // a little from above and in front
+  camera.position.set(dir.x * dist, dir.y * dist, dir.z * dist);
+  camera.near = dist / 100; camera.far = dist * 10;
+  camera.updateProjectionMatrix();
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
+
 async function mount(el) {
   if (el.dataset.mounted) return;
   el.dataset.mounted = "1";
@@ -106,15 +128,17 @@ async function mount(el) {
   info.textContent = notes.join(" ");
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({antialias: false});
+    renderer = sharedRenderer(THREE);
   } catch (e) {
     view.textContent = t("This browser cannot show 3D (no WebGL): use the 2D simulation on the program's page.");
     return;
   }
   const col = colours(el);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  renderer.setClearColor(col.bg);
-  view.appendChild(renderer.domElement);
+  const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
+  view.appendChild(canvas);
+  const fit = document.createElement("button");
+  fit.type = "button"; fit.className = "small part3d-fit"; fit.textContent = t("Fit");
+  view.after(fit);
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 10000);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
@@ -122,18 +146,15 @@ async function mount(el) {
   sun.position.set(1, 2, 3);
   camera.add(sun);
   scene.add(camera);
-  const controls = new OrbitControls(camera, renderer.domElement);
+  const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = false;
   const group = new THREE.Group();
   scene.add(group);
 
   const states = data.states, bar = data.bar_radius;
   const zTop = states[0].points[0][0], zEnd = data.z_jaws;
-  const centre = (zTop + zEnd) / 2, span = Math.max(zTop - zEnd, 2 * bar);
+  const centre = (zTop + zEnd) / 2, span = Math.max(zTop - zEnd, 1);
   group.position.x = -centre;
-  camera.position.set(span * 0.35, span * 0.9, span * 1.9);
-  controls.target.set(0, 0, 0);
-  controls.update();
 
   const mats = {};
   const material = (key, colour, opacity) => mats[key] || (mats[key] = new THREE.MeshLambertMaterial({
@@ -158,23 +179,38 @@ async function mount(el) {
     }
   }
 
-  function render() { renderer.render(scene, camera); }
-  function resize() {
-    const w = view.clientWidth || 300, h = Math.max(220, Math.min(420, Math.round(w * 0.5)));
+  let w = 300, h = 220;
+  function render() {
+    const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
+    renderer.setPixelRatio(ratio);
+    renderer.setClearColor(col.bg);
     renderer.setSize(w, h, false);
-    renderer.domElement.style.width = "100%";
-    renderer.domElement.style.height = h + "px";
+    renderer.render(scene, camera);
+    if (canvas.width !== renderer.domElement.width || canvas.height !== renderer.domElement.height) {
+      canvas.width = renderer.domElement.width; canvas.height = renderer.domElement.height;
+    }
+    ctx.drawImage(renderer.domElement, 0, 0);
+  }
+  let fitted = false;
+  function resize() {
+    w = view.clientWidth || 300;
+    h = Math.max(200, Math.min(420, Math.round(w * 0.5)));
+    canvas.style.width = "100%";
+    canvas.style.height = h + "px";
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    if (!fitted && view.clientWidth) { fitCamera(camera, controls, span, bar); fitted = true; }
     render();
   }
   controls.addEventListener("change", render);
-  addEventListener("tp-theme", () => {  // the top bar's theme button: the page's colours again
-    Object.assign(col, colours(el));
-    renderer.setClearColor(col.bg);
-    render();
-  });
-  new ResizeObserver(resize).observe(view);
+  fit.addEventListener("click", () => { fitCamera(camera, controls, span, bar); render(); });
+  const observer = new ResizeObserver(resize);
+  observer.observe(view);
+  const entry = {el, theme: () => { Object.assign(col, colours(el)); render(); }, dispose: () => {
+    observer.disconnect(); controls.dispose(); clear();
+    for (const key in mats) mats[key].dispose();
+  }};
+  views.add(entry);
 
   if (el.dataset.mode === "order") {
     const k = data.done, shown = states[k].points, next = states[k + 1];
@@ -214,7 +250,13 @@ async function mount(el) {
   resize();
 }
 
+// views whose element left the page (the shop card shows another machine): their scenes are freed
+function prune() {
+  for (const v of views) if (!v.el.isConnected) { v.dispose(); views.delete(v); }
+}
+
 function mountAll(root) {
+  prune();
   (root || document).querySelectorAll(".part3d[data-src]").forEach(el => {
     const go = () => mount(el).catch(e => {
       const info = el.querySelector(".part3d-info");
@@ -225,5 +267,6 @@ function mountAll(root) {
   });
 }
 
-window.turnpilotPart3d = {mountAll};
+addEventListener("tp-theme", () => { for (const v of views) v.theme(); });  // the top bar's theme button
+window.turnpilotPart3d = {mountAll, prune};
 mountAll(document);

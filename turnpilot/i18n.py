@@ -86,7 +86,10 @@ JS_KEYS = (
     "Program {n} was made before the states were kept: simulated again from its text {at} with the job's and the turret's data of then.",
     "Program {n} is out of date: {reasons}.",
     "This browser cannot show 3D (no WebGL): use the 2D simulation on the program's page.",
-    "operation 0 of {total}: the bar", "operation {k} of {total}: N{n} {title}",
+    "operation 0 of {total}: the bar", "operation {k} of {total}: N{n} {title}", "Fit",
+    # the 3D view in the shop page's machine card
+    "The part on the machine now", "by the operator's marks, not from the machine.",
+    "Outer profile only: bores and flats are not shown.", "marked done", "the next operation", "not machined yet",
 )
 
 UK = {

@@ -371,6 +371,9 @@ main:has(.shop-floor) { max-width:none; }  /* the shop page uses the window's wi
 .part3d-view { width: 100%; min-height: 40px; margin-top: 8px; touch-action: none; }
 .part3d-view canvas { display: block; border-radius: 4px; }
 .part3d-info:empty { display: none; }
+.part3d-fit { margin-top: 6px; }
+.sf-part3d { display: flex; flex-direction: column; gap: 4px; }
+.sf-part3d .part3d-view { margin-top: 0; }
 .legend .key.k3-done, .legend .key.k3-current, .legend .key.k3-next, .legend .key.k3-bar, .legend .key.k3-final {
   border: 0; height: 10px; }
 .legend .key.k3-done { background: var(--p3d-done); }

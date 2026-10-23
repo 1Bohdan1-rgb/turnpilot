@@ -77,3 +77,21 @@ def test_an_order_without_a_program_says_so(app, client):
     order = services.create_order(job, machine, 10, "Bohdan")
     assert order.program is None
     assert "No program taken by order" in client.get(f"/orders/{order.id}/part3d.json").get_json()["error"]
+
+
+def test_one_webgl_renderer_per_page_and_the_camera_at_the_part():
+    """Every view renders with the page's one WebGL renderer (copied into its own canvas); the camera is set to the
+    part's length and Ø, and the Fit button puts it there again."""
+    source = (Path(__file__).parent.parent / "turnpilot" / "static" / "part3d.js").read_text(encoding="utf-8")
+    assert source.count("new THREE.WebGLRenderer(") == 1
+    assert "if (!shared) shared = new THREE.WebGLRenderer(" in source
+    assert "ctx.drawImage(renderer.domElement, 0, 0)" in source
+    assert "function fitCamera(camera, controls, span, radius)" in source
+    assert 'fit.textContent = t("Fit")' in source and "fitCamera(camera, controls, span, bar); render();" in source
+
+
+def test_the_shop_card_shows_the_part_without_the_panel(client):
+    page = client.get("/shop").get_data(as_text=True)
+    assert "part3d: id => `/orders/${id}/part3d.json`" in page
+    assert 'class="part3d sf-part3d" data-src="${URLS.part3d(o.id)}" data-mode="order"' in page
+    assert 'window.turnpilotPart3d.mountAll(document.getElementById("sf-card"))' in page
