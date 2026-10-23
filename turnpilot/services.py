@@ -530,6 +530,8 @@ def job_spec(job):
             start_diameter=f.start_diameter, tolerance=normalize_tolerance(f.tolerance), radius=f.radius,
             across_flats=f.across_flats if f.type == "hex" else None,
             arc_convex=f.arc_convex if f.type == "arc" else None,
+            bore_from=f.bore_from_mm if f.type == "bore" else None,
+            bore_bottom=f.bore_bottom if f.type == "bore" else None,
         )
         for f in job.active_features
     )
@@ -782,6 +784,11 @@ def gcode_readiness(job, machine):
         c = copied[-1]
         result.blockers.insert(0, f"{machine.name}'s turret was copied from {c.from_machine.name} by {c.copied_by} on "
                                   f"{localtime.local(c.copied_at)}, after the calculation: calculate the job again")
+    for feature in job.active_features:  # a bore placed after the calculation: its depth from the face may differ
+        if feature.type == "bore" and feature.bore_position_source == "operator" and calculated \
+                and feature.bore_position_at.replace(tzinfo=None) > calculated.replace(tzinfo=None):
+            result.blockers.append(f"bore Ø{feature.diameter:g}: its place on the drawing was set by "
+                                   f"{feature.bore_position_by} after the calculation: calculate the job again")
     by_id = {op.id: op for op in job.current_operations}
     for op_id in result.usable:  # a bore's drill: the operator decides what the drawing's depth means
         op = by_id[op_id]

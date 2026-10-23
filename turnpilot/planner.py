@@ -122,6 +122,16 @@ class FeatureSpec:
     location: str | None = None  # chamfer / thread: "external" / "internal"
     across_flats: float | None = None  # hex: size across flats S; diameter is across corners
     arc_convex: bool | None = None  # arc: bulging away from the axis
+    bore_from: float | None = None  # bore: its start from the face it opens at (None: not known, taken as 0)
+    bore_bottom: str | None = None  # bore: "flat" / "drill_point" / "through"; None: not known
+
+
+def bore_depth(feature) -> float | None:
+    """How deep a bore reaches from the face it opens at: its start (a stepped bore's narrower part starts deeper;
+    not known: 0, as before the place was recorded) plus its length."""
+    if feature.length is None:
+        return None
+    return (getattr(feature, "bore_from", None) or 0.0) + feature.length
 
 
 def hex_corners(feature) -> float | None:
@@ -1166,6 +1176,15 @@ PECK_NOTE = "G83 peck drilling: depth {depth:g} > {k:g} × Ø{d:g}"
 DRILL_TOO_SHORT = "drill too short: the hole is {depth:g} deep, the drill reaches {max_depth:g}: use a longer drill"
 COVERED_NOTE = "drilled Ø{d:g} with feature {fid}'s hole"
 FROM_SOLID_NOTE = "no drill chosen: bored from solid? Drill the hole first"
+FLAT_BOTTOM_NOTE = "a flat bottom: the drill's point leaves a cone, the boring bar faces it"
+FLAT_BOTTOM_NO_BAR = ("the flat bottom of Ø{d:g} needs a boring bar to face the drill's cone, but none goes into it "
+                      "({tools}): the cone stays")
+# Rule of thumb (the user's, 2026-10-23; placeholder table: open): a steel boring bar overhanging more than 4 × its
+# diameter tends to vibrate. The bar's diameter is not recorded: its head's DMIN stands for it.
+BAR_OVERHANG_FACTOR = 4
+BAR_OVERHANG_WARNING = ("the bar's overhang {overhang:g} mm is more than {k} × D (D taken as its DMIN {dmin:g}): a rule "
+                        "of thumb, check for vibration")
+BAR_TOO_SHORT = "the bore goes {depth:g} mm deep, the bar's overhang reaches {overhang:g}: clamp it longer"
 
 
 @dataclass(frozen=True)
@@ -1208,8 +1227,10 @@ def plan_holes(features, iso_group: str, turret: list[TurretEntry]) -> dict[int,
     for f in features:
         if f.type == "bore" and f.diameter:
             exact = [e for e in drills if abs(e.tool.diameter - f.diameter) <= DRILL_SIZE_TOL_MM]
-            if exact and drill_gives(f.tolerance, f.diameter, f.ra):
-                plans[id(f)] = HolePlan(f.diameter, f.length, exact[0], drill_only=True,
+            depth = bore_depth(f)
+            flat = f.bore_bottom == "flat"  # the drill's point leaves a cone: a boring bar faces it
+            if exact and drill_gives(f.tolerance, f.diameter, f.ra) and not flat:
+                plans[id(f)] = HolePlan(f.diameter, depth, exact[0], drill_only=True,
                                         note=DRILL_ONLY_NOTE.format(d=f.diameter))
                 continue
             borers = [e for e in turret if e.tool.type in ("boring", "boring_rough") and iso_group in e.tool.iso_group]
@@ -1219,27 +1240,29 @@ def plan_holes(features, iso_group: str, turret: list[TurretEntry]) -> dict[int,
             if borers and not any(reaches(e.tool, f.diameter) for e in borers):
                 # every boring tool's holder is too thick for this bore: drill it to size
                 text = _boring_tools_text(e for e in borers if not reaches(e.tool, f.diameter))
+                needs = FLAT_BOTTOM_NO_BAR.format(d=f.diameter, tools=text) if flat and drill_gives(
+                    f.tolerance, f.diameter, f.ra) else BORING_NEEDS_TOLERANCE.format(d=f.diameter, tools=text)
                 if exact:
-                    plans[id(f)] = HolePlan(f.diameter, f.length, exact[0], drill_only=True,
-                                            note=DRILL_ONLY_NOTE.format(d=f.diameter),
-                                            warning=BORING_NEEDS_TOLERANCE.format(d=f.diameter, tools=text))
+                    plans[id(f)] = HolePlan(f.diameter, depth, exact[0], drill_only=True,
+                                            note=DRILL_ONLY_NOTE.format(d=f.diameter), warning=needs)
                 else:
-                    plans[id(f)] = HolePlan(f.diameter, f.length, None, drill_only=True,
+                    plans[id(f)] = HolePlan(f.diameter, depth, None, drill_only=True,
                                             warning=NO_BORING_REACH.format(d=f.diameter, tools=text))
                 continue
             if boring is None:
-                plans[id(f)] = HolePlan(None, f.length, warning=NO_BORING_ALLOWANCE)
+                plans[id(f)] = HolePlan(None, depth, warning=NO_BORING_ALLOWANCE)
                 continue
             allowance = finishing_ap(boring.tool)
             limit = round(f.diameter - 2 * allowance, 3)
             fits = [e for e in drills if e.tool.diameter <= limit + 1e-9]
             if not fits:
-                plans[id(f)] = HolePlan(None, f.length, warning=NO_DRILL_UP_TO.format(d=limit, hole=f.diameter,
-                                                                                       a=allowance))
+                plans[id(f)] = HolePlan(None, depth, warning=NO_DRILL_UP_TO.format(d=limit, hole=f.diameter,
+                                                                                    a=allowance))
                 continue
             entry = min(fits, key=lambda e: (-e.tool.diameter, e.position))
-            plans[id(f)] = HolePlan(entry.tool.diameter, f.length, entry, note=DRILL_NOTE.format(
-                d=entry.tool.diameter, limit=limit, hole=f.diameter, a=allowance))
+            plans[id(f)] = HolePlan(entry.tool.diameter, depth, entry, note=DRILL_NOTE.format(
+                d=entry.tool.diameter, limit=limit, hole=f.diameter, a=allowance)
+                + (f"; {FLAT_BOTTOM_NOTE}" if flat else ""))
         elif f.type == "thread" and f.location == "internal" and f.diameter and f.pitch:
             hole = tap_hole(f.diameter, f.pitch)
             size = hole.phd
@@ -1946,6 +1969,13 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
         return op
     if entry.tool.type in ("boring", "boring_rough") and entry.tool.min_bore_diameter is None and feature.diameter:
         op.warnings.append(DMIN_NOT_SET.format(position=entry.position, d=feature.diameter))
+    if entry.tool.type in ("boring", "boring_rough") and feature.type == "bore" and entry.tool.max_depth:
+        depth, dmin = bore_depth(feature), entry.tool.min_bore_diameter
+        if depth and depth > entry.tool.max_depth + 1e-9:
+            op.warnings.append(BAR_TOO_SHORT.format(depth=depth, overhang=entry.tool.max_depth))
+        if dmin and entry.tool.max_depth > BAR_OVERHANG_FACTOR * dmin + 1e-9:
+            op.warnings.append(BAR_OVERHANG_WARNING.format(overhang=entry.tool.max_depth, k=BAR_OVERHANG_FACTOR,
+                                                           dmin=dmin))
     if copying:
         op.notes.append(copying)
     elif angle is not None and step.tool_type in ("turning_finish", "turning_rough") and (
