@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TurnPilot{% endblock %} · TurnPilot</title>
+  <script>
+    // the theme: the system's, or the one chosen with the top bar's button (remembered in this browser)
+    try {
+      const theme = localStorage.getItem("tp-theme") || localStorage.getItem("sf-theme");
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script>
     // the scripts' texts in the page's language (turnpilot/i18n.py JS_KEYS): t(key) or t(key, {name: value})
@@ -28,6 +35,7 @@
       <a href="{{ url_for('main.upload_drawing') }}">{{ _("Upload drawing") }}</a>
     </nav>
     <div class="topbar-tools">
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="{{ _("Light or dark theme") }}">◐ {{ _("Theme") }}</button>
       <span class="lang-switch" role="group" aria-label="{{ _("Language") }}">
         {% for code, label in [("uk", "UA"), ("en", "EN")] %}<a href="{{ url_for('main.set_language', code=code, next=request.full_path) }}"
           {% if lang == code %}aria-current="true"{% endif %} lang="{{ code }}">{{ label }}</a>{% endfor %}
@@ -42,5 +50,14 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+      const root = document.documentElement;
+      const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      root.dataset.theme = dark ? "light" : "dark";
+      try { localStorage.setItem("tp-theme", root.dataset.theme); } catch (e) {}
+      dispatchEvent(new Event("tp-theme"));  // the 3D view takes its colours again
+    });
+  </script>
 </body>
 </html>

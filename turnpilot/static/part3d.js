@@ -169,6 +169,11 @@ async function mount(el) {
     render();
   }
   controls.addEventListener("change", render);
+  addEventListener("tp-theme", () => {  // the top bar's theme button: the page's colours again
+    Object.assign(col, colours(el));
+    renderer.setClearColor(col.bg);
+    render();
+  });
   new ResizeObserver(resize).observe(view);
 
   if (el.dataset.mode === "order") {
