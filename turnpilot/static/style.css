@@ -45,6 +45,7 @@
   --p3d-current: #e8892b;  /* removed by the operation shown */
   --p3d-next: #e8892b;  /* the next operation (shop card) */
   --p3d-bar: #7a6a58;  /* the bar, not machined yet */
+  --p3d-cut: #6f8297;  /* the half section's face */
   --p3d-final: var(--sf-setup);  /* the finished part (drawing) */
   --p3d-bg: var(--sf-sheet);
 }

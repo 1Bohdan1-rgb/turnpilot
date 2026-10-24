@@ -27,7 +27,7 @@ one operator field for the whole panel (in_form: the page around it holds the fo
     <div class="part3d" data-src="{{ url_for('main.order_part3d', order_id=order.id) }}" data-mode="order">
       <p class="small"><strong>{{ _("The part on the machine now") }}</strong> ({{ _("program {n}, the order's", n=p.program.id) }}):
         {{ _("by the operator's marks, not from the machine.") }}
-        {{ _("Outer profile only: bores and flats are not shown.") }}</p>
+        <span class="part3d-caption">{{ _("Outer profile only: bores and flats are not shown.") }}</span></p>
       <div class="part3d-view"></div>
       <p class="small legend"><span class="key k3-done"></span> {{ _("marked done") }} <span class="key k3-next"></span> {{ _("the next operation") }}
         <span class="key k3-bar"></span> {{ _("not machined yet") }} <span class="key k3-final"></span> {{ _("the finished part (drawing), transparent") }}</p>

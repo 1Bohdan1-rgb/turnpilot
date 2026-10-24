@@ -138,3 +138,25 @@ def test_flat_bottom_with_the_point_below_it(machine):
     job = make(machine, bottom="flat", depth_mode="full_diameter")
     prog, _ = program(job, machine)
     assert any("the drill's point would go below it" in r for r in prog.skipped.values())
+
+
+def test_3d_states_carry_the_bore(machine):
+    job = make(machine)
+    program(job, machine)
+    _, record = services.generate_gcode(job, machine)
+    data = services.part3d_data(record)
+    assert data["final_inner"][:2] == [[0.0, 0.0], [0.0, 11.0]] and [-32.0, 11.0] in data["final_inner"]
+    titles = [s["title"] for s in data["states"]]
+    drilled = data["states"][titles.index(next(t for t in titles if "DRILL D20" in t))]
+    assert "inner" not in data["states"][1] and drilled["inner"]  # the facing has no hole yet, the drill makes it
+    assert max(r for _, r in data["states"][-1]["inner"]) == pytest.approx(11.0)
+
+
+def test_3d_caption_switches_in_the_script():
+    from pathlib import Path
+    from turnpilot import i18n
+    script = (Path(__file__).parent.parent / "turnpilot" / "static" / "part3d.js").read_text(encoding="utf-8")
+    assert ".part3d-caption" in script and "Half section" in i18n.JS_KEYS
+    for page in ("gcode_program.html", "_order_panel.html", "shop.html"):
+        text = (Path(__file__).parent.parent / "turnpilot" / "templates" / page).read_text(encoding="utf-8")
+        assert 'class="part3d-caption"' in text

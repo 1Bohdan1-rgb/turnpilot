@@ -1180,6 +1180,7 @@ def part3d_data(record):
         computed_at = localtime.local(datetime.strptime(computed_at[:-4], "%Y-%m-%d %H:%M"))
     return {"program": record.id, "states": states, "computed_at": computed_at,
             "final": [[round(z, 3), round(r, 3)] for z, r in profile.final_points],
+            "final_inner": [[round(z, 3), round(r, 3)] for z, r in profile.inner_points()] if profile.inner_known else [],
             "bar_radius": planner.stock_diameter(job.blank_shape or "round", job.blank_diameter) / 2,
             "z_jaws": -program_jaws_below_z0(json.loads(record.settings)), "stale": gcode_stale(record, machine)}
 

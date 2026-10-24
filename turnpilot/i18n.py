@@ -68,6 +68,7 @@ def js_strings():
 
 # texts used by scripts (looked up with t("…") in the browser)
 JS_KEYS = (
+    "Bores are shown (Half section: the button); flats are not shown.", "Half section", "Whole part",
     "Running", "Setup", "Stopped", "Free", "Reading…",
     # the program page
     "{n} of {total} moves, line {line}", "no move",
@@ -411,6 +412,10 @@ UK = {
     "this operation (transparent: the material it removes)": "ця операція (прозоре: матеріал, який вона знімає)",
     "not machined yet": "ще не оброблено",
     "Outer profile only: bores and flats are not shown.": "Лише зовнішній профіль: отвори й лиски не показано.",
+    "Bores are shown (Half section: the button); flats are not shown.":
+        "Отвори показано (Розріз навпіл: кнопка); лиски не показано.",
+    "Half section": "Розріз навпіл",
+    "Whole part": "Деталь цілком",
     "Turn: drag with the mouse or one finger; zoom: the wheel or two fingers; move: the right button or two fingers.": "Обертати: тягніть мишею або одним пальцем; масштаб: коліщатко або два пальці; зсув: права кнопка або два пальці.",
     "Checks": "Перевірки",
     "operation {n}": "операція {n}",

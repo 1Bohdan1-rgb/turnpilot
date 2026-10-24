@@ -215,7 +215,7 @@
       ${o ? `<div class="sf-bar" role="img" aria-label="${esc(t("{pct}% done", {pct: pct}))}"><i class="sf-${m.status}" style="width:${pct}%"></i></div>` : ""}
       ${o && !o.no_program ? `<div class="part3d sf-part3d" data-src="${URLS.part3d(o.id)}" data-mode="order">
         <p class="sf-note">${esc(t("The part on the machine now"))}: ${esc(t("by the operator's marks, not from the machine."))}
-          ${esc(t("Outer profile only: bores and flats are not shown."))}</p>
+          <span class="part3d-caption">${esc(t("Outer profile only: bores and flats are not shown."))}</span></p>
         <div class="part3d-view"></div>
         <p class="sf-note legend"><span class="key k3-done"></span> ${esc(t("marked done"))} <span class="key k3-next"></span>
           ${esc(t("the next operation"))} <span class="key k3-bar"></span> ${esc(t("not machined yet"))}</p>
