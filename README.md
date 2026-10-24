@@ -475,6 +475,26 @@ machine's turret and the other jobs keep theirs. Undoing a change keeps it in th
   operator's checklist list the changes for the setter; a program made before a change is out of date. Calculations
   made before keep their operations.
 
+## Tools from the catalogues (no model)
+
+- `turnpilot/catalogue_tools.py` reads the uploaded catalogues' text layer (kept at the upload): a product table's
+  headers between "Dimensions" and "Ordering code", then each row's values before its ordering code. A row is taken
+  only where it checks against its own code: a drill's DC = the code's digits and its inch columns agree (DC, LU = the
+  deepest hole, ULDR); a boring bar's CZCMS = its Ø in the code (DMIN1, OHX / OHN); a grooving insert's seat letter and
+  CW (CW, CDX). Page values (SIG, KAPR, the coolant supply, the table's grade) only when the page states one. On the
+  Sandvik 2020 pair: 1980 drills (1 row not taken), 40 boring bars (2), 79 grooving inserts (152 not taken).
+- `/catalogue-tools`: search by kind and size; every value with its page and quote; "not found" is said, nothing
+  guessed, no paid call.
+- The set-up card names what the job would take from the catalogues: a drill of a bore's own Ø when a drill alone
+  makes it, the largest drill up to the bore less the boring bar's finishing pass when it is larger than the one
+  planned, a boring bar or a grooving insert for an operation without a tool; a tool already added says whether the
+  set-up takes it and why not.
+- "Add to the library" reads the tool again from its page; the tool's name, the operator's name, the ISO groups and the
+  type are required; Vc / f from the confirmed catalogue rows of the job's group (prefilled and named) or the
+  operator's with their source; a drill's ap = D/2 (derived, check); an internal coolant tool gets a check. The
+  turret position comes from the job's set-up, which takes the tool only once its cutting data come from a confirmed
+  catalogue row (`Tool.catalogue_ref` keeps every value's quote, who added it and when).
+
 ## Cycle time
 
 The program page shows the time of a program by operation (block N), the part's time and the order's (quantity × the

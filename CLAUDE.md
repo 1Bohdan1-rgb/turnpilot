@@ -1186,6 +1186,25 @@ inner-profile`, the server stopped). The files frozen by `dxf-blind-freeze` unto
 - Not done: internal threads and grooves in the G-code, a second set-up (a bore at the chuck end), chips; the bar is
   its head's DMIN only (no shank geometry); not checked in a browser.
 
+## Tools from the catalogues (built 2026-10-24)
+Plan 1–4 agreed with the user. Commits 0133de1 (search), 09401c3 (add to the library), 0db1a34 (set-up card), b2b17c5
+(the card says why an added tool is not taken) and the docs commit. Migration f7a1b5c9d2e3 (`Tool.catalogue_ref`; DB
+backup `instance/turnpilot.db.bak-2026-10-24-before-catalogue-tools`, the server stopped). No model, no paid call. The
+files frozen by `dxf-blind-freeze` untouched.
+- `turnpilot/catalogue_tools.py`: written on SRT B35 / B26 and TT A102 / B6 (in-sample for the parser); on the whole
+  Sandvik 2020 pair 1980 drills, 40 bars, 79 grooving inserts taken (1 / 2 / 152 rows not taken: they do not check).
+  SIG on the 860-PM page (B35) is 147°, on 860-GM (B26) 140°: taken as printed. The library's 860-GM Ø8 / Ø10 have max
+  depth 24 / 30 (3 × D), the catalogue's LU is 25.4 / 31.8: not changed (the user's to decide).
+- Check on a copy of the user's DB (scratchpad `cat_check.py`, catalogues' page texts copied): Завіса 36 bushing from
+  the DXF on Lathe 2 plans a Ø10 drill; the card: a Ø22 drill (drill-only possible) not found; a drill up to Ø21.3:
+  636 fit, first the six Ø20 (460.1-2000-060A0 / A1 / 090A0 / A1 / 150A1-XM, 860.1-2000-055A1-PM). 860.1-2000-055A1-PM
+  added (Ø20, LU 63, SIG 147°, grade 4234 with their quotes; Vc / f typed as DEMO in the copy): the set-up does not
+  take it: no confirmed catalogue ap / f for its code in P1.2.
+- 860-PM cutting data: B76 (PDF 276) gives Vc only (4234, P1.2.Z.AN 140-180-250 m/min); the feeds fn by Ø are on B77
+  (PDF 277). Estimate (code, images not counted, and the 2026-10-08 reading was about 2 × its estimate): B76 alone
+  6 039 input tokens, B76 + B77 9 743, one call either way. The user approved one call on B76 for P1.2: waiting for
+  the decision B76 alone (Vc only: the drill stays not taken) or B76 + B77.
+
 ## Deferred
 - A "shop time zone" setting (now Europe/London written out in `turnpilot/localtime.py`).
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
@@ -1196,7 +1215,7 @@ inner-profile`, the server stopped). The files frozen by `dxf-blind-freeze` unto
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1248 tests pass (2026-10-24). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1261 tests pass (2026-10-24). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
