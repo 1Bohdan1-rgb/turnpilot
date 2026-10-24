@@ -50,6 +50,7 @@ class FeatureData:
     bore_open_end: str | None = None  # bore: "left" / "right" on the drawing, the face its start is measured from
     bore_from: float | None = None  # bore: its start from that face
     bore_bottom: str | None = None  # bore: "flat" / "drill_point" / "through"
+    bore_cone_angle: float | None = None  # bore: the cone angle drawn at a drill-point bottom (information only)
 
 
 @dataclass
@@ -63,6 +64,7 @@ class Bore:
     tolerance: str | None = None
     chamfer: float = 0.0  # a 45° chamfer at its mouth (a bore that starts at the free end face)
     problem: str | None = None  # why it is not programmed
+    cone_angle: float | None = None  # drawn at a drill-point bottom: not a size, the drill's own point makes it
 
     def r_at(self, z: float) -> float:
         """The finished radius at z (the mouth chamfer widens it towards Z0)."""
@@ -385,7 +387,8 @@ def _bores(features: list[FeatureData], free_end: str, length: float, warnings: 
         else:  # measured from the chuck end
             z_top, z_bottom = -(length - end), -(length - start)
         bottom = f.bore_bottom
-        bores.append(Bore(f.id, f.diameter, round(z_top, 6), round(z_bottom, 6), bottom, f.tolerance))
+        bores.append(Bore(f.id, f.diameter, round(z_top, 6), round(z_bottom, 6), bottom, f.tolerance,
+                          cone_angle=f.bore_cone_angle))
     bores.sort(key=lambda b: -b.z_top)
     for f in features:  # an internal chamfer at the mouth of the bore that opens at the free end
         if f.type == "chamfer" and f.location == "internal" and f.length and bores and bores[0].z_top > -EPS:

@@ -190,3 +190,16 @@ def test_a_point_angle_whose_point_is_rounded(machine):
     result = services.gcode_simulation(job, machine, text)
     assert result.ok, result.errors
     assert result.complete, result.incomplete
+
+
+def test_the_bottom_as_the_drill_leaves_it(machine):
+    drill = db.session.execute(db.select(TurretSlot).filter_by(position=12)).scalar_one().tool
+    drill.point_angle_deg = 147
+    db.session.commit()
+    features = bushing()
+    features[2].bore_cone_angle = 120
+    job = make_job(features, free_end="right", blank=38, length=90, stickout=95, face_stock=1.0)
+    _, text = program(job, machine)
+    comments = " ".join(line.strip("()") for line in text.splitlines() if line.startswith("("))
+    assert ("THE BOTTOM: A RING D20-D22 AT Z-32, THEN THE DRILL'S 147 DEG CONE TO Z-34.962 DRAWN 120 DEG, NOT "
+            "DIMENSIONED: NOT MACHINED" in comments)

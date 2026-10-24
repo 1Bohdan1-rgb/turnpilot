@@ -231,6 +231,7 @@ class _Builder:
         self.holes: list[tuple[float, float, float, float]] = []  # (z_a, r_a, z_b, r_b), z_a > z_b: the hole so far
         self.compensated_inner: dict[int, tuple[str, float, int]] = {}  # position -> (tool, rε, T) used with G41
         self.boring_spindle: dict[int, tuple[str, str]] = {}  # position -> (bar, M03 / M04)
+        self.drilled: dict[int, tuple[float, float | None, float]] = {}  # feature id -> (drill Ø, point angle, tip Z)
 
     # spindle and coolant
     def _start(self, block: Block, op: OpData, mode: str = "css") -> None:
@@ -930,6 +931,7 @@ class _Builder:
         # written rounded to 0.001, which must not put the full Ø a fraction of a µm short of it)
         full = drawn if op.depth_mode == "full_diameter" else (depth - point if point else depth)
         self.holes.append((0.0, r, -full, r))
+        self.drilled[op.feature_id] = (op.tool_diameter or 0.0, op.point_angle, -depth)
         if point:
             self.holes.append((-full, r, -depth, 0.0))
         return b
@@ -1073,6 +1075,12 @@ class _Builder:
         back = self._step_back(r_now, r_now, op.dmin)  # none: in over the face at the hole's Ø
         b = self.block(op, f"FINISH BORE D{bore.diameter:g} TO Z{bore.z_bottom:g}")
         b.notes.append(f"spindle {op.spindle_direction} for this bar (the operator's)")
+        if bore.bottom == "drill_point" and op.feature_id in self.drilled:
+            d, angle, tip = self.drilled[op.feature_id]
+            ring = f"a ring D{d:g}-D{bore.diameter:g} at Z{bore.z_bottom:g}, then " if d < bore.diameter - EPS else ""
+            cone = f"the drill's {angle:g} deg cone to Z{tip:g}" if angle else f"the drill's point to Z{tip:g}"
+            drawn = f" (drawn {bore.cone_angle:g} deg" if bore.cone_angle else " (drawn as a drill point"
+            b.notes.append(f"the bottom: {ring}{cone}{drawn}, not dimensioned: not machined)")
         self._bore_start(b, op, r_now - (back or 0.0))
         drilled = self._drilled_to(bore, r_now)
         wall_end = bore.z_bottom

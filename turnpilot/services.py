@@ -815,7 +815,7 @@ def job_profile(job, radius_of=None):
                                      arc_convex=f.arc_convex,
                                      drawn_radius=radius_of.get(f.id, f.drawn_radius), tolerance=f.tolerance,
                                      bore_open_end=f.bore_open_end, bore_from=f.bore_from_mm,
-                                     bore_bottom=f.bore_bottom)
+                                     bore_bottom=f.bore_bottom, bore_cone_angle=f.bore_cone_angle)
                 for f in job.active_features]
     return gprofile.build(features, job.free_end or "left")
 
