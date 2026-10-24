@@ -38,8 +38,11 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   comes from Sandvik Solid round tools 2020, C157 (coarse) / C158 (fine), for cutting taps: a drill from PHD
   up to PHDX is accepted, the nearest to PHD; other threads take d − P, noted "not in catalogue". A hole drilled for one feature that is at least as large and as deep makes
   another's drill. Without a boring tool (allowance unknown), a fitting drill or a centre drill: a
-  warning, nothing guessed. Not modelled: through vs blind (depth = the bore length), the smallest bore a
-  boring bar enters, a flat bottom.
+  warning, nothing guessed. A bore with its place (the face it opens at, its start, its bottom) is drilled from
+  the face to its start plus its length (a stepped bore's narrower part deeper); without it the depth is the
+  bore's length, as before. A flat bottom is never left to the drill (its point leaves a cone): the boring bar
+  faces it. A boring bar's overhang (its max depth) above 4 × its DMIN (its D is not recorded) is a warning: a
+  rule of thumb, check for vibration; a bar shorter than the bore, a warning.
 - **Tool selection:** only tools loaded in the turret, matched by operation type and material ISO
   group (P/M/N). If none fits, the operation is kept with a clear warning and cannot be approved.
 - **Catalogue values:** a tool may carry the catalogue's recommended ap and f and Vc at given feeds
@@ -315,7 +318,12 @@ What it does **not** do:
 
 - only KOMPAS-3D DXF files are supported (linetypes `K5LT_BASIC` / `K5LT_THIN` / `K5LT_AXLED`);
   another CAD system's DXF is rejected with a message;
-- the inner profile (bores) is not read: its dimensions are listed as "inner profile: not read";
+- bores are read beside the frozen reader (`turnpilot/dxf_inner.py`, in-sample: written on Завіса 36, no blind
+  check yet; every bore row says so): a chain of bore walls from an end face inwards, their bottom (a drill point
+  with its drawn angle, a flat face, a step), a 45° mouth chamfer; the inner Ø and length dimensions bound to them.
+  Confirm keeps the bore's place (source "dxf"). Internal grooves, threads, tapers and arcs are not read (warnings);
+  a part with a through bore is not found at all (the contour falls into two halves the frozen reader does not
+  take for a part): such a bore is entered and placed by hand on the job page;
 - material, quantity, roughness and the blank are not taken from the DXF: the operator fills them in;
 - a section that is not machined (the bar held in the chuck) is not recognised: untick it;
 - on real files most lengths carry **check**: KOMPAS drawings dimension from a base, so a section's
@@ -396,7 +404,16 @@ presses Start after the machine check.
   long at the nose's lowest point (cautious), and the error says κr is not set.
 - **Grooving holders:** a tool's holder code is the operator's; a CoroCut 1-2 insert and holder of another seat
   size (G vs E) are refused; a grooving tool's max depth is its holder's.
-- **Not written:** boring, internal threads, taps, a groove's finishing pass, a concave radius smaller than rε, cuts
+- **Boring** (a bore with its place, opening at the free end): the drill from Z0 (not for a bore at the chuck end,
+  nor a flat bottom with the drill's full Ø to it); rough passes of equal depth, each from Z+clearance down the
+  wall, the edge then stepping back towards the axis by the retract (less when the bar's head, DMIN, would meet the
+  hole across the axis; a bar as wide as the drilled hole comes in over the face at its first pass); the drill's
+  cone above the bottom faced from the centre outwards in levels of ap max, only with κr ≥ 90° and only where the
+  hole lets the bar's head in (the rest is left, and said so); the finishing pass as drawn (a mouth chamfer, the
+  wall, off it towards the axis) with G41 when the bar has rε and T. No boring without the bar's spindle direction
+  (M03 / M04, the operator's, per bar), DMIN and overhang, or with a bore deeper than the overhang. The header and
+  the checklist name each bar's spindle direction and its G41 offset.
+- **Not written:** internal threads, taps, internal grooves, a groove's finishing pass, a concave radius smaller than rε, cuts
   down towards the chuck steeper than the insert's max in-copying angle (set per tool; unknown = not allowed),
   re-chucking, hex flats.
 - **Every number has a source:** cutting data only from confirmed catalogue rows or the operator (an operation
@@ -417,6 +434,13 @@ presses Start after the machine check.
   chuck steeper than the insert allows, the jaws' safety distance, X below the axis, G96 while drilling, G96
   without G50, speeds above the limits, the wrong spindle direction, G92 outside G97, n·P above the threading
   limit, a tool change away from the reference point. Material left on the part: PART NOT COMPLETE.
+  Inside (when every bore is placed and no internal thread is there): the hole as a second radius per z; the drill
+  as its own shape (its point's cone with the point angle); a boring bar as its tip or nose circle, its trailing
+  edge towards the axis, its head taking DMIN − (its edge's r) across the axis. Errors: a rapid into the bottom or
+  a wall, a drill body in material, a cut beyond the finished bore (below a drill-point bottom only the drill,
+  within D/2), the bar's head against the wall across the axis, deeper than its overhang, DMIN / overhang / its
+  spindle direction not set or another one, a cut deeper than its ap max. Material left in a bore: PART NOT
+  COMPLETE (a nose radius in its inner corner: a warning).
 - **The page** (job → G-code): an SVG of the moves over the blank, the jaws, the stock left and the finished
   profile, with a step slider; the errors and checks linked to the program's lines; the operator's checklist
   (zero, tools and offsets, clamping, spindle direction, simulation, the machine check) and name. "Ready to run"
@@ -509,7 +533,9 @@ as not set; unless all three are from the passport the time is marked "without t
 - Shop panel and the order page: the part on the machine now, from the order's own program, after the blocks the
   operator marked done from the first on without a gap (a gap is named); the next operation's material highlighted;
   the drawing's finished part transparent, with its outline: by the operator's marks, not from the machine.
-- Only the outer profile: holes and flats are not shown (the simulation keeps no inner radius).
+- Bores are shown where the simulation has a hole: the part as a ring (its section along the outer profile and
+  back along the hole); "Half section" keeps the far half with the section's face. The caption says so; programs
+  without a hole keep "Outer profile only". Flats are not shown.
 - three.js 0.160.0 (MIT) is a file of the project (`turnpilot/static/vendor/three`, ≈ 0.7 MB, sha256 in its
   `VERSION.txt`): no internet needed. Loaded only when a 3D view is open; drawn only when it changes, pixel ratio
   ≤ 1.5, no antialiasing; without WebGL the page says so and the 2D simulation stays.

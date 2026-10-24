@@ -538,6 +538,9 @@ Planner constants (`turnpilot/planner.py`):
 | power: κr | 90° (hm = f) | kc, so Pc | assumption (a 45° holder raises kc) | code | open |
 | Vc between catalogue points | linear | Vc at f rec / from Ra | assumption (the catalogue gives 3 points) | code | open |
 | `DRILL_IT_GRADE` / `DRILL_RA_UM` | IT12 / Ra 6.3 | hole made by the drill alone | rule of thumb (PLACEHOLDER) | code | open |
+| `BAR_OVERHANG_FACTOR` | overhang > 4 × D (D = DMIN) | warning only | rule of thumb (the user, 2026-10-23) | code | open |
+| boring bar's head | DMIN − (edge r) across the axis | room to step back, the simulation's bar check | assumption (DMIN as the head's room) | tool data | open |
+| drill zone below a drill-point bottom | D/2 (points of 90° or more) | "cut beyond the bore" for a drill | assumption | code | open |
 | `PECK_DEPTH_FACTOR` | 3 × drill Ø | G83 note | rule of thumb (PLACEHOLDER; carbide often 5×) | code | open (3×D of 860-GM is its length: "drill too short", operator decision) |
 | boring allowance | the finishing boring tool's ap rec | drill Ø for a bore | TT A289 (T9 0.35) | tool data | verified |
 | rough boring | `boring_rough` tool (T5) by its ap rec | rough boring passes | TT A41, A289, A279 | tool data | verified |
@@ -1156,6 +1159,33 @@ migration; G-code text and golden files unchanged; the files frozen by `dxf-blin
 - Process sheet: when n is capped, "→ Vc on ØD" = π·D·n/1000 on the reference diameter (facing: the blank's Ø, e.g.
   Ø22 at 4000 rpm: 276.5 m/min). The "289" in the plan was an example not computed; corrected here.
 
+## Inner profile: bores (built 2026-10-23 / 24)
+Plan 1–7 agreed with the user, plus: a flat bottom faced by the bar from the centre outwards (κr ≥ 90°, else the
+reason), a cone left on it = PART NOT COMPLETE; the spindle direction per boring bar (the operator's, no default,
+no boring without it, a checklist item); an overhang above 4 × D (DMIN as D) a warning only. Commits 493deb0 (fields),
+a610d56 (DXF), 9708157 (planner), e87b2c3 (simulation), 33b58ae (G-code), cae1779 (3D), 120d905 (a bar as wide as
+the hole) and the docs commit. Migration e6f0a4b8c5d9 (DB backup `instance/turnpilot.db.bak-2026-10-23-before-
+inner-profile`, the server stopped). The files frozen by `dxf-blind-freeze` untouched (`git diff` empty).
+- `Feature.bore_open_end / bore_from_mm / bore_bottom` ("flat" / "drill_point" / "through") / `bore_cone_angle` /
+  `bore_position_source` ("dxf" / "operator") / `_by` / `_at`; `Tool.spindle_direction` (+ source),
+  `Tool.max_depth_source` (a boring bar's max depth = its overhang as clamped).
+- `turnpilot/dxf_inner.py` (IN-SAMPLE, written on Завіса 36): on the real files the bushing's Ø22+0,21 × 32 (drill
+  point 120°, the "geometry 21.8 ≠ text 22" flag kept) and the pin's Ø10+0,15 × 5 (flat bottom), dims bound;
+  НД 012, деталь 1: no rows; the SolidWorks trial files: eb1_011 Ø3.3 × 8 (118°), 03057789-2-01 Ø10 L1.996 from the
+  geometry (its jobs/8 bore was typed as Ø10 × 5: to the drill's point?). A through bore splits the contour into two
+  halves: the frozen reader finds no part (a limit, not patched).
+- A bore placed by the operator after the calculation blocks the G-code until Calculate.
+- Check on copies of the user's DB (scratchpad `jobs_bytes.py`, `bushing_check.py`): jobs/7 and jobs/8 calculated
+  again and approved, at c21e890 (before this stage, the backup) and at HEAD: 323 / 157 lines, byte for byte the same
+  (jobs/8's bore has no place: its drill keeps "the inner profile is not simulated"). Завіса 36 bushing as a new job
+  on Lathe 2 from the DXF (copy only, DEMO values marked: a Ø20 860-GM drill on T11, T5 / T9 DMIN 20 by the TT
+  suggestion A16R, overhang 50, M03, T2, κr 95; depth to the full Ø): 0 errors, complete; warning: the nose radius
+  in the corner at Z-32; rough 2 × 0.325 from D20, finishing G41 X22.
+- In the user's DB the boring bars have no DMIN, overhang, spindle direction, T, κr: boring is left out of programs
+  until the operator enters them; no Ø20 drill in the library (the bushing's Ø22 needs one).
+- Not done: internal threads and grooves in the G-code, a second set-up (a bore at the chuck end), chips; the bar is
+  its head's DMIN only (no shank geometry); not checked in a browser.
+
 ## Deferred
 - A "shop time zone" setting (now Europe/London written out in `turnpilot/localtime.py`).
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
@@ -1166,7 +1196,7 @@ migration; G-code text and golden files unchanged; the files frozen by `dxf-blin
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1216 tests pass (2026-10-23). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1248 tests pass (2026-10-24). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
