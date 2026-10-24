@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# Operations the generator writes (outer profile, and drilling on the axis), by tool type.
-SUPPORTED_TOOL_TYPES = ("facing", "turning_rough", "turning_finish", "grooving", "threading", "drilling", "parting")
+# Operations the generator writes (outer profile, drilling on the axis, boring a placed bore), by tool type.
+SUPPORTED_TOOL_TYPES = ("facing", "turning_rough", "turning_finish", "grooving", "threading", "drilling", "parting",
+                        "boring", "boring_rough")
 CONFIRMED_ORIGINS = ("catalogue", "operator")
 # "demo": the demo command's value; a program can be looked at, never marked ready to run (services.mark_gcode_ready)
 MAX_RPM_SOURCES = ("passport", "operator", "demo")
@@ -36,7 +37,7 @@ JOB_SETUP_LABELS = {"free_end": "free end (Z0)", "stickout_mm": "stick-out from 
                     "face_stock_mm": "stock beyond Z0"}
 
 SKIP_NO_TOOL = "no tool: not generated"
-SKIP_UNSUPPORTED = "{tool_type}: not generated in this version (outer profile and drilling on the axis only)"
+SKIP_UNSUPPORTED = "{tool_type}: not generated in this version (outer profile, drilling and boring only)"
 SKIP_CHAMFER = "a chamfer on its own: not generated (chamfers are cut with their diameter's finishing pass)"
 SKIP_ORIGIN = ("cutting data not from confirmed catalogue rows or the operator ({origin}): not generated; confirm "
                "the rows on the Cutting data page or set the values on the operation")

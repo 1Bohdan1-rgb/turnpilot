@@ -1,0 +1,140 @@
+"""Boring in the program: the drill, rough passes (the edge stepping back towards the axis), the finishing pass
+with G41, the bar's data as the operator set it (DMIN, overhang, spindle direction, κr), and the simulation."""
+from datetime import datetime, timezone
+
+import pytest
+from gcode_jobs import make_job, ready_machine
+
+from turnpilot import services
+from turnpilot.gcode import fanuc
+from turnpilot.models import Feature, Tool, TurretSlot, db
+
+BAR = dict(min_bore_diameter=16, min_bore_source="test", max_depth=50, spindle_direction="M03", tip_direction=2,
+           entering_angle_deg=95)
+
+
+def bushing(bottom="drill_point", depth_mode="full_diameter", length=32, tolerance="+0.21"):
+    """A bushing like Завіса 36's (own numbers): Ø34.8 × 80, a blind Ø22 bore opening at the free (right) end."""
+    bore = Feature(type="bore", diameter=22, length=length, tolerance=tolerance, bore_open_end="right", bore_from_mm=0,
+                   bore_bottom=bottom, bore_position_source="dxf", bore_position_at=datetime.now(timezone.utc),
+                   depth_mode=depth_mode, depth_decided_by="Bohdan", depth_decided_at=datetime.now(timezone.utc))
+    return [Feature(type="face"), Feature(type="od_turn", diameter=34.8, length=80), bore, Feature(type="parting")]
+
+
+def _tool(position):
+    return db.session.execute(db.select(TurretSlot).filter_by(position=position)).scalar_one().tool
+
+
+@pytest.fixture
+def machine(app):
+    machine = ready_machine()
+    slot = db.session.execute(db.select(TurretSlot).filter_by(position=12)).scalar_one()
+    drill = Tool(name="Drill 20", type="drilling", iso_group="P", insert_code="860.1-2000-060A1-GM", vc_min=80,
+                 vc_max=160, f_min=0.1, f_max=0.3, ap_min=10, ap_max=10, diameter=20, max_depth=60,
+                 point_angle_deg=140, f_rec=0.2, vc_points="125")
+    db.session.add(drill)
+    slot.tool = drill
+    for position in (5, 9):
+        tool = _tool(position)
+        for key, value in BAR.items():
+            setattr(tool, key, value)
+    db.session.commit()
+    return machine
+
+
+def program(job, machine):
+    for op in job.current_operations:
+        if op.tool_type == "drilling":
+            op.cutting_data_origin = "operator"  # the test drill has no catalogue row
+        op.status = "approved"
+    db.session.commit()
+    readiness, prog = services.gcode_program(job, machine)
+    assert prog is not None, readiness.blockers
+    return prog, fanuc.render(prog)
+
+
+def make(machine, **kw):
+    return make_job(bushing(**kw), free_end="right", blank=38, length=90, stickout=95, face_stock=1.0, name="Bushing")
+
+
+def test_bushing_bored_clean_and_complete(machine):
+    job = make(machine)
+    prog, text = program(job, machine)
+    titles = [b.title for b in prog.blocks]
+    assert any(t.startswith("DRILL D20 DEPTH 32") for t in titles)
+    assert any(t.startswith("ROUGH BORE D22") for t in titles) and "FINISH BORE D22 TO Z-32" in titles
+    assert "G96 S" in text and " M03" in text  # the bar's own direction
+    assert "G01 G41 X22." in text and "G00 G40 Z2." in text
+    assert "SPINDLE FOR BORING BAR T09" in text and "FINISHING BORE: NOSE RADIUS COMPENSATION G41" in text
+    assert "THE INNER PROFILE IS NOT SIMULATED" not in text
+    result = services.gcode_simulation(job, machine, text)
+    assert result.ok, result.errors
+    assert result.complete, result.incomplete
+    warnings = [m for _, m in result.warnings]
+    assert any("the bore's inner corner at Z-32." in w for w in warnings)  # the nose radius at the wall's end
+
+
+def test_checklist_names_the_bars(machine):
+    job = make(machine)
+    program(job, machine)
+    _, record = services.generate_gcode(job, machine)
+    items = dict(services.gcode_checklist(record))
+    assert "T09 Boring bar CCMT M03" in items["boring_spindle"] and "T05" in items["boring_spindle"]
+    assert "G41 in the bore: on the offset page T09 R0.4 T2" in items["bore_compensation"]
+
+
+@pytest.mark.parametrize("key, value, reason", [
+    ("spindle_direction", None, "the spindle direction for this bar is not set"),
+    ("min_bore_diameter", None, "DMIN of the bar is not set"),
+    ("max_depth", None, "the bar's overhang (its max depth, the tool page) is not set"),
+    ("max_depth", 30, "the bore goes 32 mm deep, the bar's overhang reaches 30"),
+])
+def test_bar_data_missing(machine, key, value, reason):
+    setattr(_tool(9), key, value)
+    setattr(_tool(5), key, value)
+    db.session.commit()
+    job = make(machine)
+    prog, _ = program(job, machine)
+    reasons = [r for op_id, r in prog.skipped.items()]
+    assert any(r.startswith(reason) for r in reasons), reasons
+
+
+def test_bore_at_the_chuck_end_is_not_drilled_or_bored(machine):
+    features = bushing()
+    features[2].bore_open_end = "left"  # Z0 on the right: the bore opens at the chuck end
+    job = make_job(features, free_end="right", blank=38, length=90, stickout=95, face_stock=1.0)
+    prog, text = program(job, machine)
+    assert all(not b.title.startswith(("DRILL", "ROUGH BORE", "FINISH BORE")) for b in prog.blocks)
+    assert any("needs a second set-up" in r for r in prog.skipped.values())
+    result = services.gcode_simulation(job, machine, text)
+    assert any("material left in the bore" in m for m in result.incomplete)
+
+
+def test_without_kr_the_cone_stays(machine):
+    """Depth to the drill's point: its cone is above the bore's bottom, faced only with κr ≥ 90°."""
+    for position in (5, 9):
+        _tool(position).entering_angle_deg = None
+    db.session.commit()
+    job = make(machine, depth_mode="tip")
+    prog, text = program(job, machine)
+    finish = next(b for b in prog.blocks if b.title.startswith("FINISH BORE"))
+    assert any("needs κr ≥ 90°" in w for w in finish.warnings)
+    result = services.gcode_simulation(job, machine, text)
+    assert any("material left in the bore" in m for m in result.incomplete)
+
+
+def test_flat_bottom_faced_from_the_centre(machine):
+    job = make(machine, bottom="flat", depth_mode="tip")
+    prog, text = program(job, machine)
+    finish = next(b for b in prog.blocks if b.title.startswith("FINISH BORE"))
+    result = services.gcode_simulation(job, machine, text)
+    assert result.ok, result.errors
+    # the bar's head (DMIN 16) cannot reach into the narrow end of the drill's cone: it is left, and said so
+    assert any("the drill's cone is left" in w for w in finish.warnings)
+    assert any("material left in the bore" in m for m in result.incomplete)
+
+
+def test_flat_bottom_with_the_point_below_it(machine):
+    job = make(machine, bottom="flat", depth_mode="full_diameter")
+    prog, _ = program(job, machine)
+    assert any("the drill's point would go below it" in r for r in prog.skipped.values())

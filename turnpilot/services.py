@@ -955,6 +955,9 @@ def gcode_inputs(job, machine, readiness=None):
             depth_mode=op.feature.depth_mode if op.feature.type == "bore" else None,
             depth_decided=(f"{op.feature.depth_decided_by} {op.feature.depth_decided_at:%Y-%m-%d}"
                            if op.feature.depth_decided_at else None),
+            dmin=tool.min_bore_diameter if tool else None,
+            spindle_direction=tool.spindle_direction if tool else None,
+            entering_angle=tool.entering_angle_deg if tool else None,
             warnings=tuple(w.strip() for w in (op.warning or "").split(";") if w.strip())))
     stock = planner.stock_diameter(job.blank_shape or "round", job.blank_diameter)
     job_data = gprogram.JobData(id=job.id, name=job.name, material=job.material.name, blank_diameter=stock,
@@ -1055,6 +1058,15 @@ def gcode_checklist(record):
         offsets = ", ".join(f"T{pos:02d} R{r:g} T{t}" for pos, _, r, t in compensation)
         items += (("nose_compensation", f"nose radius compensation G42: on the offset page {offsets} "
                                         "(R the nose radius, T the tip direction as the tool is mounted)"),)
+    inner = sim.get("inner_compensation") or []
+    if inner:
+        offsets = ", ".join(f"T{pos:02d} R{r:g} T{t}" for pos, _, r, t in inner)
+        items += (("bore_compensation", f"nose radius compensation G41 in the bore: on the offset page {offsets} "
+                                        "(R the nose radius, T the tip direction as the bar is mounted)"),)
+    bars = sim.get("boring_spindle") or []
+    if bars:
+        items += (("boring_spindle", "the boring bars turn as set for them: " + ", ".join(
+            f"T{pos:02d} {name} {d}" for pos, name, d in bars) + " (the way the bar is mounted)"),)
     return items
 
 
@@ -1125,6 +1137,8 @@ def generate_gcode(job, machine):
         "final_stock": [round(r, 3) for r in result.final_stock[::10]], "z_top": result.z_top, "dz": 0.1,
         "program_warnings": program.warnings, "skipped": {str(k): v for k, v in program.skipped.items()},
         "compensation": [list(c) for c in program.compensation],
+        "inner_compensation": [list(c) for c in program.inner_compensation],
+        "boring_spindle": [list(c) for c in program.boring_spindle],
         "turret_setup": turret_setup_lines(job),
         "stock_by_block": stock3d.states(result, gsim.DZ),
     }

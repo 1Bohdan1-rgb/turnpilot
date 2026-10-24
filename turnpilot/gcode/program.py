@@ -122,6 +122,8 @@ class Program:
     notes: list[str] = field(default_factory=list)  # information for the whole program
     spindle_off_at_end: bool = True
     compensation: list[tuple[int, str, float, int]] = field(default_factory=list)  # (position, tool, rε, T) with G42
+    inner_compensation: list[tuple[int, str, float, int]] = field(default_factory=list)  # boring bars with G41
+    boring_spindle: list[tuple[int, str, str]] = field(default_factory=list)  # (position, bar, M03 / M04) as set
 
 
 # --- inputs ---------------------------------------------------------------------------------------------
@@ -190,6 +192,9 @@ class OpData:
     depth_mode: str | None = None  # a bore's drill: "full_diameter" / "tip", the operator's decision
     depth_decided: str | None = None  # who and when ("Bohdan 2026-10-16")
     warnings: tuple = ()  # the planner's warnings on the operation
+    dmin: float | None = None  # boring: the smallest bore the holder goes into
+    spindle_direction: str | None = None  # boring: the spindle direction the operator set for the bar
+    entering_angle: float | None = None  # boring: κr of the insert in its holder
 
 
 # A thread's run-in is at least 3 × P (the axis reaches the thread's feed before the thread): rule of thumb, the
@@ -222,6 +227,9 @@ class _Builder:
         self.comp = False  # the finishing contour being written is nose radius compensated (G42)
         self.compensated: dict[int, tuple[str, float, int]] = {}  # position -> (tool, rε, T) used with G42
         self.allowance = max((op.ap or 0.0 for op in ops if op.tool_type == "turning_finish"), default=0.0)
+        self.holes: list[tuple[float, float, float, float]] = []  # (z_a, r_a, z_b, r_b), z_a > z_b: the hole so far
+        self.compensated_inner: dict[int, tuple[str, float, int]] = {}  # position -> (tool, rε, T) used with G41
+        self.boring_spindle: dict[int, tuple[str, str]] = {}  # position -> (bar, M03 / M04)
 
     # spindle and coolant
     def _start(self, block: Block, op: OpData, mode: str = "css") -> None:
@@ -747,7 +755,7 @@ class _Builder:
                     continue
                 done_finish = True
                 out += self._finish_groups(finish)
-            elif section is None and op.tool_type not in ("drilling", "parting"):
+            elif section is None and op.tool_type not in ("drilling", "parting", "boring", "boring_rough"):
                 out.append((op.id, "not in the profile: not generated"))
             else:
                 out.append(self.other(op, section))
@@ -760,6 +768,10 @@ class _Builder:
             result = self.thread(op, section)
         elif op.tool_type == "drilling":
             result = self.drill(op)
+        elif op.tool_type in ("boring", "boring_rough") and op.mode == "rough":
+            result = self.bore_rough(op)
+        elif op.tool_type == "boring" and op.feature_type == "bore":
+            result = self.bore_finish(op)
         elif op.tool_type == "parting":
             result = self.parting(op)
         else:
@@ -872,6 +884,13 @@ class _Builder:
             return "the bore's depth (to the full Ø or to the point) is not decided: not generated"
         if op.depth_mode == "full_diameter" and point is None:
             return "the depth to the full Ø needs the drill's point angle: not generated"
+        bore = self.p.bore_of(op.feature_id) if op.feature_type == "bore" else None
+        if bore is not None and bore.problem:
+            return f"{bore.problem}: not generated"
+        if bore is not None and bore.bottom == "flat" and op.depth_mode == "full_diameter" \
+                and abs(-bore.z_bottom - op.depth) < EPS:
+            return ("a flat bottom: the drill's point would go below it (decide the depth to the drill's point): not "
+                    "generated")
         drawn = op.depth
         depth = _r3(drawn + point) if op.depth_mode == "full_diameter" else drawn
         q = self.m.peck_depth
@@ -903,7 +922,183 @@ class _Builder:
         if op.max_depth and depth > op.max_depth + EPS:
             b.warnings.append(f"the drill's point goes to {depth:g} mm, the drill reaches {op.max_depth:g}: use a "
                               "longer drill")
-        b.warnings.append("the inner profile is not simulated (only the drill's path on the axis)")
+        if not self.p.inner_known:  # a bore without its place, or an internal thread
+            b.warnings.append("the inner profile is not simulated (only the drill's path on the axis)")
+        r = (op.tool_diameter or 0.0) / 2
+        full = depth - point if point else depth  # where the drill's full Ø ends
+        self.holes.append((0.0, r, -full, r))
+        if point:
+            self.holes.append((-full, r, -depth, 0.0))
+        return b
+
+    # boring: rough passes, the drill's cone faced, the finishing contour (G41) ------------------------------
+    def _hole_at(self, z: float) -> float:
+        """The hole's radius at z that the blocks written so far leave (0: none)."""
+        out = 0.0
+        for za, ra, zb, rb in self.holes:
+            if zb - EPS <= z <= za + EPS:
+                out = max(out, ra if abs(za - zb) < EPS else ra + (rb - ra) * (z - za) / (zb - za))
+        return out
+
+    def _bore_problem(self, op: OpData, bore) -> str | None:
+        if bore is None:
+            return "the bore's place on the drawing is not set (the job page): not generated"
+        if bore.problem:
+            return f"{bore.problem}: not generated"
+        if op.spindle_direction is None:
+            return "the spindle direction for this bar is not set (the operator's, on the tool page): not generated"
+        if op.dmin is None:
+            return "DMIN of the bar is not set (the tool page): whether its head fits the hole is not known: not generated"
+        if op.max_depth is None:
+            return "the bar's overhang (its max depth, the tool page) is not set: not generated"
+        if -bore.z_bottom > op.max_depth + EPS:
+            return f"the bore goes {-bore.z_bottom:g} mm deep, the bar's overhang reaches {op.max_depth:g}: not generated"
+        return None
+
+    def _step_back(self, r_wall: float, r_narrow: float, dmin: float) -> float | None:
+        """How far the bar's edge steps back from a wall of r_wall towards the axis: the machine's retract, less when
+        its head (DMIN) across the axis would meet the narrowest hole it stands in (r_narrow); None: no room."""
+        room = r_wall - (dmin - r_narrow)
+        back = min(self.m.retract, room)
+        return back if back > EPS else None
+
+    def _bore_start(self, b: Block, op: OpData, r_in: float) -> None:
+        if op.vc:
+            b.commands.append(Spindle("css", int(round(op.vc)), op.spindle_direction, self.m.max_rpm))
+        else:
+            b.commands.append(Spindle("rpm", int(op.n), op.spindle_direction, self.m.max_rpm))
+        b.commands.append(Rapid(self.x_safe, self.z_safe))
+        if self.m.coolant:
+            b.commands.append(Coolant(True))
+        b.commands += [Rapid(x=_r3(2 * r_in)), Rapid(z=_r3(self.m.clearance_z))]
+        self.boring_spindle[op.position] = (op.tool_name, op.spindle_direction)
+
+    def _bore_end(self, b: Block) -> None:
+        b.commands.append(Rapid(z=self.z_safe))
+        self._end(b)
+
+    def _drilled_to(self, bore, r: float) -> float:
+        """The deepest z down to which the hole is at least r wide from the bore's top (the drill's full Ø)."""
+        z = bore.z_top
+        while z - 0.01 >= bore.z_bottom - EPS and self._hole_at(z - 0.01) >= r - 1e-6:
+            z -= 0.01
+        return _r3(z) if z - bore.z_bottom > 0.005 else bore.z_bottom
+
+    def bore_rough(self, op: OpData) -> Block | str | None:
+        bore = self.p.bore_of(op.feature_id)
+        why = self._bore_problem(op, bore)
+        if why:
+            return why
+        if not op.passes or not op.ap:
+            return None
+        r0 = self._hole_at(bore.z_top - 0.01)
+        if r0 <= EPS:
+            return "the hole is not drilled in this program before boring: not generated"
+        allow = next((o.ap or 0.0 for o in self.ops if o.tool_type == "boring" and o.mode == "finish"
+                      and o.feature_id == op.feature_id), 0.0)
+        target = bore.diameter / 2 - allow
+        if target <= r0 + EPS:
+            self.covered.append(f"operation {op.id} (rough boring D{bore.diameter:g}): the drill already took the "
+                                "material")
+            return Block(op.sequence, "", op.position, op.tool_name, [op.id], op.tool_type)
+        z_end = bore.z_bottom + (allow if bore.bottom == "flat" else 0.0)
+        end = max(_r3(z_end), self._drilled_to(bore, r0))
+        n = op.passes
+        step = (target - r0) / n
+        back = self._step_back(r0, r0, op.dmin)
+        if back is None:
+            return (f"the bar's head (DMIN {op.dmin:g}) does not fit the drilled D{2 * r0:g} with its edge at the wall: "
+                    "not generated")
+        b = self.block(op, f"ROUGH BORE D{bore.diameter:g} {n} X AP {round(step, 3):g} FROM D{2 * r0:g}")
+        b.notes.append(f"leaves {allow:g} mm per side for finishing; spindle {op.spindle_direction} for this bar "
+                       "(the operator's)")
+        self._bore_start(b, op, r0 - back)
+        for k in range(1, n + 1):
+            r = r0 + k * step
+            back = self._step_back(r, r, op.dmin)
+            if back is None:
+                return f"the bar's head (DMIN {op.dmin:g}) leaves no room to step back from D{2 * r:g}: not generated"
+            b.commands += [Feed(x=_r3(2 * r), f=op.f), Feed(z=end), Feed(x=_r3(2 * (r - back))),
+                           Rapid(z=_r3(self.m.clearance_z))]
+            self.holes.append((0.0, r, end, r))
+        if end > z_end + EPS and bore.bottom != "through":
+            b.warnings.append(f"Z{end:g} to Z{z_end:g}: the drill's cone is left for the finishing bar to face")
+        self._bore_end(b)
+        return b
+
+    def _face_cone(self, b: Block, op: OpData, bore, r_wall: float, z_from: float, z_to: float) -> float:
+        """The drill's cone between z_from and z_to faced away from the centre outwards to r_wall, in levels no deeper
+        than the bar's ap max; a level is faced only where the hole there is wide enough for the bar's head (its edge
+        starts at the cone's surface, in the air). What it cannot reach is left (and said so). Returns the lowest z
+        faced (z_from: none)."""
+        if op.entering_angle is None or op.entering_angle < 90 - EPS:
+            b.warnings.append(f"Z{z_from:g} to Z{z_to:g}: the drill's cone is not faced: facing from the centre outwards "
+                              "needs κr ≥ 90° (κr of the holder " + ("is not set" if op.entering_angle is None else
+                                                                   f"is {op.entering_angle:g}°") + ")")
+            return z_from
+        depth = op.ap_max or op.ap or 0.0
+        if depth <= EPS:
+            return z_from
+        levels = max(1, math.ceil(round((z_from - z_to) / depth, 9)))
+        cz = _r3(self.m.clearance_z)
+        reached = z_from
+        for k in range(1, levels + 1):
+            level = _r3(z_from - (z_from - z_to) * k / levels)
+            r_s = self._hole_at(level)
+            if op.dmin - r_s > r_s + EPS:
+                b.warnings.append(f"Z{level:g} to Z{z_to:g}: the drill's cone is left (the hole there is D{2 * r_s:g}, the "
+                                  f"bar's head needs D{op.dmin:g} to reach in)")
+                return reached
+            back = self._step_back(r_wall, r_wall, op.dmin)
+            b.commands += [Rapid(x=_r3(2 * r_s)), Rapid(z=_r3(level + self.m.retract)), Feed(z=level, f=op.f),
+                           Feed(x=_r3(2 * r_wall)), Feed(x=_r3(2 * (r_wall - (back or 0.0)))), Rapid(z=cz)]
+            self.holes.append((_r3(z_from), r_wall, level, r_wall))
+            reached = level
+        return reached
+
+    def bore_finish(self, op: OpData) -> Block | str:
+        bore = self.p.bore_of(op.feature_id)
+        why = self._bore_problem(op, bore)
+        if why:
+            return why
+        r = bore.diameter / 2
+        r_now = self._hole_at(bore.z_top - 0.01)
+        if r_now <= EPS:
+            return "the hole is not drilled in this program before boring: not generated"
+        back = self._step_back(r_now, r_now, op.dmin)
+        if back is None:
+            return f"the bar's head (DMIN {op.dmin:g}) does not fit D{2 * r_now:g}: not generated"
+        b = self.block(op, f"FINISH BORE D{bore.diameter:g} TO Z{bore.z_bottom:g}")
+        b.notes.append(f"spindle {op.spindle_direction} for this bar (the operator's)")
+        self._bore_start(b, op, r_now - back)
+        drilled = self._drilled_to(bore, r_now)
+        wall_end = bore.z_bottom
+        if bore.bottom != "through" and drilled > bore.z_bottom + EPS:
+            wall_end = self._face_cone(b, op, bore, r_now, drilled, bore.z_bottom)
+            if wall_end > bore.z_bottom + EPS:
+                b.warnings.append(f"the wall is finished down to Z{wall_end:g} only (the drill's cone below is left)")
+        comp = bool(op.nose_radius and op.tip_direction is not None)
+        g41 = "G41" if comp else None
+        cz = _r3(self.m.clearance_z)
+        if bore.chamfer:
+            top = r + bore.chamfer
+            b.commands += [Feed(x=_r3(2 * (top + cz)), z=cz, f=op.f, comp=g41), Feed(x=_r3(2 * r), z=_r3(-bore.chamfer))]
+        else:
+            b.commands += [Feed(x=_r3(2 * r), f=op.f, comp=g41)]
+        b.commands.append(Feed(z=_r3(wall_end)))
+        step = self._step_back(r, r, op.dmin) or 0.0
+        b.commands.append(Feed(x=_r3(2 * (r - step))))  # off the wall towards the axis (along the bottom)
+        b.commands.append(Rapid(z=cz, comp="G40" if comp else None))
+        self.holes.append((0.0, r, wall_end, r))
+        self._bore_end(b)
+        if comp:
+            self.compensated_inner[op.position] = (op.tool_name, op.nose_radius, op.tip_direction)
+            b.notes.append(f"nose radius compensation G41: the bore as drawn (offset R{op.nose_radius:g} "
+                           f"T{op.tip_direction})")
+        elif bore.chamfer and op.nose_radius:
+            b.warnings.append(f"no nose radius compensation: the mouth chamfer comes out about "
+                              f"{round(op.nose_radius * (math.sqrt(2) - 1), 3):g} mm (normal) off (rε {op.nose_radius:g}): "
+                              "check")
         return b
 
     # parting ---------------------------------------------------------------------------------------
@@ -1085,11 +1280,22 @@ def build(job: JobData, machine: MachineData, profile: Profile, ops: list[OpData
             program.skipped[op_id] = reason
     program.notes += builder.covered
     program.compensation = [(pos, name, r, t) for pos, (name, r, t) in sorted(builder.compensated.items())]
-    if program.compensation:
+    program.inner_compensation = [(pos, name, r, t) for pos, (name, r, t) in sorted(builder.compensated_inner.items())]
+    program.boring_spindle = [(pos, name, d) for pos, (name, d) in sorted(builder.boring_spindle.items())]
+    if program.compensation or program.inner_compensation:
         i = program.header.index("TOOL TIP: IMAGINARY POINT, NO NOSE RADIUS COMPENSATION")
-        program.header[i:i + 1] = (
-            ["TOOL TIP: IMAGINARY POINT", "FINISHING CONTOUR: NOSE RADIUS COMPENSATION G42"]
-            + [f"OFFSET PAGE T{pos:02d} {ascii_text(name)}: R{r:g} T{t}" for pos, name, r, t in program.compensation])
+        lines = ["TOOL TIP: IMAGINARY POINT"]
+        if program.compensation:
+            lines += ["FINISHING CONTOUR: NOSE RADIUS COMPENSATION G42"] + [
+                f"OFFSET PAGE T{pos:02d} {ascii_text(name)}: R{r:g} T{t}" for pos, name, r, t in program.compensation]
+        if program.inner_compensation:
+            lines += ["FINISHING BORE: NOSE RADIUS COMPENSATION G41"] + [
+                f"OFFSET PAGE T{pos:02d} {ascii_text(name)}: R{r:g} T{t}" for pos, name, r, t in program.inner_compensation]
+        program.header[i:i + 1] = lines
+    if program.boring_spindle:
+        at = program.header.index("X IN DIAMETER, FEED PER REVOLUTION")
+        program.header[at:at] = [f"SPINDLE FOR BORING BAR T{pos:02d} {ascii_text(name)}: {d} (THE OPERATOR'S)"
+                                 for pos, name, d in program.boring_spindle]
     for section, z0, z1, x0, x1, angle in builder.descents:
         if builder.back_chamfer_done and section is profile.sections[-1] and abs(z1 + profile.length) < EPS:
             continue

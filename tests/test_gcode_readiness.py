@@ -59,13 +59,13 @@ def test_blockers():
 
 def test_operations_left_out_with_their_reason():
     ops = [info(id=1, sequence=1), info(id=2, sequence=2, has_tool=False, tool_type="manual"),
-           info(id=3, sequence=3, tool_type="boring"), info(id=4, sequence=4, origin="tool"),
+           info(id=3, sequence=3, tool_type="tapping"), info(id=4, sequence=4, origin="tool"),
            info(id=5, sequence=5, origin=None), info(id=6, sequence=6, feature_type="chamfer", tool_type="turning_finish"),
            info(id=7, sequence=7, f=None), info(id=8, sequence=8, tool_type="drilling", origin="operator")]
     result = rd.check(True, ops, [], "passport")
     assert result.usable == [1, 8]
     assert result.skipped[2] == rd.SKIP_NO_TOOL
-    assert result.skipped[3].startswith("boring: not generated")
+    assert result.skipped[3].startswith("tapping: not generated")
     assert "(tool)" in result.skipped[4] and "(not known)" in result.skipped[5]
     assert result.skipped[6] == rd.SKIP_CHAMFER and result.skipped[7] == rd.SKIP_NO_DATA
 
