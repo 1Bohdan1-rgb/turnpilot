@@ -299,3 +299,30 @@ def test_add_a_boring_bar_needs_its_insert(client, catalogue):
 
 def test_a_code_not_on_its_page(client, catalogue):
     assert client.get(f"/catalogue-tools/add?document={catalogue.id}&page=2&code=860.1-2000-055A1-PM").status_code == 404
+
+
+def test_setup_card_names_catalogue_drills(client, catalogue):
+    from datetime import datetime, timezone
+
+    from gcode_jobs import make_job, ready_machine
+
+    from turnpilot.models import Feature
+    machine = ready_machine()
+    bore = Feature(type="bore", diameter=22, length=32, tolerance="+0.21", bore_open_end="right", bore_from_mm=0,
+                   bore_bottom="drill_point", bore_position_source="dxf", bore_position_at=datetime.now(timezone.utc))
+    job = make_job([Feature(type="face"), Feature(type="od_turn", diameter=34.8, length=80), bore,
+                    Feature(type="parting")], free_end="right", blank=38, length=90, stickout=95, machine=machine)
+    needs = services.catalogue_needs(job, machine, client.application.instance_path)
+    texts = [n.what for n in needs]
+    assert texts[0] == ("a drill Ø22 makes the bore Ø22 × 32 at once (its tolerance and roughness need no boring)")
+    assert needs[0].found == []  # the test page has no Ø22
+    assert texts[1].startswith("a drill up to Ø21.3 (Ø22 less the boring bar's finishing pass) for the bore Ø22 × 32: "
+                               "larger than the planned Ø10")
+    assert [f.code for f in needs[1].found] == ["860.1-2000-055A1-PM", "860.1-2000-080A1-PM", "860.1-1900-055A1-PM"]
+    page = client.get(f"/jobs/{job.id}").get_data(as_text=True)
+    assert "From the uploaded catalogues (not in the library)" in page and "860.1-2000-055A1-PM" in page
+    assert f"code=860.1-2000-055A1-PM&amp;job={job.id}" in page
+    client.post(f"/catalogue-tools/add?document={catalogue.id}&page=1&code=860.1-2000-055A1-PM&job={job.id}",
+                data=_drill_form())
+    needs = services.catalogue_needs(job, machine, client.application.instance_path)
+    assert "860.1-2000-055A1-PM" not in [f.code for n in needs for f in n.found]  # in the library now

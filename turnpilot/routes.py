@@ -1006,7 +1006,9 @@ def _setup_view(job):
     machine = services.job_machine(job)
     proposal = services.turret_setup_proposal(job, machine)
     return {"proposal": proposal, "signature": services.setup_signature(proposal), "machine": machine,
-            "details": {r.position: services.setup_row_details(r, job.material) for r in proposal.rows}}
+            "details": {r.position: services.setup_row_details(r, job.material) for r in proposal.rows},
+            "catalogue": services.catalogue_needs(job, machine, current_app.instance_path),
+            "value_labels": CATALOGUE_VALUE_LABELS}
 
 
 @bp.route("/jobs/<int:job_id>/turret/setup", methods=["POST"])

@@ -1713,6 +1713,123 @@ class CatalogueToolError(ValueError):
     pass
 
 
+_CATALOGUE_FOUND: dict = {}  # (kind, documents' keys) -> catalogue_tools.Search
+
+
+def catalogue_search(kind, instance_path):
+    """Every tool of a kind in the uploaded catalogues (catalogue_tools.search), parsed once per process."""
+    from . import catalogue_tools as ct
+
+    documents = catalogue_documents(instance_path)
+    key = (kind, tuple((d[0], len(d[2]["texts"])) for d in documents))
+    if key not in _CATALOGUE_FOUND:
+        _CATALOGUE_FOUND[key] = ct.search(documents, kind)
+    return _CATALOGUE_FOUND[key]
+
+
+@dataclass
+class CatalogueNeed:
+    what: str  # the need in words
+    kind: str  # catalogue_tools kind
+    a: float  # Ø from / the bore's Ø / the groove's width
+    b: float | None  # Ø to (drills)
+    depth: float | None
+    found: list = field(default_factory=list)  # catalogue_tools.Found, best first (at most CATALOGUE_SHOWN)
+    total: int = 0
+
+
+CATALOGUE_SHOWN = 6
+IN_LIBRARY = "already in the library"
+
+
+def _fits(found, kind, a, b, depth):
+    v = found.values
+    if kind == "drilling":
+        return a - 1e-6 <= v["diameter"] <= (b if b is not None else a) + 1e-6 and (
+            depth is None or v["max_depth"] >= depth - 1e-6)
+    if kind == "boring":
+        return v["dmin"] <= a + 1e-6 and (depth is None or v.get("max_overhang", 0) >= depth - 1e-6)
+    return v["width"] <= a + 1e-6 and (depth is None or v.get("max_depth", 0) >= depth - 1e-6)
+
+
+def _order(found, kind):
+    if kind == "drilling":
+        return (-found.values["diameter"], found.values["max_depth"], found.code)
+    if kind == "boring":
+        return (-found.values["dmin"], found.code)
+    return (-found.values["width"], found.code)
+
+
+def catalogue_needs(job, machine, instance_path):
+    """What the job's operations would take from the uploaded catalogues (their text, no model): a drill for a bore
+    (its own Ø when a drill alone makes it, else the largest up to the Ø less the boring bar's finishing pass, larger
+    than the one planned), a boring bar or a grooving insert for an operation without a tool. Codes already in the
+    library are left out. Nothing is written."""
+    if not job.current_operations:
+        return []
+    material = job.material
+    rows = confirmed_rows()
+    slots = job_turret(job, machine)
+    base = [planner.TurretEntry(s.position, tool_spec(s.tool, material, rows)) for s in slots if s.tool is not None]
+    ops = _plan(job, machine, base)
+    specs = {f.id: f for f in job_spec(job).features}
+    by_position = {e.position: e.tool for e in base}
+    library = {cutting_data.normalize_code(t.insert_code) for t in db.session.execute(db.select(Tool)).scalars()
+               if not t.is_retired} | {cutting_data.normalize_code(t.holder_code)
+                                       for t in db.session.execute(db.select(Tool)).scalars() if t.holder_code}
+    skipped = {(op.feature_id, op.tool_type, op.rough_finish) for op in job.current_operations if op.status == "skipped"}
+    needs: list[CatalogueNeed] = []
+    for f in specs.values():
+        if f.type != "bore" or not f.diameter:
+            continue
+        depth = planner.bore_depth(f)
+        drill = next((op for op in ops if op.feature_id == f.id and op.tool_type == "drilling"), None)
+        if drill is None or (f.id, "drilling", "finish") in skipped:
+            continue
+        have = by_position.get(drill.turret_position).diameter if drill.tool_id else None
+        if planner.drill_gives(f.tolerance, f.diameter, f.ra) and f.bore_bottom != "flat" and not (
+                have and abs(have - f.diameter) <= planner.DRILL_SIZE_TOL_MM):
+            needs.append(CatalogueNeed(f"a drill Ø{f.diameter:g} makes the bore Ø{f.diameter:g} × {depth:g} at once "
+                                       "(its tolerance and roughness need no boring)", "drilling", f.diameter,
+                                       f.diameter, depth))
+        finisher = next((by_position.get(op.turret_position) for op in ops if op.feature_id == f.id
+                         and op.tool_type == "boring" and op.mode == "finish" and op.tool_id), None)
+        if finisher is not None:
+            limit = round(f.diameter - 2 * planner.finishing_ap(finisher), 3)
+            low = (have or 0.0) + 0.01
+            if low <= limit:
+                needs.append(CatalogueNeed(
+                    f"a drill up to Ø{limit:g} (Ø{f.diameter:g} less the boring bar's finishing pass) for the bore "
+                    f"Ø{f.diameter:g} × {depth:g}: " + (f"larger than the planned Ø{have:g}, less to bore"
+                                                         if have else "none planned"), "drilling", low, limit, depth))
+    for op in ops:
+        if op.tool_id is not None or (op.feature_id, op.tool_type, op.mode) in skipped:
+            continue
+        f = specs.get(op.feature_id)
+        if f is None:
+            continue
+        if op.tool_type in ("boring", "boring_rough") and f.type == "bore" and f.diameter:
+            needs.append(CatalogueNeed(f"a boring bar into Ø{f.diameter:g} reaching {planner.bore_depth(f):g} for "
+                                       f"{op.tool_type}", "boring", f.diameter, None, planner.bore_depth(f)))
+        elif op.tool_type in ("grooving", "parting") and f.type == "groove" and f.length:
+            depth = (f.start_diameter - f.diameter) / 2 if f.start_diameter and f.diameter else None
+            needs.append(CatalogueNeed(f"a grooving insert up to {f.length:g} wide" + (f", {depth:g} deep" if depth
+                                       else "") + f" for the groove Ø{f.diameter:g}", "grooving", f.length, None, depth))
+    seen = set()
+    out = []
+    for need in needs:
+        key = (need.kind, need.a, need.b, need.depth)
+        if key in seen:
+            continue
+        seen.add(key)
+        search = catalogue_search(need.kind, instance_path)
+        fit = sorted((x for x in search.found if _fits(x, need.kind, need.a, need.b, need.depth)
+                      and cutting_data.normalize_code(x.code) not in library), key=lambda x: _order(x, need.kind))
+        need.total, need.found = len(fit), fit[:CATALOGUE_SHOWN]
+        out.append(need)
+    return out
+
+
 def catalogue_tool_rows(found, material_group):
     """The confirmed catalogue rows for a found tool (its code's geometry row, its grade's Vc row), for the group."""
     rows = confirmed_rows()

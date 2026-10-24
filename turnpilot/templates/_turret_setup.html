@@ -1,6 +1,6 @@
 {# The job's turret set-up proposed from the library (services.turret_setup_proposal): one card, one Accept for the
 whole set-up. Shown on the job page and the process sheet once the job is calculated. #}
-{% if setup and setup.proposal.needed %}
+{% if setup and (setup.proposal.needed or setup.catalogue) %}
 {% set p = setup.proposal %}
 <h2 id="setup">{{ _("Turret set-up from the library for {machine}", machine=setup.machine.name) }}</h2>
 <div class="card setup-card">
@@ -28,6 +28,19 @@ whole set-up. Shown on the job page and the process sheet once the job is calcul
     <ul>{% for t, why in p.unplaced %}<li>{{ t.name }} ({{ t.insert_code }}): {{ why }}</li>{% endfor %}</ul></div>{% endif %}
   {% if p.missing %}<div class="warning small"><strong>{{ _("The library cannot give:") }}</strong>
     <ul>{% for m in p.missing %}<li>{{ m }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if setup.catalogue %}<div class="small catalogue-needs"><strong>{{ _("From the uploaded catalogues (not in the library), by their text, no model:") }}</strong>
+    {% for n in setup.catalogue %}
+    <p>{{ n.what }}:
+      {% if not n.found %}<span class="warning">{{ _("not found") }}</span>{% endif %}
+      <a href="{{ url_for('main.catalogue_tools', kind=n.kind, a=n.a, b=n.b, depth=n.depth, job=job.id) }}">{{ _("all {n} found", n=n.total) if n.total else _("search") }}</a></p>
+    {% if n.found %}<ul>{% for f in n.found %}
+      <li><strong>{{ f.code }}</strong> {% for name, value in f.values.items() %}<span title="{{ f.sources[name] }}">· {{ _(setup.value_labels.get(name, name)) }} {{ value }}</span> {% endfor %}
+        <span class="muted">· {{ f.where }}</span>
+        <a class="button small" href="{{ url_for('main.catalogue_tool_add', document=f.document_id, page=f.pdf_page, code=f.code, job=job.id) }}">{{ _("Add to the library") }}</a></li>
+    {% endfor %}</ul>{% endif %}
+    {% endfor %}
+    <p class="muted">{{ _("A tool added goes to the library; the set-up takes it when its cutting data come from a confirmed catalogue row for the job's material.") }}</p>
+  </div>{% endif %}
   {% if p.rows %}
   <form method="post" action="{{ url_for('main.accept_turret_setup', job_id=job.id) }}" class="inline-form">
     <input type="hidden" name="signature" value="{{ setup.signature }}">
