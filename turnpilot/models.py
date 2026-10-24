@@ -212,6 +212,9 @@ class Tool(db.Model):
     nose_radius = db.Column(db.Float)
     tip_direction = db.Column(db.Integer)
     source = db.Column(db.String(300))  # where the Vc / f / ap ranges come from: catalogue, insert grade, page
+    # A tool added from a catalogue's page (catalogue_tools): JSON {document, pdf_page, page_label, code, row, values,
+    # sources (the quote of each value), added_by, added_at}. Empty: typed by hand.
+    catalogue_ref = db.Column(db.Text)
     # The catalogue's recommended values: the planner takes these instead of positions in the ranges. vc_points:
     # Vc at given feeds, "0.1:455, 0.4:305, 0.8:215" (linear between them), or one Vc for every feed ("125").
     ap_rec = db.Column(db.Float)

@@ -1685,6 +1685,145 @@ def catalogue_pages(document, instance_path):
     return catalogue_reader.load_pages(catalogue_path(document, instance_path) + ".pages.json")
 
 
+# --- tools from a catalogue (catalogue_tools: the pages' text, no model) -------------------------------------------
+
+_CATALOGUE_TEXTS: dict = {}  # (document id, sha256) -> pages: read once per process
+
+
+def catalogue_documents(instance_path):
+    """[(document id, title, pages)] of every uploaded catalogue whose pages' text is kept."""
+    out = []
+    for document in db.session.execute(db.select(CatalogueDocument).order_by(CatalogueDocument.id)).scalars():
+        key = (document.id, document.sha256)
+        if key not in _CATALOGUE_TEXTS:
+            try:
+                _CATALOGUE_TEXTS[key] = catalogue_pages(document, instance_path)
+            except OSError:
+                continue
+        out.append((document.id, document.title or document.original_filename, _CATALOGUE_TEXTS[key]))
+    return out
+
+
+CATALOGUE_TOOL_TYPES = {"drilling": ("drilling",), "boring": ("boring", "boring_rough"),
+                        "grooving": ("grooving", "parting")}
+DRILL_AP_NOTE = "ap = D/2 (a drill cuts its radius): derived, check"
+
+
+class CatalogueToolError(ValueError):
+    pass
+
+
+def catalogue_tool_rows(found, material_group):
+    """The confirmed catalogue rows for a found tool (its code's geometry row, its grade's Vc row), for the group."""
+    rows = confirmed_rows()
+    tool_type = CATALOGUE_TOOL_TYPES[found.kind][0]
+    return (cutting_data.geometry_row(rows, found.code, material_group),
+            cutting_data.grade_row(rows, found.values.get("grade"), tool_type, material_group))
+
+
+def add_catalogue_tool(found, form):
+    """A library tool from a found catalogue tool (read again from its page by the caller): the catalogue's values
+    with their quotes; the name, the ISO groups and the type the operator's; the cutting data from the confirmed
+    catalogue rows of the material group when there are, else the operator's with their source. No default."""
+    from .models import ISO_GROUPS
+
+    name = (form.get("name") or "").strip()[:100]
+    added_by = (form.get("added_by") or "").strip()[:100]
+    if not name:
+        raise CatalogueToolError("The tool's name is required")
+    if not added_by:
+        raise CatalogueToolError("The operator's name is required")
+    iso = "".join(g for g in ISO_GROUPS if g in form.getlist("iso_group"))
+    if not iso:
+        raise CatalogueToolError("Tick the ISO groups the tool is for")
+    tool_type = form.get("type")
+    if tool_type not in CATALOGUE_TOOL_TYPES[found.kind]:
+        raise CatalogueToolError("Choose the tool's type")
+
+    def number(key, required=True):
+        raw = (form.get(key) or "").strip().replace(",", ".")
+        if not raw:
+            if required:
+                raise CatalogueToolError(f"{key} is required")
+            return None
+        try:
+            value = float(raw)
+        except ValueError:
+            raise CatalogueToolError(f"{key} must be a number") from None
+        if value <= 0:
+            raise CatalogueToolError(f"{key} must be greater than zero")
+        return value
+
+    values = {k: number(k) for k in ("vc_min", "vc_max", "f_min", "f_max")}
+    if found.kind == "drilling":
+        values["ap_min"] = values["ap_max"] = found.values["diameter"] / 2
+    else:
+        values.update(ap_min=number("ap_min"), ap_max=number("ap_max"))
+    for lo, hi in (("vc_min", "vc_max"), ("f_min", "f_max"), ("ap_min", "ap_max")):
+        if values[lo] > values[hi]:
+            raise CatalogueToolError(f"{lo} must not exceed {hi}")
+    source = (form.get("source") or "").strip()[:300]
+    if not source:
+        raise CatalogueToolError("Write where the Vc / f values come from (a confirmed catalogue row, or yours)")
+    where = found.where
+    tool = Tool(name=name, type=tool_type, iso_group=iso, insert_code=found.code if found.kind != "boring" else
+                (form.get("insert_code") or "").strip()[:50], grade=found.values.get("grade") or
+                (form.get("grade") or "").strip()[:30] or None, source=source, **values)
+    if found.kind == "drilling":
+        tool.diameter = found.values["diameter"]
+        tool.max_depth = found.values["max_depth"]
+        tool.max_depth_source = f"{where}, {found.sources['max_depth']}"[:200]
+        if "point_angle" in found.values:
+            tool.point_angle_deg = found.values["point_angle"]
+            tool.point_angle_source = f"{where}, {found.sources['point_angle']}"[:200]
+        for key in ("f_rec",):
+            tool.f_rec = number(key, required=False)
+        tool.vc_points = (form.get("vc_points") or "").strip()[:200] or None
+    elif found.kind == "boring":
+        if not tool.insert_code:
+            raise CatalogueToolError("The insert code is required (the bar's holder is from the catalogue)")
+        tool.holder_code = found.code[:50]
+        tool.min_bore_diameter = found.values["dmin"]
+        tool.min_bore_source = f"{where}, {found.sources['dmin']}"[:200]
+        if "entering_angle" in found.values:
+            tool.entering_angle_deg = found.values["entering_angle"]
+            tool.entering_angle_source = f"{where}, KAPR of the page"[:200]
+        overhang = number("max_depth", required=False)  # the bar's overhang as it is clamped: the operator's
+        if overhang is not None and "max_overhang" in found.values and overhang > found.values["max_overhang"] + 1e-6:
+            raise CatalogueToolError(f"The overhang {overhang:g} is more than the catalogue's OHX "
+                                     f"{found.values['max_overhang']:g}")
+        if overhang is not None:
+            tool.max_depth, tool.max_depth_source = overhang, f"clamped by {added_by} (OHX "\
+                f"{found.values.get('max_overhang', '—')}: {where})"[:200]
+    else:  # grooving
+        tool.insert_width = found.values["width"]
+        if "max_depth" in found.values:
+            tool.max_depth = found.values["max_depth"]
+            tool.max_depth_source = f"{where}, {found.sources['max_depth']}"[:200]
+    tool.catalogue_ref = json.dumps({
+        "document_id": found.document_id, "document": found.document, "pdf_page": found.pdf_page,
+        "page_label": found.page_label, "code": found.code, "series": found.series, "row": found.row,
+        "values": found.values, "sources": found.sources, "added_by": added_by,
+        "added_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "notes": catalogue_tool_notes(found)}, ensure_ascii=False)
+    db.session.add(tool)
+    db.session.commit()
+    return tool
+
+
+def catalogue_tool_notes(found, machine=None):
+    """What the operator is to check about a found tool before adding it."""
+    notes = []
+    if found.values.get("coolant") == "internal":
+        notes.append("internal coolant supply: the machine must give coolant through the tool (not confirmed by "
+                     "the passport): check")
+    if found.kind == "drilling":
+        notes.append(DRILL_AP_NOTE)
+    if found.kind == "boring":
+        notes.append("the catalogue gives the holder: the insert (and its cutting data) is the operator's")
+    return notes
+
+
 def store_catalogue(upload, title, instance_path):
     """Keep an uploaded catalogue PDF (saved as it streams in, it may be large) and its pages' text. Raises
     UploadError for anything else."""

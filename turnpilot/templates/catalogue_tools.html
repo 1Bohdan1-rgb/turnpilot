@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Tools from the catalogues") }}{% endblock %}
+{% block content %}
+<h1>{{ _("Tools from the catalogues") }}</h1>
+<p class="muted small">{{ _("Searched in the uploaded catalogues' text, without the model and without a paid call. A row is taken only where its values check against its own ordering code; every value is shown with the page and the quote it is read from. Not found here does not mean the catalogue has no such tool: its page may be a scan, or its row does not check.") }}</p>
+<form method="get" class="card inline-form">
+  <label>{{ _("Kind") }}
+    <select name="kind">
+      {% for key, text in kinds.items() %}<option value="{{ key }}" {% if q.kind == key %}selected{% endif %}>{{ _(text) }}</option>{% endfor %}
+    </select></label>
+  <label>{{ _("Ø / width from, mm") }} <input name="a" type="number" step="any" min="0" value="{{ q.a or '' }}" required></label>
+  <label>{{ _("to, mm (drills)") }} <input name="b" type="number" step="any" min="0" value="{{ q.b or '' }}"></label>
+  <label>{{ _("Depth, mm (the hole / the overhang / the groove)") }} <input name="depth" type="number" step="any" min="0" value="{{ q.depth or '' }}"></label>
+  {% if q.job %}<input type="hidden" name="job" value="{{ q.job }}">{% endif %}
+  <button type="submit">{{ _("Search") }}</button>
+</form>
+{% if result is not none %}
+<p class="small muted">{{ _("{pages} pages with text searched; {n} found; {bad} rows of this kind did not check.", pages=result.pages, n=found|length, bad=result.not_taken|length) }}</p>
+{% if not found %}
+<p class="warning">{{ _("Not found: no row of the uploaded catalogues fits and checks. Nothing is guessed; a reading by the model is a paid call, only with your consent.") }}</p>
+{% else %}
+<table class="card">
+  <thead><tr><th>{{ _("Ordering code") }}</th><th>{{ _("Values (each from the page)") }}</th><th>{{ _("Where") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for f in found %}
+    <tr>
+      <td><strong>{{ f.code }}</strong><div class="small muted">{{ f.series }}</div></td>
+      <td class="small">{% for name, value in f.values.items() %}<div title="{{ f.sources[name] }}">{{ _(value_labels.get(name, name)) }}: {{ value }}</div>{% endfor %}</td>
+      <td class="small">{{ f.where }}</td>
+      <td><a class="button" href="{{ url_for('main.catalogue_tool_add', document=f.document_id, page=f.pdf_page, code=f.code, job=q.job) }}">{{ _("Add to the library") }}</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if result.not_taken %}<details class="small"><summary>{{ _("Rows that did not check ({n})", n=result.not_taken|length) }}</summary>
+  <ul>{% for w in result.not_taken[:200] %}<li>{{ w }}</li>{% endfor %}</ul></details>{% endif %}
+{% endif %}
+{% endblock %}

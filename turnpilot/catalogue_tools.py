@@ -86,6 +86,25 @@ def page_value(text: str, name: str) -> tuple[str | None, str | None]:
     return None, (f"{name} not on the page" if not found else f"{name} has {len(found)} values on the page")
 
 
+def page_grade(text: str) -> tuple[str | None, str | None]:
+    """The grade the page's table is in (the column header after "Ordering code", e.g. "4234"), when it has one."""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if "Ordering code" in line), None)
+    if start is None:
+        return None, None
+    grades = []
+    for line in lines[start + 1:]:
+        word = line.strip()
+        if not re.fullmatch(r"[A-Z0-9]{3,5}", word) or word.startswith(("DCON", "OAL", "LF", "LCF", "PL", "BD", "WF")):
+            break
+        grades.append(word)
+    distinct = set(grades)
+    if len(distinct) == 1:
+        grade = distinct.pop()
+        return grade, f"grade column {grade}"
+    return None, None
+
+
 def coolant(text: str) -> tuple[str | None, str | None]:
     said = {kind for kind in ("Internal", "External") if f"{kind} coolant supply" in text}
     if len(said) == 1:
@@ -142,6 +161,9 @@ def _drills(text, flat, heads, base) -> tuple[list[Found], list[str]]:
         kind, quote = coolant(text)
         if kind:
             found.values["coolant"], found.sources["coolant"] = kind, quote
+        grade, quote = page_grade(text)
+        if grade:
+            found.values["grade"], found.sources["grade"] = grade, quote
         out.append(found)
     return out, why
 
@@ -247,6 +269,16 @@ def search(documents, kind: str) -> Search:
                     result.found.append(f)
             result.not_taken += [f"{title} PDF {number}: {w}" for w in why]
     return result
+
+
+def find(documents, document_id: int, pdf_page: int, code: str) -> Found | None:
+    """The tool of this code on this page, read again from the page's text (not from a form)."""
+    for doc_id, title, pages in documents:
+        if doc_id != document_id or not 1 <= pdf_page <= len(pages["texts"]):
+            continue
+        found, _ = read_page(pages["texts"][pdf_page - 1] or "", pdf_page, title, doc_id)
+        return next((f for f in found if f.code == code), None)
+    return None
 
 
 def drills(documents, smallest: float, largest: float, depth: float | None) -> tuple[list[Found], Search]:

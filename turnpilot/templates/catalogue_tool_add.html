@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Add to the library") }}{% endblock %}
+{% block content %}
+<h1>{{ _("Add from the catalogue: {code}", code=found.code) }}</h1>
+<p class="muted">{{ found.series }} · {{ found.where }}</p>
+<div class="card">
+  <h2>{{ _("From the catalogue") }}</h2>
+  <table>
+    {% for name, value in found.values.items() %}
+    <tr><th>{{ _(value_labels.get(name, name)) }}</th><td>{{ value }}</td><td class="small muted">{{ found.sources[name] }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="small muted">{{ _("The row as on the page:") }} {{ found.row }}</p>
+  {% for n in notes %}<p class="warning">{{ _("check") }}: {{ n }}</p>{% endfor %}
+</div>
+<form method="post" class="card grid-form">
+  <h2>{{ _("The operator's") }}</h2>
+  <label>{{ _("Tool name") }} <input name="name" maxlength="100" value="{{ form.name or '' }}" required></label>
+  <label>{{ _("Operator's name") }} <input name="added_by" maxlength="100" value="{{ form.added_by or '' }}" required></label>
+  <label>{{ _("Type") }} <select name="type" required><option value="">…</option>
+    {% for t in types %}<option value="{{ t }}" {% if form.type == t %}selected{% endif %}>{{ t|label }}</option>{% endfor %}</select></label>
+  <fieldset><legend>{{ _("ISO groups") }}</legend>
+    {% for g in iso_groups %}<label class="inline"><input type="checkbox" name="iso_group" value="{{ g }}" {% if g in (form.iso or "") %}checked{% endif %}> {{ g }}</label>{% endfor %}
+  </fieldset>
+  {% if found.kind == "boring" %}
+  <label>{{ _("Insert code (the bar's holder is from the catalogue)") }} <input name="insert_code" maxlength="50" value="{{ form.insert_code or '' }}" required></label>
+  <label>{{ _("Grade") }} <input name="grade" maxlength="30" value="{{ form.grade or '' }}"></label>
+  <label>{{ _("Overhang as clamped, mm (at most the catalogue's OHX)") }} <input name="max_depth" type="number" step="any" min="0" value="{{ form.max_depth or '' }}"></label>
+  {% endif %}
+  <h3>{{ _("Cutting data") }}</h3>
+  {% if rows_text %}<p class="small muted">{{ _("From the confirmed catalogue rows for {group}:", group=group) }} {{ rows_text }}</p>
+  {% else %}<p class="warning">{{ _("No confirmed catalogue row for this code / grade{group}: type your values with their source, or read the page's cutting data on the Cutting data page and confirm the rows first.", group=(" (" ~ group ~ ")") if group else "") }}</p>{% endif %}
+  {% for key in ("vc_min", "vc_max", "f_min", "f_max") %}
+  <label>{{ key|replace("_", " ") }} <input name="{{ key }}" type="number" step="any" min="0" value="{{ form[key] if form[key] is not none else '' }}" required></label>
+  {% endfor %}
+  {% if found.kind == "drilling" %}
+  <label>{{ _("f rec (catalogue)") }} <input name="f_rec" type="number" step="any" min="0" value="{{ form.f_rec if form.f_rec is not none else '' }}"></label>
+  <label>{{ _("Vc at f (catalogue)") }} <input name="vc_points" maxlength="200" value="{{ form.vc_points or '' }}"></label>
+  <p class="small muted">ap = D/2 = {{ found.values.diameter / 2 }} {{ _("mm") }} ({{ _("derived: a drill cuts its radius, check") }})</p>
+  {% else %}
+  {% for key in ("ap_min", "ap_max") %}
+  <label>{{ key|replace("_", " ") }} <input name="{{ key }}" type="number" step="any" min="0" value="{{ form[key] if form[key] is not none else '' }}" required></label>
+  {% endfor %}
+  {% endif %}
+  <label>{{ _("Source of Vc / f / ap") }} <input name="source" maxlength="300" value="{{ form.source or '' }}" required></label>
+  <div class="actions">
+    <button type="submit" class="primary">{{ _("Add to the library") }}</button>
+    <a href="{{ url_for('main.machine') }}">{{ _("Cancel") }}</a>
+  </div>
+  <p class="small muted">{{ _("The tool goes into the library only; a turret position is given by the job's set-up.") }}</p>
+</form>
+{% endblock %}

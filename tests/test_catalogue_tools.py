@@ -148,7 +148,8 @@ def test_drill_rows_check_against_their_code():
     assert why == ['860.1-2100-055A1-PM: DC 21 / DC" / LU" do not check against the code and each other']
     f = found[1]
     assert f.values == {"diameter": 20.0, "max_depth": 63.0, "depth_ratio": 3.0, "point_angle": 140.0,
-                        "coolant": "internal"}
+                        "coolant": "internal", "grade": "4234"}
+    assert f.sources["grade"] == "grade column 4234"
     assert f.sources["max_depth"] == "LU 63.0 (20.00 .787 63.0 2.480 3 20 860.1-2000-055A1-PM)"
     assert f.sources["point_angle"] == "SIG 140°" and f.sources["coolant"] == "Internal coolant supply"
     assert f.where == "Test catalogue, B12 (PDF 7)"
@@ -201,3 +202,100 @@ def test_grooving_inserts_from_their_seat_letter():
 
 def test_no_table_no_tools():
     assert ct.read_page("A 1\nSome text without a table\n860.1-2000-055A1-PM", 1, "T") == ([], [])
+
+
+# --- the pages and adding to the library ---------------------------------------------------------------------------
+
+import json  # noqa: E402
+
+import pytest  # noqa: E402
+
+from turnpilot import services  # noqa: E402
+from turnpilot.models import CatalogueDocument, Tool, db  # noqa: E402
+
+
+@pytest.fixture
+def catalogue(app):
+    document = CatalogueDocument(original_filename="srt.pdf", stored_filename="t.pdf", title="Test SRT", sha256="x" * 64,
+                                 size_bytes=1, pages=3, text_pages=3)
+    db.session.add(document)
+    db.session.commit()
+    path = services.catalogue_path(document, app.instance_path) + ".pages.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"texts": [DRILL_PAGE, BAR_PAGE, GROOVE_PAGE], "labels": ["", "", ""]}, f)
+    services._CATALOGUE_TEXTS.clear()
+    return document
+
+
+def test_search_page(client, catalogue):
+    page = client.get("/catalogue-tools?kind=drilling&a=19.9&b=21.3&depth=35").get_data(as_text=True)
+    assert "860.1-2000-055A1-PM" in page and "860.1-2000-080A1-PM" in page and "860.1-1900" not in page
+    assert "Test SRT, B12 (PDF 1)" in page and 'title="SIG 140°"' in page
+    page = client.get("/catalogue-tools?kind=drilling&a=30&b=31").get_data(as_text=True)
+    assert "Not found: no row of the uploaded catalogues fits and checks" in page
+
+
+def _drill_form(**changes):
+    form = {"name": "Drill 860-PM Ø20", "added_by": "Bohdan", "type": "drilling", "iso_group": ["P"],
+            "vc_min": "100", "vc_max": "150", "f_min": "0.2", "f_max": "0.3", "source": "the operator's, test"}
+    form.update(changes)
+    return form
+
+
+def test_add_a_drill_with_its_sources(client, catalogue):
+    url = f"/catalogue-tools/add?document={catalogue.id}&page=1&code=860.1-2000-055A1-PM"
+    page = client.get(url).get_data(as_text=True)
+    assert "LU 63.0 (20.00 .787 63.0 2.480 3 20 860.1-2000-055A1-PM)" in page
+    assert "internal coolant supply: the machine must give coolant through the tool" in page
+    assert "No confirmed catalogue row for this code / grade" in page
+    client.post(url, data=_drill_form(name=""))
+    assert db.session.execute(db.select(Tool).filter_by(insert_code="860.1-2000-055A1-PM")).scalar() is None
+    client.post(url, data=_drill_form(added_by=""))
+    assert db.session.execute(db.select(Tool).filter_by(insert_code="860.1-2000-055A1-PM")).scalar() is None
+    response = client.post(url, data=_drill_form())
+    assert response.status_code == 302
+    tool = db.session.execute(db.select(Tool).filter_by(insert_code="860.1-2000-055A1-PM")).scalar_one()
+    assert (tool.type, tool.diameter, tool.max_depth, tool.point_angle_deg, tool.ap_min, tool.ap_max, tool.grade) == (
+        "drilling", 20, 63, 140, 10, 10, "4234")
+    assert tool.max_depth_source == ("Test SRT, B12 (PDF 1), LU 63.0 (20.00 .787 63.0 2.480 3 20 "
+                                     "860.1-2000-055A1-PM)")
+    assert tool.point_angle_source == "Test SRT, B12 (PDF 1), SIG 140°"
+    ref = json.loads(tool.catalogue_ref)
+    assert ref["added_by"] == "Bohdan" and ref["pdf_page"] == 1 and ref["sources"]["diameter"].startswith("DC 20.00")
+
+
+def test_add_prefills_confirmed_rows(client, catalogue):
+    from datetime import datetime, timezone
+
+    from turnpilot.models import CuttingDataRow, Job, Material
+    steel = db.session.execute(db.select(Material).filter_by(name="Steel 45 (C45)")).scalar_one()
+    job = Job(name="J", material=steel, quantity=1, blank_diameter=40, blank_length=60)
+    db.session.add_all([job, CuttingDataRow(kind="geometry", catalogue="Test SRT", insert_code="860.1-2000-055A1-PM",
+                                            material_group="P1.2", f_min=0.25, f_rec=0.3, f_max=0.35, page="B76",
+                                            origin="model", status="confirmed", confirmed_at=datetime.now(timezone.utc)),
+                        CuttingDataRow(kind="grade_vc", catalogue="Test SRT", grade="4234", application="drilling",
+                                       material_group="P1.2", vc_min=110, vc_max=160, vc_points="135", page="B76",
+                                       origin="model", status="confirmed", confirmed_at=datetime.now(timezone.utc))])
+    db.session.commit()
+    page = client.get(f"/catalogue-tools/add?document={catalogue.id}&page=1&code=860.1-2000-055A1-PM&job={job.id}"
+                      ).get_data(as_text=True)
+    assert "From the confirmed catalogue rows for P1.2: ap / f Test SRT B76; Vc Test SRT B76" in page
+    assert 'name="f_rec" type="number" step="any" min="0" value="0.3"' in page and 'value="135"' in page
+
+
+def test_add_a_boring_bar_needs_its_insert(client, catalogue):
+    url = f"/catalogue-tools/add?document={catalogue.id}&page=2&code=A16R-SCLCR/L 09-R"
+    form = _drill_form(name="Boring bar A16R", type="boring", ap_min="0.1", ap_max="2")
+    client.post(url, data=form)
+    assert db.session.execute(db.select(Tool).filter_by(holder_code="A16R-SCLCR/L 09-R")).scalar() is None
+    client.post(url, data={**form, "insert_code": "CCMT09T304-PF", "max_depth": "70"})  # above OHX 64
+    assert db.session.execute(db.select(Tool).filter_by(holder_code="A16R-SCLCR/L 09-R")).scalar() is None
+    client.post(url, data={**form, "insert_code": "CCMT09T304-PF", "max_depth": "50"})
+    bar = db.session.execute(db.select(Tool).filter_by(holder_code="A16R-SCLCR/L 09-R")).scalar_one()
+    assert (bar.min_bore_diameter, bar.entering_angle_deg, bar.max_depth, bar.insert_code) == (20, 95, 50,
+                                                                                               "CCMT09T304-PF")
+    assert bar.min_bore_source.startswith("Test SRT, A99 (PDF 2), DMIN1 20.0")
+
+
+def test_a_code_not_on_its_page(client, catalogue):
+    assert client.get(f"/catalogue-tools/add?document={catalogue.id}&page=2&code=860.1-2000-055A1-PM").status_code == 404

@@ -2,7 +2,8 @@
 {% block title %}{{ _("Catalogues") }}{% endblock %}
 {% block content %}
 <h1>{{ _("Tool makers' catalogues") }}</h1>
-<p class="muted">· <a href="{{ url_for('main.cutting_data') }}">{{ _("cutting data") }}</a></p>
+<p class="muted">· <a href="{{ url_for('main.cutting_data') }}">{{ _("cutting data") }}</a>
+  · <a href="{{ url_for('main.catalogue_tools') }}">{{ _("tools from the catalogues") }}</a></p>
 <p class="muted small">{{ _("Upload a catalogue (PDF, up to {mb} MB). It is kept on this computer only (instance/catalogues/), never in git. Then find and pick its cutting data pages: only those are read. The rows read come with their page and quote for you to confirm; nothing reaches the planner before you confirm it. Values the catalogue gives only as a graph are not read: enter them by hand.", mb=limit_mb) }}</p>
 <form method="post" enctype="multipart/form-data" class="card upload-form">
   <label>{{ _("Catalogue") }} <input name="title" placeholder="{{ _("e.g. Sandvik Coromant Turning tools 2020") }}" size="40"></label>

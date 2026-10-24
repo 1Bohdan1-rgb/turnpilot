@@ -351,6 +351,94 @@ def _rows_to_check(document_id=None):
                                              CuttingDataRow.id)).scalars().all()
 
 
+CATALOGUE_TOOL_KINDS = {"drilling": "a drill (Ø from–to, the hole's depth)",
+                        "boring": "a boring bar (the bore's Ø, the overhang it needs)",
+                        "grooving": "a grooving insert (the groove's width, its depth)"}
+CATALOGUE_VALUE_LABELS = {"diameter": "Ø DC, mm", "max_depth": "usable length / depth, mm", "depth_ratio": "× D",
+                          "point_angle": "point angle SIG, °", "coolant": "coolant supply", "grade": "grade",
+                          "dmin": "DMIN, mm", "max_overhang": "overhang max OHX, mm",
+                          "min_overhang": "overhang min OHN, mm", "entering_angle": "κr KAPR, °", "width": "width CW, mm"}
+
+
+def _catalogue_search(kind, a, b, depth):
+    from . import catalogue_tools as ct
+
+    documents = services.catalogue_documents(current_app.instance_path)
+    if kind == "drilling":
+        return ct.drills(documents, a, b if b is not None else a, depth)
+    if kind == "boring":
+        return ct.boring_bars(documents, a, depth)
+    return ct.grooving_inserts(documents, a, depth)
+
+
+@bp.route("/catalogue-tools")
+def catalogue_tools():
+    """Tools of the uploaded catalogues by their size, from the pages' text (no model)."""
+    q = SimpleNamespace(kind=request.args.get("kind") or "drilling", a=_to_float(request.args.get("a")),
+                        b=_to_float(request.args.get("b")), depth=_to_float(request.args.get("depth")),
+                        job=request.args.get("job", type=int))
+    found = result = None
+    if q.kind in CATALOGUE_TOOL_KINDS and q.a:
+        found, result = _catalogue_search(q.kind, q.a, q.b, q.depth)
+    return render_template("catalogue_tools.html", q=q, found=found or [], result=result,
+                           kinds=CATALOGUE_TOOL_KINDS, value_labels=CATALOGUE_VALUE_LABELS)
+
+
+def _rows_prefill(found, group):
+    """The confirmed rows' values for the form, and the words naming them."""
+    if not group:
+        return {}, ""
+    geometry, grade = services.catalogue_tool_rows(found, group)
+    values, said = {}, []
+    if geometry is not None:
+        values.update({k: getattr(geometry, k) for k in ("f_min", "f_max", "f_rec", "ap_min", "ap_max")
+                       if getattr(geometry, k) is not None})
+        said.append(f"ap / f {geometry.catalogue} {geometry.page}")
+    if grade is not None:
+        values.update({k: getattr(grade, k) for k in ("vc_min", "vc_max", "vc_points") if getattr(grade, k)})
+        said.append(f"Vc {grade.catalogue} {grade.page}")
+    if said:
+        values["source"] = f"{group}, confirmed catalogue rows: " + "; ".join(said)
+    return values, "; ".join(said)
+
+
+@bp.route("/catalogue-tools/add", methods=["GET", "POST"])
+def catalogue_tool_add():
+    """A found catalogue tool into the library, by the operator (read again from its page)."""
+    from . import catalogue_tools as ct
+    from .models import ISO_GROUPS
+
+    document_id, page, code = (request.args.get("document", type=int), request.args.get("page", type=int),
+                               request.args.get("code", ""))
+    found = ct.find(services.catalogue_documents(current_app.instance_path), document_id or 0, page or 0, code)
+    if found is None:
+        abort(404)
+    job = db.session.get(Job, request.args.get("job", type=int)) if request.args.get("job") else None
+    group = job.material.catalogue_group if job and job.material else None
+    prefill, rows_text = _rows_prefill(found, group)
+    if request.method == "POST":
+        try:
+            tool = services.add_catalogue_tool(found, request.form)
+        except services.CatalogueToolError as e:
+            flash(str(e), "error")
+            form = dict(request.form.items())
+            form["iso"] = "".join(request.form.getlist("iso_group"))
+        else:
+            flash(_("'{name}' added to the library from {where} ({by}).", name=tool.name, where=found.where,
+                    by=request.form.get("added_by")))
+            return redirect(url_for("main.job_detail", job_id=job.id) if job else url_for("main.machine"))
+    else:
+        form = dict(prefill)
+    form = SimpleNamespace(**{k: form.get(k) for k in (
+        "name", "added_by", "type", "iso", "insert_code", "grade", "max_depth", "vc_min", "vc_max", "f_min", "f_max",
+        "f_rec", "vc_points", "ap_min", "ap_max", "source")})
+    if form.type is None and len(services.CATALOGUE_TOOL_TYPES[found.kind]) == 1:
+        form.type = services.CATALOGUE_TOOL_TYPES[found.kind][0]
+    return render_template("catalogue_tool_add.html", found=found, form=form, group=group, rows_text=rows_text,
+                           notes=services.catalogue_tool_notes(found), types=services.CATALOGUE_TOOL_TYPES[found.kind],
+                           iso_groups=ISO_GROUPS, value_labels=CATALOGUE_VALUE_LABELS)
+
+
 @bp.route("/cutting-data/review", methods=["GET", "POST"])
 def cutting_data_review():
     """The operator checks each row against the catalogue page: confirm (as read or changed), reject, or leave."""
