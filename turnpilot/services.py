@@ -532,6 +532,7 @@ def job_spec(job):
             arc_convex=f.arc_convex if f.type == "arc" else None,
             bore_from=f.bore_from_mm if f.type == "bore" else None,
             bore_bottom=f.bore_bottom if f.type == "bore" else None,
+            bore_finish_kept=f.type == "bore" and f.bore_finish_kept_by is not None,
         )
         for f in job.active_features
     )
@@ -693,6 +694,27 @@ def bore_position_text(feature):
     return text
 
 
+def keep_bore_finishing(feature, name):
+    """The operator keeps the finishing pass of a bore the planner would bore to size (name required); kept for the
+    calculations that follow."""
+    name = (name or "").strip()[:100]
+    if not name:
+        raise BorePositionError("The operator's name is required")
+    feature.bore_finish_kept_by, feature.bore_finish_kept_at = name, datetime.now(timezone.utc)
+    db.session.commit()
+
+
+def bored_to_size(job):
+    """{bore feature id: the planner's note} of the bores the current calculation bores to size in one operation."""
+    out = {}
+    for op in job.current_operations:
+        if op.tool_type in ("boring_rough", "boring") and op.rough_finish == "rough" and op.note \
+                and "bored to size in one operation" in op.note:
+            out[op.feature_id] = next((n.strip() for n in op.note.split(";") if "bored to size in one operation" in n),
+                                      op.note)
+    return out
+
+
 def drill_point_length(diameter, angle):
     """The length of a drill's point: D / 2 / tan(angle / 2) (140°, Ø10: 1.82)."""
     import math
@@ -784,6 +806,11 @@ def gcode_readiness(job, machine):
         c = copied[-1]
         result.blockers.insert(0, f"{machine.name}'s turret was copied from {c.from_machine.name} by {c.copied_by} on "
                                   f"{localtime.local(c.copied_at)}, after the calculation: calculate the job again")
+    for feature in job.active_features:  # the finishing pass kept after the calculation: calculate again
+        if feature.type == "bore" and feature.bore_finish_kept_at and calculated \
+                and feature.bore_finish_kept_at.replace(tzinfo=None) > calculated.replace(tzinfo=None):
+            result.blockers.append(f"bore Ø{feature.diameter:g}: its finishing pass was kept by "
+                                   f"{feature.bore_finish_kept_by} after the calculation: calculate the job again")
     for feature in job.active_features:  # a bore placed after the calculation: its depth from the face may differ
         if feature.type == "bore" and feature.bore_position_source == "operator" and calculated \
                 and feature.bore_position_at.replace(tzinfo=None) > calculated.replace(tzinfo=None):
@@ -1797,8 +1824,8 @@ def catalogue_needs(job, machine, instance_path):
             needs.append(CatalogueNeed(f"a drill Ø{f.diameter:g} makes the bore Ø{f.diameter:g} × {depth:g} at once "
                                        "(its tolerance and roughness need no boring)", "drilling", f.diameter,
                                        f.diameter, depth))
-        finisher = next((by_position.get(op.turret_position) for op in ops if op.feature_id == f.id
-                         and op.tool_type == "boring" and op.mode == "finish" and op.tool_id), None)
+        entry, _ = planner.select_tool("boring", material.iso_group, base)  # its finishing pass sets the drill
+        finisher = entry.tool if entry else None
         if finisher is not None:
             limit = round(f.diameter - 2 * planner.finishing_ap(finisher), 3)
             low = (have or 0.0) + 0.01

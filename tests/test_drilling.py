@@ -59,17 +59,16 @@ def test_bushing_bore_drilled_then_bored():
     # Завіса 36 bushing: blind Ø22+0,21 (IT12) depth 32, no Ø22 drill in the turret
     ops = _ops([FeatureSpec(1, "od_turn", diameter=34.8, length=80),
                 FeatureSpec(2, "bore", diameter=22, length=32, tolerance="+0.21")])
-    centre, drill, rough, finish = _of(ops, 2)
-    assert [op.tool_type for op in (centre, drill, rough, finish)] == [
-        "centre_drilling", "drilling", "boring_rough", "boring"]  # T5 roughs, T9 finishes
+    centre, drill, rough = _of(ops, 2)
+    assert [op.tool_type for op in (centre, drill, rough)] == [
+        "centre_drilling", "drilling", "boring_rough"]  # T5 bores it to size: IT12, no Ra (test_bore_to_size.py)
     assert centre.tool_name == "centre_drilling 3.15" and centre.n and not centre.warnings
     assert (drill.tool_name, drill.ref_diameter, drill.depth) == ("drilling 20", 20, 32) and not drill.warnings
     assert "drill Ø20: the largest up to Ø21.3 (Ø22 less the boring tool's finishing pass 0.35 mm/side)" in drill.notes
     assert not any("G83" in n for n in drill.notes)  # 32 < 3 × 20
-    # (22 − 20) / 2 − 0.35 = 0.65 by ap rec 0.35: 2 passes
-    assert (rough.passes, rough.ap) == (2, 0.325)
-    assert any("bored from the drilled Ø20" in n for n in rough.notes)
-    assert finish.mode == "finish"
+    # (22 − 20) / 2 = 1 by ap rec 0.64: 2 passes
+    assert (rough.passes, rough.ap) == (2, 0.5)
+    assert any("bored from the drilled Ø20 to size" in n for n in rough.notes)
     assert [op.tool_type for op in ops][:3] == ["centre_drilling", "drilling", "turning_rough"]  # drill first
 
 

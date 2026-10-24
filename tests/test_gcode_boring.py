@@ -13,7 +13,7 @@ BAR = dict(min_bore_diameter=16, min_bore_source="test", max_depth=50, spindle_d
            entering_angle_deg=95)
 
 
-def bushing(bottom="drill_point", depth_mode="full_diameter", length=32, tolerance="+0.21"):
+def bushing(bottom="drill_point", depth_mode="full_diameter", length=32, tolerance="H9"):
     """A bushing like Завіса 36's (own numbers): Ø34.8 × 80, a blind Ø22 bore opening at the free (right) end."""
     bore = Feature(type="bore", diameter=22, length=length, tolerance=tolerance, bore_open_end="right", bore_from_mm=0,
                    bore_bottom=bottom, bore_position_source="dxf", bore_position_at=datetime.now(timezone.utc),

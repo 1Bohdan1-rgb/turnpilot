@@ -961,6 +961,7 @@ def job_detail(job_id):
                            arc_tops=services.arc_top_warnings(job) if job.axial_order_known else {},
                            depth_modes=services.BORE_DEPTH_MODES,
                            bore_open_ends=services.BORE_OPEN_ENDS, bore_bottoms=services.BORE_BOTTOMS,
+                           to_size=services.bored_to_size(job),
                            library=db.session.execute(db.select(Tool).filter_by(is_retired=False)
                                                       .order_by(Tool.name)).scalars().all())
 
@@ -1227,6 +1228,22 @@ def choose_bore_depth(job_id, feature_id):
     else:
         flash(_("Bore Ø{d}: depth {mode} ({name}).", d=f"{feature.diameter:g}", mode=_(services.BORE_DEPTH_MODES[mode]),
                 name=feature.depth_decided_by))
+    return redirect(url_for("main.job_detail", job_id=job_id))
+
+
+@bp.route("/jobs/<int:job_id>/features/<int:feature_id>/bore-finish", methods=["POST"])
+def keep_bore_finishing(job_id, feature_id):
+    """The operator keeps the finishing boring pass the planner left out (bored to size); name required."""
+    feature = db.get_or_404(Feature, feature_id)
+    if feature.job_id != job_id or feature.type != "bore":
+        abort(404)
+    try:
+        services.keep_bore_finishing(feature, request.form.get("decided_by"))
+    except services.BorePositionError as e:
+        flash(str(e), "error")
+    else:
+        flash(_("Bore Ø{d}: the finishing pass is kept ({name}). Calculate the job again.", d=f"{feature.diameter:g}",
+                name=feature.bore_finish_kept_by))
     return redirect(url_for("main.job_detail", job_id=job_id))
 
 

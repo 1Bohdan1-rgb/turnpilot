@@ -124,6 +124,7 @@ class FeatureSpec:
     arc_convex: bool | None = None  # arc: bulging away from the axis
     bore_from: float | None = None  # bore: its start from the face it opens at (None: not known, taken as 0)
     bore_bottom: str | None = None  # bore: "flat" / "drill_point" / "through"; None: not known
+    bore_finish_kept: bool = False  # bore: the operator keeps the finishing pass (no boring to size)
 
 
 def bore_depth(feature) -> float | None:
@@ -1627,17 +1628,60 @@ def _plan_rough_turning(op: PlannedOperation, tool: ToolSpec, feature: FeatureSp
 
 NO_ROUGH_BORING_TOOL = "no rough boring tool in the turret: the finishing boring bar roughs too"
 
+# A bore whose tolerance is IT12 or coarser (what a drill gives: DRILL_IT_GRADE, a placeholder) and whose Ra the
+# roughing bar's own feed reaches by the feed formula (Ra = f²·1000 / (32·rε), the inverse of finish_feed_from_ra) is
+# bored to size by the roughing bar in one operation, no finishing pass; not a bore with a flat bottom or a mouth
+# chamfer (the finishing contour cuts those). The operator may keep the finishing pass (Feature.bore_finish_kept_by).
+TO_SIZE_NOTE = ("bored to size in one operation, no finishing pass: the tolerance {tol} on Ø{d:g} is IT12 or coarser "
+                "(what a drill gives) and the feed f {f:g} with rε {r:g} gives Ra ≈ {ra_calc:.1f} µm (f²·1000/(32·rε))"
+                "{ra_text}")
+TO_SIZE_WARNING = "boring to size without a finishing pass: check (the operator may keep the finishing pass)"
 
-def _plan_rough_boring(op, tool, feature, job, turret, hole: HolePlan) -> None:
+
+def ra_from_feed(f: float, nose_radius: float) -> float:
+    """The theoretical Ra (µm) a feed leaves with a nose radius: f²·1000 / (32·rε)."""
+    return f * f * 1000 / (32 * nose_radius)
+
+
+def bore_to_size(feature, job, turret) -> str | None:
+    """The note when the roughing bar bores this bore to size in one operation (see TO_SIZE_NOTE), else None."""
+    if feature.type != "bore" or not feature.diameter or feature.bore_finish_kept or feature.bore_bottom == "flat":
+        return None
+    if not feature.tolerance or not drill_gives(feature.tolerance, feature.diameter, None):
+        return None
+    entry, _ = select_tool("boring_rough", job.iso_group, turret)
+    if entry is None:
+        entry, _ = select_tool("boring", job.iso_group, turret)
+    if entry is None:
+        return None
+    tool = entry.tool
+    rnose = tool.nose_radius or insert_nose_radius(tool.insert_code)
+    _, f, _ = cutting_data(tool, "rough")
+    if not rnose or not f:
+        return None
+    ra_calc = ra_from_feed(f, rnose)
+    if feature.ra is not None and ra_calc > feature.ra + 1e-9:
+        return None
+    ra_text = f" ≤ Ra {feature.ra:g} of the drawing" if feature.ra is not None else ", the drawing gives no Ra"
+    return TO_SIZE_NOTE.format(tol=feature.tolerance, d=feature.diameter, f=f, r=rnose, ra_calc=ra_calc,
+                               ra_text=ra_text)
+
+
+def _plan_rough_boring(op, tool, feature, job, turret, hole: HolePlan, to_size: str | None = None) -> None:
     """Open the drilled hole to the bore in passes of the roughing tool, leaving the finishing pass of the
-    finishing boring tool (its ap rec, else ap_min)."""
+    finishing boring tool (its ap rec, else ap_min); to size when to_size (bore_to_size's note) is given."""
     if hole.diameter is None or feature.diameter is None:
         op.notes.append(FROM_SOLID_NOTE)
         return
     finisher, _ = select_tool("boring", job.iso_group, turret)
-    allowance = finishing_ap(finisher.tool if finisher else tool)
+    allowance = 0.0 if to_size else finishing_ap(finisher.tool if finisher else tool)
     stock = (feature.diameter - hole.diameter) / 2 - allowance
-    op.notes.append(f"bored from the drilled Ø{hole.diameter:g}, leaves {allowance:g} mm/side for finishing")
+    if to_size:
+        op.notes.append(f"bored from the drilled Ø{hole.diameter:g} to size")
+        op.notes.append(to_size)
+        op.warnings.append(TO_SIZE_WARNING)
+    else:
+        op.notes.append(f"bored from the drilled Ø{hole.diameter:g}, leaves {allowance:g} mm/side for finishing")
     if stock <= 1e-9:
         op.passes, op.ap = 0, None
         return
@@ -1901,7 +1945,8 @@ def _plan_hex_milling(op: PlannedOperation, feature: FeatureSpec, job: JobSpec, 
 
 def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int,
                start: RoughStart | None = None, max_thread_feed: float | None = None,
-               power: PowerSpec | None = None, hole: HolePlan | None = None) -> PlannedOperation:
+               power: PowerSpec | None = None, hole: HolePlan | None = None,
+               to_size: str | None = None) -> PlannedOperation:
     feature = step.feature
     op = PlannedOperation(
         feature_id=feature.id,
@@ -2033,7 +2078,7 @@ def _plan_step(step: Step, job: JobSpec, turret: list[TurretEntry], max_rpm: int
     elif step.tool_type == "parting":
         _plan_parting(op, tool, feature, job)
     elif step.tool_type == "boring" and step.mode == "rough" and hole is not None:
-        _plan_rough_boring(op, tool, feature, job, turret, hole)
+        _plan_rough_boring(op, tool, feature, job, turret, hole, to_size)
     elif feature.type == "chamfer":
         op.notes.append("no finishing pass on this diameter: chamfer machined separately")
 
@@ -2075,8 +2120,12 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
     starts = {key: with_allowance(start, allowance) for key, start in starts.items()}
 
     # with the order along the axis a fillet is cut with its section's finishing pass (gcode): no own operation
+    # a bore with a mouth chamfer keeps its finishing pass (its contour cuts the chamfer)
+    to_size = {id(f): note for f in features if id(f) not in hosts_with_chamfer
+               for note in [bore_to_size(f, job, turret)] if note and not (id(f) in holes and holes[id(f)].drill_only)}
     steps = [s for f in features if id(f) not in chamfer_hosts and not (f.type == "fillet" and job.axial_order)
-             for s in feature_to_steps(f, hex_bar, holes.get(id(f)))]
+             for s in feature_to_steps(f, hex_bar, holes.get(id(f)))
+             if not (id(f) in to_size and s.tool_type == "boring" and s.mode == "finish")]
     drilling = [s for s in steps if s.tool_type == "drilling"]
     if drilling:  # one centring for the holes on the axis, before the first drill; on the first hole's row
         first_hole = next(f for f in features if id(f) in holes)
@@ -2100,7 +2149,8 @@ def plan_job(job: JobSpec, turret: list[TurretEntry], max_rpm: int,
         elif original.type == "hex" and step.tool_type != "milling":
             step = replace(step, feature=replace(original, diameter=hex_corners(original)))
         start = starts.get(id(original)) if step.tool_type == "turning_rough" else None
-        op = _plan_step(step, job, turret, max_rpm, start, max_thread_feed, power, holes.get(id(original)))
+        op = _plan_step(step, job, turret, max_rpm, start, max_thread_feed, power, holes.get(id(original)),
+                        to_size.get(id(original)))
         if limits is not None:
             _apply_machine_limits(op, tools_by_id.get(op.tool_id), limits)
         if start and start.from_bar and not start.pit and both_sides:

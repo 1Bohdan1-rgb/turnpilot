@@ -116,7 +116,13 @@
               <input name="decided_by" maxlength="100" placeholder="{{ names_req }}" aria-label="{{ _("Operator's name") }}" required>
               <button class="small">{{ _("Save the place") }}</button>
             </form>
-            {% if f.bore_open_end %}</details>{% else %}</div>{% endif %}</div>{% endif %}</td>
+            {% if f.bore_open_end %}</details>{% else %}</div>{% endif %}</div>
+          {% if f.bore_finish_kept_by %}<div class="small muted">{{ _("Finishing pass kept by the operator ({name}, {at})", name=f.bore_finish_kept_by, at=f.bore_finish_kept_at|local("%Y-%m-%d %H:%M")) }}</div>
+          {% elif to_size.get(f.id) %}<div class="small"><span class="badge badge-check">{{ _("check") }}</span> {{ to_size[f.id] }}
+            <form method="post" action="{{ url_for('main.keep_bore_finishing', job_id=job.id, feature_id=f.id) }}" class="inline-form">
+              <input name="decided_by" maxlength="100" placeholder="{{ names_req }}" aria-label="{{ _("Operator's name") }}" required>
+              <button class="small">{{ _("Keep the finishing pass") }}</button>
+            </form></div>{% endif %}{% endif %}</td>
       <td>{{ f.across_flats if f.across_flats is not none else "" }}</td>
       <td>{{ "%.2f"|format(f.confidence) if f.confidence is not none else "" }}</td>
       <td>

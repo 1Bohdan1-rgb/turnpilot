@@ -533,6 +533,10 @@ class Feature(db.Model):
     bore_position_source = db.Column(db.String(20))
     bore_position_by = db.Column(db.String(100))
     bore_position_at = db.Column(db.DateTime)
+    # Bore: the operator keeps the finishing pass where the planner would bore it to size by the roughing bar in one
+    # operation (planner.bore_to_size); who and when. Empty: the planner's rule.
+    bore_finish_kept_by = db.Column(db.String(100))
+    bore_finish_kept_at = db.Column(db.DateTime)
     confidence = db.Column(db.Float)  # 0..1 when the feature was read from a drawing
     is_deleted = db.Column(db.Boolean, nullable=False, default=False)
 
