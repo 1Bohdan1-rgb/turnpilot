@@ -38,6 +38,7 @@ whole set-up. Shown on the job page and the process sheet once the job is calcul
         <span class="muted">· {{ f.where }}</span>
         <a class="button small" href="{{ url_for('main.catalogue_tool_add', document=f.document_id, page=f.pdf_page, code=f.code, job=job.id) }}">{{ _("Add to the library") }}</a></li>
     {% endfor %}</ul>{% endif %}
+    {% for t, why in n.in_library %}<p class="muted">{{ _("In the library already: {name}", name=t.name) }}{% if why %} — <span class="warning">{{ _("not taken by the set-up: {why}", why=why) }}</span>{% endif %}</p>{% endfor %}
     {% endfor %}
     <p class="muted">{{ _("A tool added goes to the library; the set-up takes it when its cutting data come from a confirmed catalogue row for the job's material.") }}</p>
   </div>{% endif %}

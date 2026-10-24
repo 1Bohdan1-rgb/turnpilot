@@ -589,6 +589,8 @@ UK = {
     "width CW, mm": "ширина CW, мм",
     "From the uploaded catalogues (not in the library), by their text, no model:": "З завантажених каталогів (немає в бібліотеці), за їхнім текстом, без моделі:",
     "not found": "не знайдено",
+    "In the library already: {name}": "Уже в бібліотеці: {name}",
+    "not taken by the set-up: {why}": "налагодження не бере: {why}",
     "all {n} found": "усі знайдені ({n})",
     "search": "пошук",
     "A tool added goes to the library; the set-up takes it when its cutting data come from a confirmed catalogue row for the job's material.": "Доданий інструмент іде в бібліотеку; налагодження бере його, коли його режими різання — з підтвердженого рядка каталогу для матеріалу завдання.",

@@ -1736,6 +1736,7 @@ class CatalogueNeed:
     depth: float | None
     found: list = field(default_factory=list)  # catalogue_tools.Found, best first (at most CATALOGUE_SHOWN)
     total: int = 0
+    in_library: list = field(default_factory=list)  # (library tool, why the set-up does not take it, or None)
 
 
 CATALOGUE_SHOWN = 6
@@ -1774,9 +1775,13 @@ def catalogue_needs(job, machine, instance_path):
     ops = _plan(job, machine, base)
     specs = {f.id: f for f in job_spec(job).features}
     by_position = {e.position: e.tool for e in base}
-    library = {cutting_data.normalize_code(t.insert_code) for t in db.session.execute(db.select(Tool)).scalars()
-               if not t.is_retired} | {cutting_data.normalize_code(t.holder_code)
-                                       for t in db.session.execute(db.select(Tool)).scalars() if t.holder_code}
+    active = [t for t in db.session.execute(db.select(Tool)).scalars() if not t.is_retired]
+    by_code = {}
+    for t in active:
+        for code in (t.insert_code, t.holder_code):
+            if code:
+                by_code.setdefault(cutting_data.normalize_code(code), []).append(t)
+    library = set(by_code)
     skipped = {(op.feature_id, op.tool_type, op.rough_finish) for op in job.current_operations if op.status == "skipped"}
     needs: list[CatalogueNeed] = []
     for f in specs.values():
@@ -1826,6 +1831,11 @@ def catalogue_needs(job, machine, instance_path):
         fit = sorted((x for x in search.found if _fits(x, need.kind, need.a, need.b, need.depth)
                       and cutting_data.normalize_code(x.code) not in library), key=lambda x: _order(x, need.kind))
         need.total, need.found = len(fit), fit[:CATALOGUE_SHOWN]
+        for x in search.found:  # the ones added from a catalogue already: taken by the set-up, or why not
+            if _fits(x, need.kind, need.a, need.b, need.depth):
+                for t in by_code.get(cutting_data.normalize_code(x.code), []):
+                    spec = tool_spec(t, material, rows)
+                    need.in_library.append((t, spec.catalogue_warning))
         out.append(need)
     return out
 

@@ -326,3 +326,6 @@ def test_setup_card_names_catalogue_drills(client, catalogue):
                 data=_drill_form())
     needs = services.catalogue_needs(job, machine, client.application.instance_path)
     assert "860.1-2000-055A1-PM" not in [f.code for n in needs for f in n.found]  # in the library now
+    (tool, why), = needs[1].in_library
+    assert tool.name == "Drill 860-PM Ø20" and "no confirmed catalogue ap / f for 860.1-2000-055A1-PM" in why
+    assert "In the library already: Drill 860-PM Ø20" in client.get(f"/jobs/{job.id}").get_data(as_text=True)
