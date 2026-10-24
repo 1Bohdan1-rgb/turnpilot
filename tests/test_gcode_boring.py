@@ -160,3 +160,17 @@ def test_3d_caption_switches_in_the_script():
     for page in ("gcode_program.html", "_order_panel.html", "shop.html"):
         text = (Path(__file__).parent.parent / "turnpilot" / "templates" / page).read_text(encoding="utf-8")
         assert 'class="part3d-caption"' in text
+
+
+def test_a_bar_as_wide_as_the_drilled_hole(machine):
+    """CCMT 09 in A16R: DMIN 20 (TT 2020) in the Ø20 drilled hole: no room to step back there, it comes in over the
+    face at its first pass; after a pass it steps back as far as its head allows."""
+    for position in (5, 9):
+        _tool(position).min_bore_diameter = 20
+    db.session.commit()
+    job = make(machine)
+    prog, text = program(job, machine)
+    assert any(b.title.startswith("ROUGH BORE") for b in prog.blocks), prog.skipped
+    result = services.gcode_simulation(job, machine, text)
+    assert result.ok, result.errors
+    assert result.complete, result.incomplete

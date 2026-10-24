@@ -1005,21 +1005,21 @@ class _Builder:
         end = max(_r3(z_end), self._drilled_to(bore, r0))
         n = op.passes
         step = (target - r0) / n
-        back = self._step_back(r0, r0, op.dmin)
-        if back is None:
-            return (f"the bar's head (DMIN {op.dmin:g}) does not fit the drilled D{2 * r0:g} with its edge at the wall: "
-                    "not generated")
+        back = self._step_back(r0, r0, op.dmin)  # none: the bar comes in over the face at its first pass's Ø
         b = self.block(op, f"ROUGH BORE D{bore.diameter:g} {n} X AP {round(step, 3):g} FROM D{2 * r0:g}")
         b.notes.append(f"leaves {allow:g} mm per side for finishing; spindle {op.spindle_direction} for this bar "
                        "(the operator's)")
-        self._bore_start(b, op, r0 - back)
+        self._bore_start(b, op, r0 - back if back is not None else r0 + step)
+        at = r0 - back if back is not None else r0 + step
         for k in range(1, n + 1):
             r = r0 + k * step
-            back = self._step_back(r, r, op.dmin)
+            back = self._step_back(r, r - (op.nose_radius or 0.0), op.dmin)  # the nose rounds the pass's end
             if back is None:
                 return f"the bar's head (DMIN {op.dmin:g}) leaves no room to step back from D{2 * r:g}: not generated"
-            b.commands += [Feed(x=_r3(2 * r), f=op.f), Feed(z=end), Feed(x=_r3(2 * (r - back))),
-                           Rapid(z=_r3(self.m.clearance_z))]
+            out = [Feed(x=_r3(2 * r), f=op.f)] if abs(r - at) > EPS else []
+            b.commands += out + [Feed(z=end, f=None if out else op.f), Feed(x=_r3(2 * (r - back))),
+                                 Rapid(z=_r3(self.m.clearance_z))]
+            at = r - back
             self.holes.append((0.0, r, end, r))
         if end > z_end + EPS and bore.bottom != "through":
             b.warnings.append(f"Z{end:g} to Z{z_end:g}: the drill's cone is left for the finishing bar to face")
@@ -1065,12 +1065,10 @@ class _Builder:
         r_now = self._hole_at(bore.z_top - 0.01)
         if r_now <= EPS:
             return "the hole is not drilled in this program before boring: not generated"
-        back = self._step_back(r_now, r_now, op.dmin)
-        if back is None:
-            return f"the bar's head (DMIN {op.dmin:g}) does not fit D{2 * r_now:g}: not generated"
+        back = self._step_back(r_now, r_now, op.dmin)  # none: in over the face at the hole's Ø
         b = self.block(op, f"FINISH BORE D{bore.diameter:g} TO Z{bore.z_bottom:g}")
         b.notes.append(f"spindle {op.spindle_direction} for this bar (the operator's)")
-        self._bore_start(b, op, r_now - back)
+        self._bore_start(b, op, r_now - (back or 0.0))
         drilled = self._drilled_to(bore, r_now)
         wall_end = bore.z_bottom
         if bore.bottom != "through" and drilled > bore.z_bottom + EPS:
@@ -1086,7 +1084,7 @@ class _Builder:
         else:
             b.commands += [Feed(x=_r3(2 * r), f=op.f, comp=g41)]
         b.commands.append(Feed(z=_r3(wall_end)))
-        step = self._step_back(r, r, op.dmin) or 0.0
+        step = self._step_back(r, r - (op.nose_radius or 0.0), op.dmin) or 0.0
         b.commands.append(Feed(x=_r3(2 * (r - step))))  # off the wall towards the axis (along the bottom)
         b.commands.append(Rapid(z=cz, comp="G40" if comp else None))
         self.holes.append((0.0, r, wall_end, r))
