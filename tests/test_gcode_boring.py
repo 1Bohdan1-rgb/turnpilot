@@ -174,3 +174,19 @@ def test_a_bar_as_wide_as_the_drilled_hole(machine):
     result = services.gcode_simulation(job, machine, text)
     assert result.ok, result.errors
     assert result.complete, result.incomplete
+
+
+def test_a_point_angle_whose_point_is_rounded(machine):
+    """jobs/11 (Завіса 36 bushing): 860-PM Ø20, SIG 147°, to the full Ø at 32: the point's Z is written as Z-34.962
+    (rounded); the full Ø still reaches Z-32 and the bars bore the wall down to Z-32 (no 0.01 mm left at the bottom)."""
+    drill = db.session.execute(db.select(TurretSlot).filter_by(position=12)).scalar_one().tool
+    drill.point_angle_deg = 147
+    db.session.commit()
+    job = make(machine)
+    prog, text = program(job, machine)
+    assert "G01 Z-34.962" in text
+    assert "Z-31.99" not in text and text.count("G01 Z-32.") >= 3  # two rough passes and the finishing pass
+    assert not any("cone is left" in w or "finished down to" in w for b in prog.blocks for w in b.warnings)
+    result = services.gcode_simulation(job, machine, text)
+    assert result.ok, result.errors
+    assert result.complete, result.incomplete

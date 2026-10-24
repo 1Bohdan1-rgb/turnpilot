@@ -205,6 +205,7 @@ THREAD_RUN_IN_PITCHES = 3
 # A rapid keeps at least this far (per side, and along Z before a face) from the material the roughing already
 # written leaves; closer, the tool feeds. The operator's rule (2026-10-17); placeholder table: open.
 RAPID_STOCK_MARGIN_MM = 1.0
+DRILLED_TOL_MM = 0.001  # a hole this close to a radius counts as it: the program writes to 0.001 mm
 STOCK_STEP_MM = 0.05  # the step of the stock look-up along Z
 
 
@@ -925,7 +926,9 @@ class _Builder:
         if not self.p.inner_known:  # a bore without its place, or an internal thread
             b.warnings.append("the inner profile is not simulated (only the drill's path on the axis)")
         r = (op.tool_diameter or 0.0) / 2
-        full = depth - point if point else depth  # where the drill's full Ø ends
+        # where the drill's full Ø ends: the drawn depth when the operator decided "to the full Ø" (the point's Z is
+        # written rounded to 0.001, which must not put the full Ø a fraction of a µm short of it)
+        full = drawn if op.depth_mode == "full_diameter" else (depth - point if point else depth)
         self.holes.append((0.0, r, -full, r))
         if point:
             self.holes.append((-full, r, -depth, 0.0))
@@ -979,9 +982,11 @@ class _Builder:
 
     def _drilled_to(self, bore, r: float) -> float:
         """The deepest z down to which the hole is at least r wide from the bore's top (the drill's full Ø)."""
-        z = bore.z_top
-        while z - 0.01 >= bore.z_bottom - EPS and self._hole_at(z - 0.01) >= r - 1e-6:
-            z -= 0.01
+        steps = int(round((bore.z_top - bore.z_bottom) / 0.01))
+        k = 0  # whole steps of 0.01 (no running sum: it drifts); a hole within 0.001 of r is r (written to 0.001)
+        while k < steps and self._hole_at(bore.z_top - (k + 1) * 0.01) >= r - DRILLED_TOL_MM:
+            k += 1
+        z = bore.z_top - k * 0.01
         return _r3(z) if z - bore.z_bottom > 0.005 else bore.z_bottom
 
     def bore_rough(self, op: OpData) -> Block | str | None:
