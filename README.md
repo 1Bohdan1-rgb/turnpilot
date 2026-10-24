@@ -43,6 +43,10 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
   bore's length, as before. A flat bottom is never left to the drill (its point leaves a cone): the boring bar
   faces it. A boring bar's overhang (its max depth) above 4 × its DMIN (its D is not recorded) is a warning: a
   rule of thumb, check for vibration; a bar shorter than the bore, a warning.
+- **Boring to size:** a bore of IT12 or coarser (what a drill gives) whose Ra the roughing bar's own feed reaches by
+  Ra = f²·1000/(32·rε) is bored to size by the roughing bar in one operation, both numbers in its note, marked check;
+  no finishing pass. Not for a flat bottom or a mouth chamfer. "Keep the finishing pass" on the job page (the
+  operator's name) brings the finishing bar back, for every calculation after.
 - **Tool selection:** only tools loaded in the turret, matched by operation type and material ISO
   group (P/M/N). If none fits, the operation is kept with a clear warning and cannot be approved.
 - **Catalogue values:** a tool may carry the catalogue's recommended ap and f and Vc at given feeds
@@ -410,7 +414,8 @@ presses Start after the machine check.
   hole across the axis; a bar as wide as the drilled hole comes in over the face at its first pass); the drill's
   cone above the bottom faced from the centre outwards in levels of ap max, only with κr ≥ 90° and only where the
   hole lets the bar's head in (the rest is left, and said so); the finishing pass as drawn (a mouth chamfer, the
-  wall, off it towards the axis) with G41 when the bar has rε and T. No boring without the bar's spindle direction
+  wall, off it towards the axis) with G41 when the bar has rε and T (at a drill-point bottom its note says what the
+  part gets: a ring between the drill's and the bore's Ø, the drill's own cone; the drawn cone is not a size). No boring without the bar's spindle direction
   (M03 / M04, the operator's, per bar), DMIN and overhang, or with a bore deeper than the overhang. The header and
   the checklist name each bar's spindle direction and its G41 offset.
 - **Not written:** internal threads, taps, internal grooves, a groove's finishing pass, a concave radius smaller than rε, cuts

@@ -1205,6 +1205,24 @@ files frozen by `dxf-blind-freeze` untouched.
   6 039 input tokens, B76 + B77 9 743, one call either way. The user approved one call on B76 for P1.2: waiting for
   the decision B76 alone (Vc only: the drill stays not taken) or B76 + B77.
 
+## jobs/11: the bottom of the bushing's bore, boring to size (2026-10-24)
+Plan 1–4 agreed with the user, plus the operator's "keep the finishing pass" (name required, kept for the calculations
+after). Commits 206f43e (the full Ø depth), 75d8810 (the bottom's note), d1a3f2c (boring to size; migration
+a8c2e6f0b4d1, DB backup `instance/turnpilot.db.bak-2026-10-24-before-bore-to-size`, the server stopped) and the docs
+commit.
+- Cause of jobs/11 program 22's PART NOT COMPLETE at Z-32 (1 mm per side): the generator, not the drill. The drill
+  went right (to the full Ø: point Z-34.962 = 32 + 10/tan 73.5°), but the recorded full Ø ended 0.15 µm short (the
+  point's Z rounded to 0.001) and the 0.01 mm scan (a running sum) stopped at Z-31.99: both bars stopped there.
+- The bottom: below a drill-point bottom nothing is asked of the bars (as built); the finishing block's note says what
+  the part gets: a ring D20–D22 at Z-32, then the drill's 147° cone to Z-34.962 (drawn 120°, not dimensioned).
+- Boring to size: planner.bore_to_size (IT12 or coarser, DRILL_IT_GRADE placeholder; Ra = f²·1000/(32·rε) of the
+  roughing bar's feed ≤ the drawing's Ra or none given); not a flat bottom or a mouth chamfer. jobs/11 in a copy of the
+  user's DB, calculated again: ROUGH BORE D22 2 X AP 0.5 FROM D20 (T05, f 0.15, rε 0.4: Ra ≈ 1.8), no T09, 0 errors,
+  complete; jobs/7 and jobs/8 the same byte for byte as at 75d8810. jobs/8's own data changed today (the bore Ø10 × 2
+  placed, a new skip note): its program differs from 2026-10-23's by that, not by the code.
+- In the user's DB jobs/11 is not calculated again: its program 22 stays as it was until the operator presses
+  Calculate.
+
 ## Deferred
 - A "shop time zone" setting (now Europe/London written out in `turnpilot/localtime.py`).
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
@@ -1215,7 +1233,7 @@ files frozen by `dxf-blind-freeze` untouched.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1261 tests pass (2026-10-24). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1267 tests pass (2026-10-24). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
