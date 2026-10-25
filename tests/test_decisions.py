@@ -89,3 +89,89 @@ def test_a_shape_not_known_is_empty(app):
     (shape,) = by_kind(decisions.operator_decisions(job), "arc_shape")
     assert shape.empty and shape.required
     assert [s.key for s in decisions.operator_decisions(job).empty_required] == [f"shape-{arc.id}"]
+
+
+# --- confirm all of it at once (decisions.apply_decisions) -----------------------------------------------------------
+
+import json  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+def open_job(machine):
+    """The НД 012-like part with nothing decided: Z0, the stock and the stick-out empty, the arc not chosen."""
+    services.set_machine_value(machine, "stickout_margin_mm", 2.0, "operator")
+    job = nd012_like(approve=False)
+    job.free_end = job.stickout_mm = job.face_stock_mm = None
+    db.session.commit()
+    return job
+
+
+def test_confirm_all_writes_with_the_name_and_makes_the_program(app):
+    machine = ready_machine()
+    job = open_job(machine)
+    d = decisions.operator_decisions(job)
+    result = decisions.apply_decisions(job, decisions.proposal_form(d), "Bohdan")
+    assert result.stopped is None, result.stopped
+    arc = next(f for f in job.features if f.type == "arc")
+    assert (arc.radius, arc.radius_source, arc.radius_decisions[-1].decided_by) == (51.608, "drawn", "Bohdan")
+    assert (job.free_end, job.face_stock_mm, job.stickout_mm) == ("left", 2.0, 65.0)
+    assert job.stickout_note.startswith("55 + 2 + 3 + 5 (safety) = 65 mm, Bohdan ")  # the hint, taken by name
+    ops = job.current_operations
+    assert all(op.status == "approved" for op in ops)
+    assert all(op.edits[-1].new_value == "approved (Bohdan)" for op in ops)
+    assert result.record is not None and result.record.job_id == job.id
+    assert json.loads(result.record.simulation)["errors"] == []
+    assert services.next_step(job).key in ("installed", "ready")
+
+
+def test_nothing_is_written_without_the_name_or_a_value(app):
+    machine = ready_machine()
+    job = open_job(machine)
+    form = decisions.proposal_form(decisions.operator_decisions(job))
+    with pytest.raises(decisions.DecisionError, match="name is required"):
+        decisions.apply_decisions(job, form, " ")
+    del form["stickout"]
+    with pytest.raises(decisions.DecisionError, match="Not decided yet: Stick-out"):
+        decisions.apply_decisions(job, form, "Bohdan")
+    arc = next(f for f in job.features if f.type == "arc")
+    assert (job.free_end, job.stickout_mm, arc.radius_decisions) == (None, None, [])
+
+
+def test_a_set_up_changed_since_the_screen_stops_there(app, client):
+    from test_turret_setup import lathe2, pin_on
+
+    ready_machine()
+    machine = lathe2(client)
+    job = pin_on(machine)
+    job.machine_id = machine.id
+    db.session.commit()
+    d = decisions.operator_decisions(job)
+    assert d.turret.rows
+    form = decisions.proposal_form(d)
+    result = decisions.apply_decisions(job, {**form, "setup_signature": "1:999"}, "Bohdan")
+    assert result.stopped == "the turret set-up changed with your decisions: look at it again on this screen"
+    assert all(s.tool is None for s in services.job_turret(job, machine))
+    result = decisions.apply_decisions(job, form, "Bohdan")
+    assert "turret set-up accepted" in result.done
+    assert result.stopped.startswith("no program: ")  # Lathe 2 has no programming values: the machine's, not the job's
+    assert all(op.status == "approved" for op in job.current_operations if op.tool_id)
+
+
+def test_the_centring_is_skipped_with_its_reason_and_the_depth_decided(app):
+    machine = ready_machine()
+    job = make_job([Feature(type="face"), Feature(type="od_turn", diameter=20, length=24),
+                    Feature(type="bore", diameter=10, length=5, ra=6.3), Feature(type="parting")],
+                   blank=22, length=29, stickout=35, approve=False, machine=machine)
+    d = decisions.operator_decisions(job)
+    bore = next(f for f in job.features if f.type == "bore")
+    assert [x.key for x in d.empty_required] == [f"bore-{bore.id}"]  # a bore typed by hand: its place is not known
+    form = {**decisions.proposal_form(d), f"bore-{bore.id}-open_end": "left", f"bore-{bore.id}-from_mm": "0",
+            f"bore-{bore.id}-bottom": "drill_point"}
+    result = decisions.apply_decisions(job, form, "Bohdan")
+    assert (bore.bore_open_end, bore.bore_position_by) == ("left", "Bohdan")
+    centring = next(op for op in job.current_operations if op.tool_type == "centre_drilling")
+    assert (centring.status, centring.skipped_by, centring.skipped_note) == ("skipped", "Bohdan",
+                                                                            decisions.CENTRING_SKIP_NOTE)
+    assert bore.depth_decided_by == "Bohdan" and bore.depth_mode in ("full_diameter", "tip")
+    assert result.done[-1].endswith("1 skipped")

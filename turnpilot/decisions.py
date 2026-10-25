@@ -237,3 +237,183 @@ def operator_decisions(job) -> Decisions:
                     if i in by_id and by_id[i].status != "skipped"]
     return out
 
+
+# --- the operator confirms all of it at once -------------------------------------------------------------------------
+
+class DecisionError(ValueError):
+    pass
+
+
+@dataclass
+class Applied:
+    record: object = None  # the GcodeProgram made, None when stopped before it
+    stopped: str | None = None  # where and why it stopped (what was written before stays, with its history)
+    done: list = field(default_factory=list)  # what was written, in words
+
+
+def proposal_form(d: Decisions) -> dict:
+    """The screen's form as proposed (or as decided): {field: value}; the operations as shown and ticked."""
+    form = {}
+    for x in d.items:
+        if x.kind == "bore_position" or x.empty:
+            continue
+        form[x.key] = x.value
+    form["ops_shown"] = ",".join(r.key for r in d.operations)
+    for r in d.operations:
+        if r.approve:
+            form[f"approve-{r.key}"] = "1"
+        if r.skip_note:
+            form[f"skip-{r.key}"] = "1"
+            form[f"skipnote-{r.key}"] = r.skip_note
+    if d.turret is not None and d.turret.rows:
+        form["setup_accept"] = "1"
+        form["setup_signature"] = d.signature
+    return form
+
+
+def _number(raw, what):
+    raw = (str(raw) if raw is not None else "").strip().replace(",", ".")
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        raise DecisionError(f"{what}: '{raw}' is not a number") from None
+
+
+def _feature_decisions(d, form, name, machine, out) -> bool:
+    """The drawing's decisions; True when a feature changed (the job is to be calculated again)."""
+    from .models import Feature, db
+
+    changed = False
+    for x in d.drawing:
+        feature = db.session.get(Feature, x.feature_id)
+        value = form.get(x.key)
+        if x.kind == "arc_radius":
+            if value not in ("dimension", "drawn") or (x.decided is not None and value == x.value):
+                continue  # an own value, or the decision taken, stays
+            dimension = feature.radius_dimension if feature.radius_decisions else feature.radius
+            geometry = feature.radius_geometry if feature.radius_decisions else feature.drawn_radius
+            radius = dimension if value == "dimension" else geometry
+            services.decide_arc_radius(feature, value, radius, None, name, machine)
+            out.done.append(f"{x.title}: R{radius:g}")
+            changed = True
+        elif x.kind == "arc_shape":
+            shape, _, side = str(value).partition("-")
+            feature.arc_convex = shape == "convex"
+            if feature.type == "fillet":
+                feature.face = side or None
+            out.done.append(f"{x.title}: {value}")
+            changed = True
+        elif x.kind == "bore_position":
+            try:
+                services.set_bore_position(feature, form.get(f"{x.key}-open_end"),
+                                           _number(form.get(f"{x.key}-from_mm"), x.title),
+                                           form.get(f"{x.key}-bottom"), name)
+            except services.BorePositionError as e:
+                raise DecisionError(f"{x.title}: {e}") from None
+            out.done.append(x.title)
+            changed = True
+        elif x.kind == "bore_depth" and (x.decided is None or value != x.value):
+            services.decide_bore_depth(feature, value, name)
+            out.done.append(f"{x.title}: {services.BORE_DEPTH_MODES[value]}")
+        elif x.kind == "bore_finish" and value == "keep" and not feature.bore_finish_kept_at:
+            services.keep_bore_finishing(feature, name)
+            out.done.append(f"{x.title}: kept")
+            changed = True
+    db.session.commit()
+    return changed
+
+
+def _setup_decisions(job, machine, form, name, out) -> bool:
+    """Z0, the stock and the stick-out; True when one changed."""
+    from datetime import datetime, timezone
+
+    from .models import db
+
+    free_end = form.get("free_end")
+    if free_end not in ("left", "right"):
+        raise DecisionError("Z0: the left or the right end")
+    stock, stickout = _number(form.get("face_stock"), "stock beyond Z0"), _number(form.get("stickout"), "stick-out")
+    if stock is None or stock < 0 or stickout is None or stickout <= 0:
+        raise DecisionError("The stock beyond Z0 (0 or more) and the stick-out (more than 0) are numbers in mm")
+    changed = (job.free_end, job.face_stock_mm, job.stickout_mm) != (free_end, stock, stickout)
+    job.free_end, job.face_stock_mm, job.gcode_setup_demo = free_end, stock, False
+    db.session.commit()
+    if changed:
+        hint = services.stickout_hint(job, machine)
+        if "value" in hint and abs(hint["value"] - stickout) < 1e-9:
+            services.take_stickout_hint(job, machine, name, stickout)
+        else:
+            job.stickout_mm = stickout
+            job.stickout_note = f"typed, {name} {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC"[:200]
+            db.session.commit()
+        out.done.append(f"Z0 {free_end}, stock {stock:g}, stick-out {stickout:g}")
+    return changed
+
+
+def apply_decisions(job, form, name) -> Applied:
+    """Write every decision of the screen with the operator's name, in this order: the drawing's (arcs, shapes, bores),
+    the set-up (Z0, stock, stick-out), the calculation when it is needed, the turret set-up shown, the skips, the
+    approvals of the operations shown, then the G-code. Each through the same service as its own form (the same
+    history). Stops, saying where, when the set-up or the operations are not the ones shown, or something blocks the
+    program; what was written before stays. Raises DecisionError before writing anything when the name or a required
+    value is missing."""
+    from .models import Edit, db
+
+    name = (name or "").strip()[:100]
+    if not name:
+        raise DecisionError("The operator's name is required to confirm the decisions")
+    machine = services.job_machine(job)
+    d = operator_decisions(job)
+    missing = [x.title for x in d.items if x.required and x.kind != "bore_position"
+               and not str(form.get(x.key) or "").strip()]
+    missing += [x.title for x in d.items if x.kind == "bore_position"
+                and not all(str(form.get(f"{x.key}-{k}") or "").strip() for k in ("open_end", "from_mm", "bottom"))]
+    if missing:
+        raise DecisionError("Not decided yet: " + "; ".join(missing))
+    out = Applied()
+    features_changed = _feature_decisions(d, form, name, machine, out)
+    _setup_decisions(job, machine, form, name, out)
+    readiness = services.gcode_readiness(job, machine)
+    if (features_changed or not job.current_operations or job.calculated_machine_id not in (None, machine.id)
+            or job.tools_changed_since_calculation or any("calculate" in b for b in readiness.blockers)):
+        services.calculate_operations(job, machine)
+        out.done.append(f"calculated (version {job.last_calculation_version})")
+    proposal = services.turret_setup_proposal(job, machine)
+    if proposal.rows:
+        if not form.get("setup_accept"):
+            out.stopped = "the turret set-up is not accepted: tick it, or set the turret by hand"
+            return out
+        if services.setup_signature(proposal) != form.get("setup_signature"):
+            out.stopped = "the turret set-up changed with your decisions: look at it again on this screen"
+            return out
+        services.accept_turret_setup(job, machine, name, form.get("setup_signature"))
+        out.done.append("turret set-up accepted")
+    shown = set(filter(None, str(form.get("ops_shown") or "").split(",")))
+    unseen = [op for op in job.current_operations if op.status not in ("approved", "skipped") and op_key(op) not in shown]
+    if unseen:
+        out.stopped = ("operations not shown on the screen came with the calculation ("
+                       + ", ".join(f"{op.sequence} {op.tool_type}" for op in unseen) + "): look at them again")
+        return out
+    approved = skipped = 0
+    for op in job.current_operations:
+        key = op_key(op)
+        if form.get(f"skip-{key}") and op.status != "skipped":
+            try:
+                services.skip_operation(op, name, form.get(f"skipnote-{key}"))
+            except services.SkipError as e:
+                raise DecisionError(f"operation {op.sequence}: {e}") from None
+            skipped += 1
+        elif form.get(f"approve-{key}") and op.status in ("proposed", "edited") and op.tool_id is not None:
+            op.edits.append(Edit(field="status", old_value=op.status, new_value=f"approved ({name})"[:100]))
+            op.status = "approved"
+            approved += 1
+    db.session.commit()
+    out.done.append(f"{approved} operation(s) approved, {skipped} skipped")
+    readiness = services.gcode_readiness(job, machine)
+    if readiness.blockers:
+        out.stopped = "no program: " + "; ".join(readiness.blockers)
+        return out
+    _, out.record = services.generate_gcode(job, machine)
+    return out
