@@ -18,6 +18,7 @@ class Wall(_Strict):
     points: list[tuple[float, float]] = Field(min_length=2)  # mm, along the wall's centre line
     thickness_mm: float = Field(gt=0)
     closed: bool = False
+    height_mm: float | None = Field(default=None, gt=0)  # optional: the 3D view; else the plan's wall_height_mm
 
 
 class Opening(_Strict):
@@ -55,6 +56,7 @@ class Plan(_Strict):
     name: str = Field(min_length=1, max_length=100)
     width_mm: float = Field(gt=0)
     height_mm: float = Field(gt=0)
+    wall_height_mm: float | None = Field(default=None, gt=0)  # optional: the walls' height (3D view)
     walls: list[Wall] = []
     openings: list[Opening] = []
     columns: list[Column] = []

@@ -60,6 +60,7 @@ class Machine(db.Model):
     machine_kind = db.Column(db.String(20))
     footprint_length_mm = db.Column(db.Float)
     footprint_width_mm = db.Column(db.Float)
+    height_mm = db.Column(db.Float)  # the machine's height (passport or operator), the shop's 3D view; empty: not known
     # the cycle time estimate: rapid traverse per axis and the tool change (tool to tool); empty: not known
     rapid_x_m_min = db.Column(db.Float)
     rapid_z_m_min = db.Column(db.Float)

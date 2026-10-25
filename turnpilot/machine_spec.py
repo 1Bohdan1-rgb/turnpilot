@@ -44,6 +44,8 @@ MACHINE_FIELDS = (
     MachineField("footprint_length_mm", "Footprint length (along the spindle)", "mm", "float",
                  help="the shop plan draws the machine to scale"),
     MachineField("footprint_width_mm", "Footprint width", "mm", "float", help="the shop plan draws the machine to scale"),
+    MachineField("height_mm", "Height", "mm", "float",
+                 help="the shop's 3D view; empty: a conditional height by the machine's type, marked so"),
     MachineField("rapid_x_m_min", "Rapid traverse X", "m/min", "float", help="cycle time: G00 moves in X"),
     MachineField("rapid_z_m_min", "Rapid traverse Z", "m/min", "float", help="cycle time: G00 moves in Z"),
     MachineField("tool_change_s", "Tool change time (tool to tool)", "s", "float",

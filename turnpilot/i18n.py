@@ -462,6 +462,8 @@ UK = {
     "Footprint length (along the spindle)": "Довжина габариту (вздовж шпинделя)",
     "the shop plan draws the machine to scale": "план цеху малює верстат у масштабі",
     "Footprint width": "Ширина габариту",
+    "Height": "Висота",
+    "the shop's 3D view; empty: a conditional height by the machine's type, marked so": "3D-вигляд цеху; порожньо: умовна висота за типом верстата, з позначкою",
     "Rapid traverse X": "Прискорене переміщення X",
     "cycle time: G00 moves in X": "час циклу: переміщення G00 по X",
     "Rapid traverse Z": "Прискорене переміщення Z",

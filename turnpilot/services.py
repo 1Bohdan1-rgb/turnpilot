@@ -2708,7 +2708,7 @@ def shop_machines():
             "changed_at": (localtime.local(m.last_placement_record.placed_at)
                            if m.last_placement_record else None),
             "removed": bool(m.last_placement_record and m.last_placement_record.removed),
-            "length": m.footprint_length_mm, "width": m.footprint_width_mm,
+            "length": m.footprint_length_mm, "width": m.footprint_width_mm, "height": m.height_mm,
             "conflicts": clashes.get(m.id, []),
             "order": None,
         }
