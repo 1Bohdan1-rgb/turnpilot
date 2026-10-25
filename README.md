@@ -69,6 +69,14 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
     text and as an image. The code drops a row without a picked page or a quote, outside the groups and codes
     asked for, with values out of order, or read off a graph; it looks for the quote and every number on the
     page and marks what it does not find "check";
+  - the pages' text, by code ("Read from the text", free, no model; `turnpilot/catalogue_text.py`): a cutting speed
+    table's row of the material, found by its group and its kc1 (AISI 304: M1.0.Z.AQ, kc1 1800, not the PH or the
+    cast row; a table without kc1, e.g. SRT B80, takes that MC code from one that has it), a Vc per grade column with
+    the header's feeds (turning, grooving and parting, threading) or Vc min-start-max (drilling: a grade not on the
+    page is taken from the series' product pages, with a check); a depth of cut / feed table's ap / f (Rec, Min,
+    Max) for the codes listed, as rows of the ISO letter. Every row keeps a quote; a row that does not match its
+    header is not taken; an HB other than the material's is a check. Inch tables are left out. Written on the
+    Sandvik 2020 pages: in-sample for the parser;
   - the operator, by hand (values the catalogue gives only as a graph), with catalogue and page required.
   On the review screen the operator confirms (as read or corrected: then recorded as the operator's), rejects or
   leaves each row. A row that gives other values than a confirmed one replaces it only on the operator's tick.
@@ -465,7 +473,9 @@ machine's turret and the other jobs keep theirs. Undoing a change keeps it in th
   set-up by the planner's own rules (a dry run with the library's tools added): what is in the turret and fits stays;
   a library tool (not retired, the material's ISO group, cutting data from a confirmed catalogue row) is taken only
   for an operation whose tool is missing or does not fit (no tool, a bore not drilled to size, a concave arc steeper
-  than the tool's RMPX); empty positions first, else one whose tool the job does not use, in the operations' order.
+  than the tool's RMPX) or whose tool's cutting data are not from a confirmed row for the material's group (its
+  operations would stay out of the program: replaced in its own position; with no checked tool in the library it
+  stays, said in words); empty positions first, else one whose tool the job does not use, in the operations' order.
   The card gives per position what comes out and goes in (insert, holder, grade), the T word, the offset page's R and
   T for a tool whose contour goes with G42, the source of its cutting data, and the other machines holding that tool
   now (a hint). What the library cannot give is said in words. "Accept the set-up" (the operator's name) writes the
@@ -486,10 +496,12 @@ machine's turret and the other jobs keep theirs. Undoing a change keeps it in th
   headers between "Dimensions" and "Ordering code", then each row's values before its ordering code. A row is taken
   only where it checks against its own code: a drill's DC = the code's digits and its inch columns agree (DC, LU = the
   deepest hole, ULDR); a boring bar's CZCMS = its Ø in the code (DMIN1, OHX / OHN); a grooving insert's seat letter and
-  CW (CW, CDX). Page values (SIG, KAPR, the coolant supply, the table's grade) only when the page states one. On the
-  Sandvik 2020 pair: 1980 drills (1 row not taken), 40 boring bars (2), 79 grooving inserts (152 not taken).
-- `/catalogue-tools`: search by kind and size; every value with its page and quote; "not found" is said, nothing
-  guessed, no paid call.
+  CW (CW, CDX); a turning insert's S and RE against its code (04 = 4.76, 08 = 0.8 ± 0.02; LE, BS for a wiper). Page
+  values (SIG, KAPR, the coolant supply, the table's grade) only when the page states one; an insert's ★ / ✩ grade
+  marks lose their columns in the text, so its grade is the operator's. On the Sandvik 2020 pair: 1980 drills (1 row
+  not taken), 40 boring bars (2), 79 grooving inserts (152 not taken), 997 turning inserts (0 not taken).
+- `/catalogue-tools`: search by kind and size (an insert by its nose radius and the code's parts, e.g. "CNMG-MM");
+  every value with its page and quote; "not found" is said, nothing guessed, no paid call.
 - The set-up card names what the job would take from the catalogues: a drill of a bore's own Ø when a drill alone
   makes it, the largest drill up to the bore less the boring bar's finishing pass when it is larger than the one
   planned, a boring bar or a grooving insert for an operation without a tool; a tool already added says whether the
@@ -725,7 +737,8 @@ tests/             pytest suite; fixtures/drawings/ test drawings + expected ans
 ## Seed data
 
 - Machine "Lathe 1": 4000 rpm, 11 kW, max Ø300 mm.
-- Materials: Steel 45 (P), AISI 304 (M), Aluminium 6061 (N).
+- Materials: Steel 45 (P), AISI 304 (M), Aluminium 6061 (N). Steel 45 is Sandvik P1.2 and AISI 304 M1.0 (TT 2020
+  A278: kc1 1600 / 1800); their mc and Aluminium 6061 are placeholders.
 - Turret T1–T9: facing, two roughing, two finishing, grooving, threading, parting, boring bar.
   The grooving tool intentionally does not cover ISO M, so an AISI 304 job with a groove
   shows the "tool missing" warning.

@@ -497,9 +497,9 @@ Machine and tools (seed, `turnpilot/seed.py`):
 |---|---|---|---|---|---|
 | Seed machine `MACHINE` | 4000 rpm, 11 kW, Ø300 | n cap, power check, blank check | guessed (example) | Machine page, passport review | open (stage 4 built: closes when the real passport is read and confirmed) |
 | Seed tools: ranges, ap rec, f rec, Vc(f) | T1 SCMT-PM, T2 CNMG-PM, T4 DNMG-PF, T5 CCMT-PM, T6 N123G2, T7 266RG VM, T8 QD-NG, T9 CCMT-PF, T10–T12 860-GM | every Vc, n, f, ap, passes | TT A41, A49, A160, A278–A279, A283, A285, A289, A290, B11, B53, B130–B131, B139, B144 (graphs), C5, C73; SRT B25–B26, B70–B71 | Machine page, tool library | verified (grades: the catalogue's ★, operator decision); T3 and VCGT (library) open |
-| Seed materials kc1 / mc | C45 1600/0.25, AISI 304 2000/0.21, 6061 600/0.25 | spindle power check | C45 kc1: TT A278; the rest from memory | Machine page, Materials | partly (C45 kc1 verified; mc and the other materials open) |
+| Seed materials kc1 / mc | C45 1600/0.25, AISI 304 1800/0.21, 6061 600/0.25 | spindle power check | C45 and AISI 304 (M1.0.Z.AQ) kc1: TT A278; mc and 6061 from memory | Machine page, Materials | partly (C45 and AISI 304 kc1 verified; mc and 6061 open) |
 | Seed: no centre drill, no threading feed limit, no drive efficiency | empty | centring, n·P, power: warnings until set | not guessed on purpose | Machine page / tool library | partly (drills added; centre drill not in TT / SRT: open by decision; n·P and efficiency: stage 4) |
-| ISO groups of the checked tools | P only | M / N jobs: "no tool" | operator decision 2026-10-07 | tool library | operator decision |
+| ISO groups of the checked tools | P; M1.0 rows read 2026-10-25 (to confirm), no M tool in the library yet | M / N jobs: "no tool" until M tools are added | operator decision 2026-10-07 | tool library | operator decision |
 | Coolant | `Machine.coolant`, empty (not known) | catalogue Vc: a warning when the machine has none | catalogue condition | Machine page, passport review | operator decision (assumed present until the passport says) |
 
 Planner constants (`turnpilot/planner.py`):
@@ -1236,6 +1236,43 @@ DB backup `instance/turnpilot.db.bak-2026-10-25-before-machine-height`), 29bbdfc
   filter dim the others; a theme change builds it again. Not checked in a browser (the user's rule for this stage).
 - Machine passport reading: `height_mm` is in `MACHINE_FIELDS`, so the passport prompt version changed (no call made).
 
+## AISI 304: group M1.0, cutting data by text, turning inserts (2026-10-25)
+Plan 1–4 agreed with the user, group (a) M1.0; two paid calls approved ("так, обидва"). Commits 63b402c (group, kc1;
+data migration c1e5a9d3f7b2, DB backup `instance/turnpilot.db.bak-2026-10-25-before-aisi304`), 2c0af32 (the tool
+library lists a tool's own ISO groups only), 3fb55b2 (text reading), 8a7627c (turning inserts), ee285f3 (set-up) and
+the docs commit. DB backup before the readings: `instance/turnpilot.db.bak-2026-10-25-before-m10-reading`. The files
+frozen by `dxf-blind-freeze` untouched.
+- Group: TT H30 (PDF 684) X5CrNi18-10 / 1.4301 = M1.1.Z.AQ, CMC 05.21; the cutting data tables give CMC 05.21 as
+  M1.0.Z.AQ (kc1 1800, HB 180, TT A278). mc 0.21 not verified (not in the TT / SRT text).
+- `turnpilot/catalogue_text.py` (in-sample: written on TT A278, A283, A285, A289, B130, C73, SRT B76, B80): reproduces
+  the confirmed P1.2 rows (GC4315 turning, GC4325 grooving, GC1125 threading, the geometry, X1BM and 4234 drilling).
+  Text cannot read: A279 (the GC2025 / GC2035 columns have no row labels), B81 (the 860-MM feeds: 12 unlabeled rows),
+  the graphs (B139, B144: the grooving / parting feeds).
+- Paid calls (claude-sonnet-5, 2026-10-25, user DB, rows "read"):
+  - TT A279 + A283 + A285 + A289 (PDF 283, 287, 289, 293), codes -MM / -MF / -MR: input 36 772, output 2 389
+    (926 thinking) ≈ $0.097. 7 geometry rows, all equal to the text reading. NO Vc from A279: the grades were not in
+    the codes list (Claude's error), so the A279 part of the call gave nothing.
+  - SRT B81 (PDF 281), 860.1-0600-018A1 / 0800-024A1 / 1000-030A1-MM: input 8 996, output 6 780 (5 969 thinking)
+    ≈ $0.086. 3 rows, **all from the wrong table row**: the 1st (M1.0.C.UT, cast, HB 165), not M1.0.Z.AQ (the 2nd:
+    Ø6 0.088-0.110-0.132, Ø8 0.096-0.120-0.144, Ø10 0.112-0.140-0.168; checked on the page image). The numbers are on
+    the page, so the code's check was silent; a check with the right values was added to the rows (ids 34–36).
+  - Estimates shown before: 18 831 and 6 423 input; real 2.0× and 1.4×.
+- Text rows in the user's DB (ids 37–51, "read"): A278 GC1115 / GC1125 / GC2015 / GC2220, B130 CT525 / GC1105 / GC1005
+  (grooving and parting), C73 GC1125 / GC1135 / GC1020 / H13A, B80 2214 drilling 48-60-72 (grade from the MM product
+  pages, HB 200 vs the material's 180: checks). Nothing confirmed: the operator's.
+- Turning inserts in "Add from the catalogue" (`catalogue_tools._inserts`): S and RE against the code; the grade typed
+  by the operator (the ★ / ✩ columns are lost in the text). 997 inserts in TT 2020, 0 not taken.
+- Turret set-up: a turret tool whose cutting data are not checked for the material's group is replaced in its own
+  position by a checked library tool (found on the check: Lathe 1's T3 "Rough turning CNMG (M/N)" kept, roughing left
+  out of the program, the finishing DNMG cut 6 mm: 2 simulation errors).
+- Check on a copy of the user's DB (scratchpad `aisi_check.py`): the 25 M1.0 rows confirmed (B81 corrected), CNMG
+  12 04 08-MM GC2015 (rough, facing) and DNMG 15 06 04-MF GC1115 (finish) added from A153 / A160, a pin Ø20 / Ø24 / Ø30
+  in AISI 304 on Lathe 1: set-up T1 / T2 / T3, all turning from confirmed M1.0 rows (rough Vc 277.5 at f 0.25),
+  parting skipped (no M parting feed: graph); 111 lines, 0 errors, complete. jobs/7, 8, 11 the same byte for byte as at
+  5f82a21 (323 / 154 / 201 lines).
+- Open: M parting / grooving feeds (graphs, by hand), the A279 grades (one call with the grades listed), an M parting
+  insert in the library; the operator confirms the rows.
+
 ## Deferred
 - A "shop time zone" setting (now Europe/London written out in `turnpilot/localtime.py`).
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
@@ -1246,7 +1283,7 @@ DB backup `instance/turnpilot.db.bak-2026-10-25-before-machine-height`), 29bbdfc
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1275 tests pass (2026-10-25). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1288 tests pass (2026-10-25). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
