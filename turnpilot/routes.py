@@ -353,17 +353,22 @@ def _rows_to_check(document_id=None):
 
 CATALOGUE_TOOL_KINDS = {"drilling": "a drill (Ø from–to, the hole's depth)",
                         "boring": "a boring bar (the bore's Ø, the overhang it needs)",
-                        "grooving": "a grooving insert (the groove's width, its depth)"}
+                        "grooving": "a grooving insert (the groove's width, its depth)",
+                        "turning": "a turning insert (its nose radius rε; the code's parts, e.g. CNMG-MM)"}
 CATALOGUE_VALUE_LABELS = {"diameter": "Ø DC, mm", "max_depth": "usable length / depth, mm", "depth_ratio": "× D",
                           "point_angle": "point angle SIG, °", "coolant": "coolant supply", "grade": "grade",
                           "dmin": "DMIN, mm", "max_overhang": "overhang max OHX, mm",
-                          "min_overhang": "overhang min OHN, mm", "entering_angle": "κr KAPR, °", "width": "width CW, mm"}
+                          "min_overhang": "overhang min OHN, mm", "entering_angle": "κr KAPR, °", "width": "width CW, mm",
+                          "nose_radius": "nose radius RE, mm", "thickness": "thickness S, mm",
+                          "edge_length": "cutting edge LE, mm", "wiper": "wiper flat BS, mm"}
 
 
-def _catalogue_search(kind, a, b, depth):
+def _catalogue_search(kind, a, b, depth, code=""):
     from . import catalogue_tools as ct
 
     documents = services.catalogue_documents(current_app.instance_path)
+    if kind == "turning":
+        return ct.turning_inserts(documents, a, code)
     if kind == "drilling":
         return ct.drills(documents, a, b if b is not None else a, depth)
     if kind == "boring":
@@ -376,10 +381,10 @@ def catalogue_tools():
     """Tools of the uploaded catalogues by their size, from the pages' text (no model)."""
     q = SimpleNamespace(kind=request.args.get("kind") or "drilling", a=_to_float(request.args.get("a")),
                         b=_to_float(request.args.get("b")), depth=_to_float(request.args.get("depth")),
-                        job=request.args.get("job", type=int))
+                        code=(request.args.get("code") or "").strip()[:40], job=request.args.get("job", type=int))
     found = result = None
     if q.kind in CATALOGUE_TOOL_KINDS and q.a:
-        found, result = _catalogue_search(q.kind, q.a, q.b, q.depth)
+        found, result = _catalogue_search(q.kind, q.a, q.b, q.depth, q.code)
     return render_template("catalogue_tools.html", q=q, found=found or [], result=result,
                            kinds=CATALOGUE_TOOL_KINDS, value_labels=CATALOGUE_VALUE_LABELS)
 
@@ -391,7 +396,7 @@ def _rows_prefill(found, group):
     geometry, grade = services.catalogue_tool_rows(found, group)
     values, said = {}, []
     if geometry is not None:
-        values.update({k: getattr(geometry, k) for k in ("f_min", "f_max", "f_rec", "ap_min", "ap_max")
+        values.update({k: getattr(geometry, k) for k in ("f_min", "f_max", "f_rec", "ap_min", "ap_max", "ap_rec")
                        if getattr(geometry, k) is not None})
         said.append(f"ap / f {geometry.catalogue} {geometry.page}")
     if grade is not None:
@@ -431,7 +436,7 @@ def catalogue_tool_add():
         form = dict(prefill)
     form = SimpleNamespace(**{k: form.get(k) for k in (
         "name", "added_by", "type", "iso", "insert_code", "grade", "max_depth", "vc_min", "vc_max", "f_min", "f_max",
-        "f_rec", "vc_points", "ap_min", "ap_max", "source")})
+        "f_rec", "vc_points", "ap_min", "ap_max", "ap_rec", "source")})
     if form.type is None and len(services.CATALOGUE_TOOL_TYPES[found.kind]) == 1:
         form.type = services.CATALOGUE_TOOL_TYPES[found.kind][0]
     return render_template("catalogue_tool_add.html", found=found, form=form, group=group, rows_text=rows_text,

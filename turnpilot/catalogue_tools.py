@@ -9,7 +9,10 @@ row checks against its own code (a value written twice must agree), else the row
 - a boring bar ("A16R-SCLCR/L 09-R"): CZCMS = the bar's Ø in the code; then DMIN1 (the smallest bore), OHX / OHN (the
   longest / shortest overhang);
 - a grooving insert ("N123E2-0200-0002-CM"): the row starts with its seat letter (SSC = the code's letter) and CW = the
-  code's width digits / 100; then CW (width) and CDX (the deepest cut).
+  code's width digits / 100; then CW (width) and CDX (the deepest cut);
+- a turning insert ("CNMG 12 04 08-MM", the T-Max P / CoroTurn 107 tables): the numbers just before the code are LE,
+  S, RE (and BS for a wiper); S must be the code's thickness (04 = 4.76) and RE its nose radius (08 = 0.8 ± 0.02). The
+  page's ★ / ✩ grade marks lose their columns in the text: the grade is the operator's.
 A value of the page (the drill's point angle SIG, the holder's entering angle KAPR, the coolant supply) is taken only
 when the page states one. Every value keeps its quote and page; what does not check is "not found", with the reason.
 """
@@ -27,6 +30,11 @@ LABEL = re.compile(r"^\s*([A-H])\s?(\d{1,3})\s*$")
 DRILL_CODE = re.compile(r"\b([48]60\.\d)-(\d{4})-(\d{3})(A\d)-([A-Z]{2})\b")
 BAR_CODE = re.compile(r"\b([A-F])(\d{2})([A-Z])-(S[A-Z]{3}[RL](?:/[RL])?) (\d{2})-([RL])\b")
 GROOVE_CODE = re.compile(r"\b([LNR]123)([A-Z])(\d)-(\d{4})-(\d{4})-([A-Z]{2})\b")
+INSERT_CODE = re.compile(r"\b([CDSTVW][A-Z][GM][A-Z]) (\d{2}) (\d{2}|T\d) (\d{2})-([A-Z]{1,3}\d?)\b")
+# ISO 1832 thickness code -> S, mm (T3 = 3.97)
+INSERT_THICKNESS = {"01": 1.59, "T1": 1.98, "02": 2.38, "T2": 2.78, "03": 3.18, "T3": 3.97, "04": 4.76, "05": 5.56,
+                    "06": 6.35, "07": 7.94, "09": 9.52}
+NOSE_TOL = 0.02  # "08" is printed as 0.79 or 0.8
 
 
 def _num(token: str) -> float | None:
@@ -227,19 +235,53 @@ def _grooves(text, flat, heads, base) -> tuple[list[Found], list[str]]:
     return out, why
 
 
-PARSERS = {"drilling": _drills, "boring": _bars, "grooving": _grooves}
+def _inserts(text, flat, heads, base) -> tuple[list[Found], list[str]]:
+    out, why = [], []
+    if "RE" not in text.split() or "ISO CODE" not in flat:
+        return out, why
+    for m in INSERT_CODE.finditer(flat):
+        before = [t for t in flat[:m.start()].split()[-6:] if t not in MARKS]
+        nums = [_num(t) for t in before]
+        s, nose = INSERT_THICKNESS.get(m.group(3)), int(m.group(4)) / 10
+        tail = None
+        for bs in (0, 1):  # a wiper has BS after RE
+            k = len(nums) - 1 - bs
+            if k >= 1 and None not in (nums[k], nums[k - 1], s) and _close(nums[k - 1], s, 0.01) \
+                    and _close(nums[k], nose, NOSE_TOL):
+                tail = (k, bs)
+                break
+        if tail is None:
+            why.append(f"{m.group(0)}: the row does not check (S and RE against the code)")
+            continue
+        k, bs = tail
+        row = " ".join(before[max(0, k - 2):] + [m.group(0)])
+        found = Found("turning", m.group(0), row=row, **base)
+        found.values.update(nose_radius=nums[k], thickness=nums[k - 1])
+        found.sources.update(nose_radius=f"RE {before[k]} ({row})", thickness=f"S {before[k - 1]} ({row})")
+        if k >= 2 and nums[k - 2] is not None:
+            found.values["edge_length"] = nums[k - 2]
+            found.sources["edge_length"] = f"LE {before[k - 2]} ({row})"
+        if bs:
+            found.values["wiper"] = nums[-1]
+            found.sources["wiper"] = f"BS {before[-1]} ({row})"
+        out.append(found)
+    return out, why
+
+
+PARSERS = {"drilling": _drills, "boring": _bars, "grooving": _grooves, "turning": _inserts}
 
 
 def read_page(text: str, pdf_page: int, document: str, document_id: int | None = None, kinds=None):
     """(found tools, reasons for rows not taken) of one page's text."""
     heads = headers(text)
-    if not heads:
+    kinds = [k for k in kinds or PARSERS if heads or k == "turning"]  # the inserts' tables have no such header
+    if not kinds:
         return [], []
     flat = " ".join(text.split())
     base = dict(document_id=document_id, document=document, pdf_page=pdf_page, page_label=page_label(text),
                 series=_series(text))
     found, why = [], []
-    for kind in kinds or PARSERS:
+    for kind in kinds:
         f, w = PARSERS[kind](text, flat, heads, base)
         found += f
         why += w
@@ -296,6 +338,18 @@ def boring_bars(documents, bore: float, depth: float | None) -> tuple[list[Found
     fit = [f for f in s.found if f.values["dmin"] <= bore + 1e-6
            and (depth is None or f.values.get("max_overhang", 0) >= depth - 1e-6)]
     fit.sort(key=lambda f: (-f.values["dmin"], f.code))
+    return fit, s
+
+
+def turning_inserts(documents, nose_radius: float, code: str = "") -> tuple[list[Found], Search]:
+    """Turning inserts of this nose radius whose code has the parts of `code` in their order (spaces ignored:
+    "CNMG-MM" finds CNMG 12 04 08-MM, "-MM" every MM insert), in the code's order."""
+    s = search(documents, "turning")
+    parts = re.sub(r"\s+", "", code).upper().split("-")
+    pattern = re.compile(".*-".join(re.escape(p) for p in parts) + (r"$" if len(parts) > 1 else ""))
+    fit = [f for f in s.found if _close(f.values["nose_radius"], nose_radius, NOSE_TOL)
+           and pattern.search(re.sub(r"\s+", "", f.code))]
+    fit.sort(key=lambda f: f.code)
     return fit, s
 
 

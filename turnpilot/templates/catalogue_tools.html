@@ -8,9 +8,10 @@
     <select name="kind">
       {% for key, text in kinds.items() %}<option value="{{ key }}" {% if q.kind == key %}selected{% endif %}>{{ _(text) }}</option>{% endfor %}
     </select></label>
-  <label>{{ _("Ø / width from, mm") }} <input name="a" type="number" step="any" min="0" value="{{ q.a or '' }}" required></label>
+  <label>{{ _("Ø / width / nose radius from, mm") }} <input name="a" type="number" step="any" min="0" value="{{ q.a or '' }}" required></label>
   <label>{{ _("to, mm (drills)") }} <input name="b" type="number" step="any" min="0" value="{{ q.b or '' }}"></label>
   <label>{{ _("Depth, mm (the hole / the overhang / the groove)") }} <input name="depth" type="number" step="any" min="0" value="{{ q.depth or '' }}"></label>
+  <label>{{ _("Code's parts (inserts), e.g. CNMG-MM") }} <input name="code" maxlength="40" value="{{ q.code or '' }}"></label>
   {% if q.job %}<input type="hidden" name="job" value="{{ q.job }}">{% endif %}
   <button type="submit">{{ _("Search") }}</button>
 </form>

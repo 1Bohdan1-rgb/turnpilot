@@ -27,6 +27,9 @@
   <label>{{ _("Grade") }} <input name="grade" maxlength="30" value="{{ form.grade or '' }}"></label>
   <label>{{ _("Overhang as clamped, mm (at most the catalogue's OHX)") }} <input name="max_depth" type="number" step="any" min="0" value="{{ form.max_depth or '' }}"></label>
   {% endif %}
+  {% if found.kind == "turning" %}
+  <label>{{ _("Grade (as marked on the page)") }} <input name="grade" maxlength="30" value="{{ form.grade or '' }}" required></label>
+  {% endif %}
   <h3>{{ _("Cutting data") }}</h3>
   {% if rows_text %}<p class="small muted">{{ _("From the confirmed catalogue rows for {group}:", group=group) }} {{ rows_text }}</p>
   {% else %}<p class="warning">{{ _("No confirmed catalogue row for this code / grade{group}: type your values with their source, or read the page's cutting data on the Cutting data page and confirm the rows first.", group=(" (" ~ group ~ ")") if group else "") }}</p>{% endif %}
@@ -41,6 +44,12 @@
   {% for key in ("ap_min", "ap_max") %}
   <label>{{ key|replace("_", " ") }} <input name="{{ key }}" type="number" step="any" min="0" value="{{ form[key] if form[key] is not none else '' }}" required></label>
   {% endfor %}
+  {% if found.kind == "turning" %}
+  {% for key in ("ap_rec", "f_rec") %}
+  <label>{{ key|replace("_", " ") }} {{ _("(catalogue)") }} <input name="{{ key }}" type="number" step="any" min="0" value="{{ form[key] if form[key] is not none else '' }}"></label>
+  {% endfor %}
+  <label>{{ _("Vc at f (catalogue)") }} <input name="vc_points" maxlength="200" value="{{ form.vc_points or '' }}"></label>
+  {% endif %}
   {% endif %}
   <label>{{ _("Source of Vc / f / ap") }} <input name="source" maxlength="300" value="{{ form.source or '' }}" required></label>
   <div class="actions">

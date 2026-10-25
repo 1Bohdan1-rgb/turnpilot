@@ -1733,7 +1733,10 @@ def catalogue_documents(instance_path):
 
 
 CATALOGUE_TOOL_TYPES = {"drilling": ("drilling",), "boring": ("boring", "boring_rough"),
-                        "grooving": ("grooving", "parting")}
+                        "grooving": ("grooving", "parting"),
+                        "turning": ("turning_rough", "turning_finish", "facing", "boring_rough", "boring")}
+TURNING_GRADE_NOTE = ("the page marks the recommended grades (★ / ✩) in columns the text does not keep: the grade is "
+                      "the operator's, from the page")
 DRILL_AP_NOTE = "ap = D/2 (a drill cuts its radius): derived, check"
 
 
@@ -1921,7 +1924,8 @@ def add_catalogue_tool(found, form):
     if not source:
         raise CatalogueToolError("Write where the Vc / f values come from (a confirmed catalogue row, or yours)")
     where = found.where
-    tool = Tool(name=name, type=tool_type, iso_group=iso, insert_code=found.code if found.kind != "boring" else
+    code = re.sub(r"\s+", "", found.code) if found.kind == "turning" else found.code
+    tool = Tool(name=name, type=tool_type, iso_group=iso, insert_code=code if found.kind != "boring" else
                 (form.get("insert_code") or "").strip()[:50], grade=found.values.get("grade") or
                 (form.get("grade") or "").strip()[:30] or None, source=source, **values)
     if found.kind == "drilling":
@@ -1950,6 +1954,12 @@ def add_catalogue_tool(found, form):
         if overhang is not None:
             tool.max_depth, tool.max_depth_source = overhang, f"clamped by {added_by} (OHX "\
                 f"{found.values.get('max_overhang', '—')}: {where})"[:200]
+    elif found.kind == "turning":
+        if not tool.grade:
+            raise CatalogueToolError("The grade is required (the page's marks are read from the page by the operator)")
+        tool.nose_radius = found.values["nose_radius"]
+        tool.ap_rec, tool.f_rec = number("ap_rec", required=False), number("f_rec", required=False)
+        tool.vc_points = (form.get("vc_points") or "").strip()[:200] or None
     else:  # grooving
         tool.insert_width = found.values["width"]
         if "max_depth" in found.values:
@@ -1976,6 +1986,10 @@ def catalogue_tool_notes(found, machine=None):
         notes.append(DRILL_AP_NOTE)
     if found.kind == "boring":
         notes.append("the catalogue gives the holder: the insert (and its cutting data) is the operator's")
+    if found.kind == "turning":
+        notes.append(TURNING_GRADE_NOTE)
+        notes.append("the holder (its code, κr, RMPX) and the tip direction T are the operator's: entered on the "
+                     "Machine page")
     return notes
 
 

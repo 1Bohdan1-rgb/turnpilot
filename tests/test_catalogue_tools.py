@@ -137,6 +137,53 @@ N123G2-0300-0002-CM
 """
 
 
+INSERT_PAGE = """A 53
+Inserts
+GENERAL TURNING
+T-Max® P insert for turning
+C-style insert (Rhombic 80°)
+LE
+S
+RE
+BS
+ISO CODE
+1125
+2015
+Finishing
+WF
+09
+8.9
+3.18
+0.79
+0.7
+CNMG 09 03 08-WF
+★
+MM
+12
+12.1
+4.76
+0.79
+CNMG 12 04 08-MM
+✩
+★
+11.7
+4.76
+1.19
+CNMG 12 04 12-MM
+★
+11.3
+4.76
+0.80
+CNMG 12 04 16-MM
+✩
+9.3
+3.97
+0.40
+CCMT 09 T3 04-MM
+★
+"""
+
+
 def docs(*pages):
     return [(1, "Test catalogue", {"texts": list(pages), "labels": [""] * len(pages)})]
 
@@ -200,6 +247,22 @@ def test_grooving_inserts_from_their_seat_letter():
     assert [f.code for f in fit] == ["L123E2-0200-0502-CM", "N123E2-0200-0002-CM"]
 
 
+def test_turning_inserts_check_s_and_re_against_the_code():
+    found, why = ct.read_page(INSERT_PAGE, 53, "T")
+    assert [f.code for f in found] == ["CNMG 09 03 08-WF", "CNMG 12 04 08-MM", "CNMG 12 04 12-MM", "CCMT 09 T3 04-MM"]
+    assert why == ["CNMG 12 04 16-MM: the row does not check (S and RE against the code)"]  # RE 0.80 is not 16
+    assert found[0].values == {"nose_radius": 0.79, "thickness": 3.18, "edge_length": 8.9, "wiper": 0.7}
+    assert found[1].values == {"nose_radius": 0.79, "thickness": 4.76, "edge_length": 12.1}
+    assert found[1].sources["nose_radius"] == "RE 0.79 (12.1 4.76 0.79 CNMG 12 04 08-MM)"
+    assert found[3].values["thickness"] == 3.97  # T3
+    fit, _ = ct.turning_inserts(docs(INSERT_PAGE), 0.8, "CNMG-MM")
+    assert [f.code for f in fit] == ["CNMG 12 04 08-MM"]
+    fit, _ = ct.turning_inserts(docs(INSERT_PAGE), 0.8, "")
+    assert [f.code for f in fit] == ["CNMG 09 03 08-WF", "CNMG 12 04 08-MM"]
+    fit, _ = ct.turning_inserts(docs(INSERT_PAGE), 0.4, "-MM")
+    assert [f.code for f in fit] == ["CCMT 09 T3 04-MM"]
+
+
 def test_no_table_no_tools():
     assert ct.read_page("A 1\nSome text without a table\n860.1-2000-055A1-PM", 1, "T") == ([], [])
 
@@ -217,12 +280,12 @@ from turnpilot.models import CatalogueDocument, Tool, db  # noqa: E402
 @pytest.fixture
 def catalogue(app):
     document = CatalogueDocument(original_filename="srt.pdf", stored_filename="t.pdf", title="Test SRT", sha256="x" * 64,
-                                 size_bytes=1, pages=3, text_pages=3)
+                                 size_bytes=1, pages=4, text_pages=4)
     db.session.add(document)
     db.session.commit()
     path = services.catalogue_path(document, app.instance_path) + ".pages.json"
     with open(path, "w", encoding="utf-8") as f:
-        json.dump({"texts": [DRILL_PAGE, BAR_PAGE, GROOVE_PAGE], "labels": ["", "", ""]}, f)
+        json.dump({"texts": [DRILL_PAGE, BAR_PAGE, GROOVE_PAGE, INSERT_PAGE], "labels": ["", "", "", ""]}, f)
     services._CATALOGUE_TEXTS.clear()
     return document
 
@@ -295,6 +358,36 @@ def test_add_a_boring_bar_needs_its_insert(client, catalogue):
     assert (bar.min_bore_diameter, bar.entering_angle_deg, bar.max_depth, bar.insert_code) == (20, 95, 50,
                                                                                                "CCMT09T304-PF")
     assert bar.min_bore_source.startswith("Test SRT, A99 (PDF 2), DMIN1 20.0")
+
+
+def test_add_a_turning_insert_with_its_grade(client, catalogue):
+    from datetime import datetime, timezone
+
+    from turnpilot.models import CuttingDataRow, Job, Material
+    page = client.get("/catalogue-tools?kind=turning&a=0.8&code=CNMG-MM").get_data(as_text=True)
+    assert "CNMG 12 04 08-MM" in page and "CNMG 12 04 12-MM" not in page and "Test SRT, A53 (PDF 4)" in page
+    steel = db.session.execute(db.select(Material).filter_by(name="AISI 304")).scalar_one()
+    job = Job(name="J", material=steel, quantity=1, blank_diameter=40, blank_length=60)
+    db.session.add_all([job, CuttingDataRow(kind="geometry", catalogue="TT", insert_code="CNMG120408-MM",
+                                            material_group="M", ap_min=0.5, ap_rec=3, ap_max=5.7, f_min=0.1,
+                                            f_rec=0.25, f_max=0.45, page="A283", origin="page_text",
+                                            status="confirmed", confirmed_at=datetime.now(timezone.utc))])
+    db.session.commit()
+    url = f"/catalogue-tools/add?document={catalogue.id}&page=4&code=CNMG 12 04 08-MM&job={job.id}"
+    page = client.get(url).get_data(as_text=True)
+    assert "From the confirmed catalogue rows for M1.0: ap / f TT A283" in page
+    assert 'name="ap_rec" type="number" step="any" min="0" value="3.0"' in page
+    assert "the page marks the recommended grades" in page and 'name="grade"' in page
+    form = {"name": "Rough turning CNMG MM (M)", "added_by": "Bohdan", "type": "turning_rough", "iso_group": ["M"],
+            "vc_min": "135", "vc_max": "265", "f_min": "0.1", "f_max": "0.45", "ap_min": "0.5", "ap_max": "5.7",
+            "ap_rec": "3", "f_rec": "0.25", "source": "M1.0, confirmed catalogue rows: ap / f TT A283"}
+    client.post(url, data=form)  # no grade
+    assert db.session.execute(db.select(Tool).filter_by(insert_code="CNMG120408-MM")).scalar() is None
+    client.post(url, data={**form, "grade": "GC2015", "vc_points": "0.2:290, 0.4:240, 0.6:190"})
+    tool = db.session.execute(db.select(Tool).filter_by(insert_code="CNMG120408-MM")).scalar_one()
+    assert (tool.type, tool.iso_group, tool.grade, tool.nose_radius, tool.ap_rec, tool.f_rec, tool.vc_points) == (
+        "turning_rough", "M", "GC2015", 0.79, 3, 0.25, "0.2:290, 0.4:240, 0.6:190")
+    assert json.loads(tool.catalogue_ref)["sources"]["nose_radius"] == "RE 0.79 (12.1 4.76 0.79 CNMG 12 04 08-MM)"
 
 
 def test_a_code_not_on_its_page(client, catalogue):
