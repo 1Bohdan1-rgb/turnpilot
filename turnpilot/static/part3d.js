@@ -10,6 +10,8 @@
 // A state with a hole ("inner", from the simulation) is a ring: its cross-section runs along the outer profile to the
 // jaws and back along the hole. "Half section" shows the far half only, cut through the axis, with the section's face.
 
+import { loadThree, sharedRenderer } from "./webgl.js";
+
 const SEGMENTS = 48;  // around the axis
 const CLASSES = ["current", "done", "bar"];  // a face between two classes takes the first
 
@@ -113,19 +115,8 @@ function colours(el) {
           next: get("--p3d-next", "#e8892b"), final: get("--p3d-final", "#2f5fd0"), bg: get("--p3d-bg", "#f3f5f8")};
 }
 
-let three = null;
-async function load() {
-  if (!three) three = Promise.all([import("three"), import("/static/vendor/three/OrbitControls.js")]);
-  return three;
-}
-
-// One WebGL renderer for the page (a browser allows only a few contexts): every view renders with it and copies the
-// picture into its own 2D canvas.
-let shared = null;
-function sharedRenderer(THREE) {
-  if (!shared) shared = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
-  return shared;
-}
+// one WebGL renderer for the page, shared with the shop's 3D view (static/webgl.js)
+const load = loadThree;
 const views = new Set();
 
 // the camera at the part's size: the whole part (from the end face to the jaws, the bar's Ø) in the view

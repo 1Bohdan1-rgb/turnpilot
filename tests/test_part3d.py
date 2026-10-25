@@ -83,8 +83,9 @@ def test_one_webgl_renderer_per_page_and_the_camera_at_the_part():
     """Every view renders with the page's one WebGL renderer (copied into its own canvas); the camera is set to the
     part's length and Ø, and the Fit button puts it there again."""
     source = (Path(__file__).parent.parent / "turnpilot" / "static" / "part3d.js").read_text(encoding="utf-8")
-    assert source.count("new THREE.WebGLRenderer(") == 1
-    assert "if (!shared) shared = new THREE.WebGLRenderer(" in source
+    shared = (Path(__file__).parent.parent / "turnpilot" / "static" / "webgl.js").read_text(encoding="utf-8")
+    assert shared.count("new THREE.WebGLRenderer(") == 1 and "new THREE.WebGLRenderer(" not in source
+    assert "if (!shared) shared = new THREE.WebGLRenderer(" in shared and "sharedRenderer(THREE)" in source
     assert "ctx.drawImage(renderer.domElement, 0, 0)" in source
     assert "function fitCamera(camera, controls, span, radius)" in source
     assert 'fit.textContent = t("Fit")' in source and "fitCamera(camera, controls, span, bar); render();" in source
@@ -95,3 +96,11 @@ def test_the_shop_card_shows_the_part_without_the_panel(client):
     assert "part3d: id => `/orders/${id}/part3d.json`" in page
     assert 'class="part3d sf-part3d" data-src="${URLS.part3d(o.id)}" data-mode="order"' in page
     assert 'window.turnpilotPart3d.mountAll(document.getElementById("sf-card"))' in page
+
+
+def test_one_renderer_for_the_page():
+    static = Path(__file__).parent.parent / "turnpilot" / "static"
+    shared = (static / "webgl.js").read_text(encoding="utf-8")
+    assert "new THREE.WebGLRenderer" in shared and "export function sharedRenderer" in shared
+    part = (static / "part3d.js").read_text(encoding="utf-8")
+    assert 'from "./webgl.js"' in part and "new THREE.WebGLRenderer" not in part
