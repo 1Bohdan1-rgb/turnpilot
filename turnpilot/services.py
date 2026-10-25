@@ -1428,11 +1428,12 @@ class StickoutError(ValueError):
     pass
 
 
-def stickout_hint(job, machine):
+def stickout_hint(job, machine, face_stock=None):
     """The stick-out from the drawing, measured from the jaws to the raw end face: the part's length (its turned
     sections) + the stock beyond Z0 + the parting insert's width + max(the machine's margin, the safety distance to
     the jaws), so the parting insert is never nearer the jaws than the safety distance. All of them the operator's
-    values; never filled in by itself: the operator takes it. Returns {"value", "length", "face_stock", "parting",
+    values; never filled in by itself: the operator takes it. `face_stock`: the stock to count instead of the job's (the
+    decisions screen, before the stock is written). Returns {"value", "length", "face_stock", "parting",
     "margin", "safety", "clearance", "from_safety"} or {"missing": [what is not known, in words]}."""
     missing = []
     length = sum(f.length or 0 for f in job.active_features if f.type in PROFILE_TYPES)
@@ -1447,7 +1448,7 @@ def stickout_hint(job, machine):
         parting = widths[0] if widths else None
     if parting is None:
         missing.append("the parting insert's width (no parting tool with a width in the job's turret)")
-    face_stock = job.face_stock_mm
+    face_stock = job.face_stock_mm if face_stock is None else face_stock
     if face_stock is None:
         missing.append("the stock beyond Z0 to face off (the job's G-code set-up)")
     margin = machine.stickout_margin_mm
