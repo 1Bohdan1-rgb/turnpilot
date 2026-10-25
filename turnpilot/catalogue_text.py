@@ -240,6 +240,7 @@ def drill_geometry(text: str) -> str | None:
 # --- a continuation page: the cells of the table whose rows are named on the page before ------------------------------
 
 TOUGHNESS = "TOUGHNESS >>>>"
+DIAMETERS = "Drill diameter, mm"
 FEED_CELL = re.compile(r"^\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)+$")
 LOOK_BACK = 3  # pages back to the page that names the continued table's rows
 
@@ -267,7 +268,8 @@ def table_sections(text: str) -> list[list[str | None]]:
 
 def continuation_blocks(text: str) -> list[dict]:
     """The blocks of a page that continues a table without naming its rows: grade columns ("TOUGHNESS >>>>", the
-    grades, a feed per grade, then the cells row by row)."""
+    grades, a feed per grade, then the cells row by row) or drill diameters ("Drill diameter, mm", the diameters,
+    then the feeds row by row)."""
     lines = _lines(text)
     blocks = []
     for i, line in enumerate(lines):
@@ -285,6 +287,19 @@ def continuation_blocks(text: str) -> list[dict]:
                 cells.append(lines[j])
                 j += 1
             blocks.append({"kind": "grades", "columns": grades, "feeds": feeds, "cells": cells})
+        elif line == DIAMETERS:
+            j, diameters = i + 1, []
+            while j < len(lines) and re.fullmatch(r"\d+(?:\.\d+)?", lines[j]):
+                diameters.append(float(lines[j]))
+                j += 1
+            while j < len(lines) and not CELL.match(lines[j]):  # "Feed (fn), mm/r", "(min-start-max)"
+                j += 1
+            cells = []
+            while j < len(lines) and CELL.match(lines[j]) and "-" in lines[j]:
+                cells.append(lines[j])
+                j += 1
+            if diameters and cells:
+                blocks.append({"kind": "diameters", "columns": diameters, "cells": cells})
     return blocks
 
 
@@ -308,7 +323,8 @@ def named_page(texts: list[str], n: int) -> int | None:
 def continuation_rows(texts, n: int, group: str, mc: str, codes) -> tuple[list[dict], list[dict]]:
     """(rows, not taken) of the material's row `mc` on continuation page n. A block is the section of the named page
     whose rows x columns are its cell count (only one may fit); the row is the material's place in that section. Every
-    row says the page names no rows."""
+    row says the page names no rows. Drill feeds: the codes asked for whose geometry the page names, the column of the
+    code's diameter (no other diameter is taken)."""
     text, rows, not_taken = texts[n - 1], [], []
     named = named_page(texts, n)
     if named is None:
@@ -319,6 +335,7 @@ def continuation_rows(texts, n: int, group: str, mc: str, codes) -> tuple[list[d
     named_text = texts[named - 1]
     coolant = True if any("valid for use with cutting fluid" in t or "coolant supply" in t
                           for t in (text, named_text)) else None
+    geometries = set(re.findall(r"CoroDrill®\s*\d{3}-([A-Z]{2})", text))
     blocks, found = continuation_blocks(text), False
     for b, block in enumerate(blocks, start=1):
         width = len(block["columns"])
@@ -336,18 +353,38 @@ def continuation_rows(texts, n: int, group: str, mc: str, codes) -> tuple[list[d
         cells = block["cells"][k * width:(k + 1) * width]
         said = (f"row {k + 1} of the table on {named_label} ({mc}): {label} names no rows, the row is taken by its "
                 f"place")
-        for grade, feed, cell in zip(block["columns"], block["feeds"], cells):
-            if cell == "-":
+        if block["kind"] == "grades":
+            for grade, feed, cell in zip(block["columns"], block["feeds"], cells):
+                if cell == "-":
+                    continue
+                values = _vc_points(feed, cell)
+                if values is None:
+                    not_taken.append({"code": f"{mc} {grade}", "pdf_page": n, "quote": cell,
+                                      "reason": "no Vc that checks: not taken"})
+                    continue
+                for app in apps:
+                    rows.append(dict(kind="grade_vc", grade=grade, application=app, material_group=group,
+                                     coolant=coolant, page=label, pdf_page=n, quote=f"{grade} {feed} {cell}",
+                                     checks=[said], **values))
+            continue
+        for code in codes:
+            m = DRILL_CODE.search(_squeeze(code))
+            if not m or m.group(5) not in geometries:
                 continue
-            values = _vc_points(feed, cell)
-            if values is None:
-                not_taken.append({"code": f"{mc} {grade}", "pdf_page": n, "quote": cell,
-                                  "reason": "no Vc that checks: not taken"})
+            diameter = int(m.group(2)) / 100
+            col = next((i for i, d in enumerate(block["columns"]) if abs(d - diameter) < 1e-6), None)
+            if col is None:
+                not_taken.append({"code": m.group(0), "pdf_page": n, "quote": "", "reason": f"Ø{diameter:g} is not a "
+                                  f"column of the table on {label} (no other Ø is taken): not taken"})
                 continue
-            for app in apps:
-                rows.append(dict(kind="grade_vc", grade=grade, application=app, material_group=group,
-                                 coolant=coolant, page=label, pdf_page=n, quote=f"{grade} {feed} {cell}",
-                                 checks=[said], **values))
+            feed = _numbers(cells[col])
+            if len(feed) != 3 or not _ordered(feed):
+                not_taken.append({"code": m.group(0), "pdf_page": n, "quote": cells[col],
+                                  "reason": "not min-start-max in order: not taken"})
+                continue
+            rows.append(dict(kind="geometry", insert_code=m.group(0), material_group=group, f_min=feed[0],
+                             f_rec=feed[1], f_max=feed[2], page=label, pdf_page=n,
+                             quote=f"Ø{block['columns'][col]:g}: {cells[col]}", checks=[said]))
     if not found and any(mc in s for s in sections):
         not_taken.append({"code": mc, "pdf_page": n, "quote": "", "reason": f"no block of {label} has as many cells "
                           f"as the section of {mc} on {named_label} (rows × columns): not taken"})

@@ -274,6 +274,30 @@ GC2035
 -
 95-70-50"""
 
+# SRT B81: the feeds by drill Ø for B80's rows (one metric row here), then the inch table
+DRILLING_ON = """B 81
+Cutting data
+DRILLING
+CoroDrill® 860-MM
+Internal coolant supply
+Metric values
+Inch values
+Drill diameter, mm
+6
+8
+Feed (fn), mm/r
+(min-start-max)
+0.088-0.110-0.132
+0.096-0.120-0.144
+Drill diameter, inch
+.2362
+.315
+Feed (fn), inch/r
+(min-start-max)
+.0035-.0043-.0052
+.0038-.0047-.0057"""
+
+
 def test_a_continuation_is_read_with_the_page_it_continues():
     rows, not_taken, also = ct.read([TURNING, TURNING_ON], [1], "M1.0", "", MATERIALS, "TT")
     assert also == [(2, 1)] and not not_taken
@@ -307,6 +331,21 @@ def test_a_continuation_that_fits_two_sections_is_not_taken():
     rows, not_taken, _ = ct.read([page, TURNING_ON], [1], "M1.0", "", MATERIALS, "TT")
     assert [r for r in rows if r["pdf_page"] == 2] == []
     assert not_taken[0]["reason"] == "6 cells in 2 columns fit 2 sections of A278: not taken"
+
+
+def test_drill_feeds_by_the_code_diameter_from_a_continuation():
+    texts = [DRILLING, DRILLING_ON, PRODUCT]
+    codes = "860.1-0600-018A1-MM\n860.1-1000-030A1-MM\n860.1-0600-016A0-GM"
+    rows, not_taken, also = ct.read(texts, [1], "M1.0", codes, MATERIALS, "SRT", others=[("TT", [TURNING])])
+    assert also == [(2, 1)]
+    (feed,) = [r for r in rows if r["pdf_page"] == 2]
+    assert (feed["kind"], feed["insert_code"], feed["material_group"], feed["f_min"], feed["f_rec"], feed["f_max"]) == (
+        "geometry", "860.1-0600-018A1-MM", "M1.0", 0.088, 0.11, 0.132)
+    assert feed["quote"] == "Ø6: 0.088-0.110-0.132" and feed["page"] == "B81"
+    assert feed["checks"] == ["row 1 of the table on B80 (M1.0.Z.AQ): B81 names no rows, the row is taken by its place"]
+    # Ø10 is not a column (no other Ø is taken); the GM drill is not this page's geometry: not read here
+    assert [(x["code"], x["reason"]) for x in not_taken] == [
+        ("860.1-1000-030A1-MM", "Ø10 is not a column of the table on B81 (no other Ø is taken): not taken")]
 
 
 def test_the_page_says_what_continuation_was_read_too(app, client):
