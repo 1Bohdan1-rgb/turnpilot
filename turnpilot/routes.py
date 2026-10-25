@@ -1007,6 +1007,43 @@ def job_detail(job_id):
                                                       .order_by(Tool.name)).scalars().all())
 
 
+@bp.route("/jobs/<int:job_id>/decisions", methods=["GET", "POST"])
+def job_decisions(job_id):
+    """Every decision the G-code needs, on one screen, confirmed at once with the operator's name."""
+    from . import decisions
+
+    job = db.get_or_404(Job, job_id)
+    machine = services.job_machine(job)
+    done = None
+    if request.method == "POST":
+        try:
+            applied = decisions.apply_decisions(job, request.form, request.form.get("decided_by"))
+        except (decisions.DecisionError, services.DepthError, services.SkipError, services.StickoutError,
+                services.TurretChangeError) as e:
+            db.session.rollback()
+            flash(str(e), "error")
+            d = decisions.operator_decisions(job)
+            return render_template("job_decisions.html", job=job, machine=machine, d=d, form=request.form,
+                                   applied_done=None, next_step=services.next_step(job),
+                                   bore_open_ends=services.BORE_OPEN_ENDS, bore_bottoms=services.BORE_BOTTOMS)
+        if applied.record is not None:
+            flash(_("Decisions confirmed by {name}: {done}. Program {n} made: look at its simulation.",
+                    name=request.form.get("decided_by", "").strip(), done="; ".join(applied.done), n=applied.record.id))
+            return redirect(url_for("main.gcode_program", program_id=applied.record.id))
+        flash(_("Stopped: {why}", why=applied.stopped), "error")
+        done = applied.done
+    elif not job.current_operations or job.calculated_machine_id not in (None, machine.id)             or job.tools_changed_since_calculation:
+        services.calculate_operations(job, machine)  # as the Calculate button: the set-up and operations to confirm
+        flash(_("Calculated on opening this screen (version {n}).", n=job.last_calculation_version))
+    d = decisions.operator_decisions(job)
+    form = decisions.proposal_form(d)
+    if request.method == "POST":
+        form["decided_by"] = request.form.get("decided_by", "")
+    return render_template("job_decisions.html", job=job, machine=machine, d=d, form=form, applied_done=done,
+                           next_step=services.next_step(job), bore_open_ends=services.BORE_OPEN_ENDS,
+                           bore_bottoms=services.BORE_BOTTOMS)
+
+
 @bp.route("/jobs/<int:job_id>/machine", methods=["POST"])
 def set_job_machine(job_id):
     """The machine the job is planned for; its calculation and programs made for another machine are kept, marked."""

@@ -18,6 +18,7 @@ An arc's or fillet's shape and a bore's place are proposed only from the DXF (th
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from flask import current_app
@@ -28,6 +29,7 @@ MACHINE_BLOCKERS = ("the machine's max spindle speed", "programming values not s
 CENTRING_SKIP_NOTE = ("no centre drill in the catalogues of the library (Sandvik TT / SRT 2020); the 860 drills are "
                       "self-centring (140°): the operator's decision for jobs/8, 2026-10-16")
 CONVENTION_FULL_DIAMETER = "a depth on a drawing is the full Ø's (the drafting convention)"
+BORE_END = "the blind bore opens at this end face: it is drilled and bored from Z0"
 CHUCK_ASSUMPTION = "the end opposite the largest Ø: the chuck holds the largest Ø (an assumption, as the planner's)"
 FACE_STOCK_PLACEHOLDER = ("the facing allowance the suggested blank is made with (BLANK_FACING_ALLOWANCE_MM, "
                           "a placeholder)")
@@ -109,6 +111,8 @@ def _arcs(job) -> list[Decision]:
         options = [("dimension", f"R{dimension:g} (the dimension)"), ("drawn", f"R{geometry:g} (the geometry)")]
         d = Decision(f"arc-{f.id}", "arc_radius", f"{_feature_title(f)}: radius", options, feature_id=f.id)
         top = services.arc_top(job, f, dimension)
+        if top and not job.free_end:  # its Z are counted from the wrong end until Z0 is chosen: the diameters only
+            top = re.sub(r" at Z-?[\d.]+", "", top)
         if decided is not None:
             d.value = decided.source if decided.source in ("dimension", "drawn") else None
             d.decided = _who(decided.decided_by, decided.decided_at)
@@ -188,6 +192,10 @@ def _setup(job, machine) -> list[Decision]:
         free.value, free.source = job.free_end, "the job's set-up"
     elif (suggested := services.suggest_free_end(job)) is not None:
         free.value, free.why, free.source = suggested, CHUCK_ASSUMPTION, "assumption (placeholder)"
+    elif len(ends := {f.bore_open_end for f in job.active_features if f.type == "bore" and f.bore_open_end
+                      and f.bore_bottom != "through"}) == 1:
+        free.value, free.source = ends.pop(), "the drawing's bore"
+        free.why = BORE_END
     else:
         free.why = "the largest Ø is not at one end, or the order of the sections is not known"
     stock = Decision("face_stock", "face_stock", "Stock beyond Z0 to face off, mm")

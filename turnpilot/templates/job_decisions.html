@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Operator's decisions") }} · {{ job.name }}{% endblock %}
+{% block content %}
+<h1>{{ _("Operator's decisions") }}: {{ job.name }}</h1>
+<p class="muted small">{{ _("Everything the G-code needs from you, on one screen. The program's proposal is chosen already, with why and where it comes from; what it cannot propose without inventing a number is empty and marked. Nothing is written until you confirm all of it, with your name.") }}
+  <a href="{{ url_for('main.job_detail', job_id=job.id) }}">{{ _("The job page") }}</a> · {{ _("machine") }} {{ machine.name }}</p>
+{% if applied_done %}<div class="card small"><strong>{{ _("Written:") }}</strong> {{ applied_done|join("; ") }}</div>{% endif %}
+
+<form method="post" class="decisions" id="decisions">
+  <div class="card decisions-who">
+    <label>{{ _("Who decides") }} <input name="decided_by" id="decided-by" maxlength="100" required autocomplete="off"
+      placeholder="{{ _("operator's name (required)") }}" value="{{ form.get('decided_by', '') }}"></label>
+    <span class="small muted">{{ _("Typed once: kept in this tab, as on the shop plan; never filled in by itself.") }}</span>
+  </div>
+
+  {% macro item(x) %}
+  <fieldset class="card decision{% if x.required and x.empty %} decision-empty{% endif %}" data-required="{{ 1 if x.required else 0 }}">
+    <legend>{{ x.title|tr }}</legend>
+    {% if x.kind == "bore_position" %}
+      <label>{{ _("Open end face") }} <select name="{{ x.key }}-open_end"><option value="">…</option>
+        {% for v, t in bore_open_ends.items() %}<option value="{{ v }}" {% if form.get(x.key ~ '-open_end') == v %}selected{% endif %}>{{ t|tr }}</option>{% endfor %}</select></label>
+      <label>{{ _("From the face, mm") }} <input name="{{ x.key }}-from_mm" type="number" step="any" min="0" value="{{ form.get(x.key ~ '-from_mm', '') }}"></label>
+      <label>{{ _("Bottom") }} <select name="{{ x.key }}-bottom"><option value="">…</option>
+        {% for v, t in bore_bottoms.items() %}<option value="{{ v }}" {% if form.get(x.key ~ '-bottom') == v %}selected{% endif %}>{{ t|tr }}</option>{% endfor %}</select></label>
+    {% elif x.options %}
+      {% for v, t in x.options %}<label class="inline"><input type="radio" name="{{ x.key }}" value="{{ v }}" {% if form.get(x.key)|string == v|string %}checked{% endif %}> {{ t|tr }}</label>{% endfor %}
+    {% else %}
+      <input name="{{ x.key }}" type="number" step="any" min="0" value="{{ form.get(x.key, '') if form.get(x.key) is not none else '' }}" aria-label="{{ x.title|tr }}">
+    {% endif %}
+    <div class="small">
+      {% if x.decided %}<span class="badge badge-approved">{{ _("decided") }}: {{ x.decided }}</span>{% endif %}
+      {% if x.required and x.empty %}<span class="warning">{{ _("not proposed: yours to fill in") }}</span>{% endif %}
+      {% if x.source and x.source != "—" %}<span class="muted">{{ _("Source") }}: {{ x.source|tr }}.</span>{% endif %}
+      {% if x.why %}<span>{{ x.why|tr }}</span>{% endif %}
+      {% for n in x.notes %}<div class="warning">{{ n|gen }}</div>{% endfor %}
+    </div>
+  </fieldset>
+  {% endmacro %}
+
+  {% if d.drawing %}<h2>{{ _("From the drawing") }}</h2>{% for x in d.drawing %}{{ item(x) }}{% endfor %}{% endif %}
+
+  <h2>{{ _("Clamping and Z0") }}</h2>
+  {% for x in d.setup %}{{ item(x) }}{% endfor %}
+
+  {% if not d.calculated %}
+  <p class="card small">{{ _("The job is not calculated yet: the confirmation calculates it, then the turret set-up and the operations are shown here to confirm.") }}</p>
+  {% else %}
+  <h2>{{ _("Turret set-up") }}</h2>
+  <div class="card">
+    {% if d.turret and d.turret.rows %}
+      <table><thead><tr><th>{{ _("Pos.") }}</th><th>{{ _("Take out") }}</th><th>{{ _("Put in") }}</th><th>{{ _("Why") }}</th></tr></thead><tbody>
+      {% for r in d.turret.rows %}<tr><td><strong>T{{ r.position }}</strong></td><td>{{ r.remove.name if r.remove else _("— empty —") }}</td>
+        <td><strong>{{ r.install.name }}</strong> <span class="small muted">{{ r.install.insert_code or "" }} {{ r.install.grade or "" }}</span></td>
+        <td class="small">{{ r.reasons|join("; ") }}</td></tr>{% endfor %}
+      </tbody></table>
+      <label class="inline"><input type="checkbox" name="setup_accept" value="1" {% if form.get('setup_accept') %}checked{% endif %}> {{ _("Accept this set-up (the library's tools with confirmed catalogue data)") }}</label>
+      <input type="hidden" name="setup_signature" value="{{ d.signature }}">
+    {% else %}<p class="small">{{ _("The turret has what the job needs: nothing to change.") }}</p>{% endif %}
+    {% if d.turret and d.turret.missing %}<div class="warning small"><strong>{{ _("The library cannot give:") }}</strong><ul>{% for m in d.turret.missing %}<li>{{ m }}</li>{% endfor %}</ul></div>{% endif %}
+  </div>
+
+  <h2>{{ _("Operations") }}</h2>
+  <input type="hidden" name="ops_shown" value="{{ d.operations|map(attribute='key')|join(',') }}">
+  <table class="card ops decisions-ops">
+    <thead><tr><th>#</th><th>{{ _("Operation") }}</th><th>{{ _("Tool") }}</th><th>Vc · f · ap</th><th>{{ _("Approve") }}</th></tr></thead>
+    <tbody>
+    {% for r in d.operations %}{% set op = r.op %}
+      <tr class="{{ 'has-warning' if op.warning }}">
+        <td>{{ op.sequence }}</td>
+        <td>{{ op.tool_type|label }} · {{ op.rough_finish|label }}{% if op.warning %}<div class="warning small">{{ op.warning }}</div>{% endif %}</td>
+        <td>{{ ("T" ~ op.turret_position ~ " " ~ op.tool.name) if op.tool else _("no tool") }}</td>
+        <td class="small">{% if op.vc %}{{ op.vc|round(1) }} · {{ op.f }} · {{ op.ap if op.ap is not none else "—" }}{% endif %}</td>
+        <td>{% if op.status == "skipped" %}<span class="badge">{{ _("skipped by {name}", name=op.skipped_by) }}</span>
+          {% elif op.tool %}<input type="checkbox" name="approve-{{ r.key }}" value="1" aria-label="{{ _("Approve") }} {{ op.sequence }}" {% if form.get('approve-' ~ r.key) %}checked{% endif %}>
+          {% else %}<label class="inline small"><input type="checkbox" name="skip-{{ r.key }}" value="1" {% if form.get('skip-' ~ r.key) %}checked{% endif %}> {{ _("skip") }}</label>
+            <input name="skipnote-{{ r.key }}" maxlength="200" class="small" placeholder="{{ _("why (required)") }}" value="{{ form.get('skipnote-' ~ r.key, '') }}">
+            {% if r.skip_note %}<div class="small muted">{{ _("Proposed: skip") }} — {{ r.skip_note }}</div>{% else %}<div class="warning small">{{ _("No tool: set up the turret or skip it with a reason") }}</div>{% endif %}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if d.left_out %}<div class="card small"><strong>{{ _("Left out of the program (not by you):") }}</strong><ul>{% for op, why in d.left_out %}<li>{{ op.sequence }} {{ op.tool_type|label }}: {{ why|gen }}</li>{% endfor %}</ul></div>{% endif %}
+  {% endif %}
+
+  {% if d.machine %}
+  <h2>{{ _("The machine's and the tools' data (for every job)") }}</h2>
+  <div class="card warning small"><ul>{% for b in d.machine %}<li>{{ b|gen }}</li>{% endfor %}</ul>
+    <a href="{{ url_for('main.machine', machine_id=machine.id) }}">{{ _("Machine page") }}</a></div>
+  {% endif %}
+
+  <div class="actions decisions-actions">
+    <button type="submit" class="primary touch" id="confirm-all">{{ _("Confirm all and make the program") }}</button>
+    <span class="small muted" id="confirm-why"></span>
+  </div>
+</form>
+<script>
+(function () {
+  const form = document.getElementById("decisions"), who = document.getElementById("decided-by");
+  const button = document.getElementById("confirm-all"), why = document.getElementById("confirm-why");
+  try { if (!who.value) who.value = sessionStorage.getItem("sf-changer") || ""; } catch (e) {}
+  function filled(fs) {
+    const inputs = [...fs.querySelectorAll("input, select")];
+    const radios = inputs.filter(i => i.type === "radio");
+    if (radios.length) return radios.some(i => i.checked);
+    return inputs.every(i => i.value.trim() !== "");
+  }
+  function check() {
+    const empty = [...form.querySelectorAll("fieldset.decision[data-required='1']")].filter(fs => !filled(fs));
+    empty.forEach(fs => fs.classList.add("decision-empty"));
+    form.querySelectorAll("fieldset.decision").forEach(fs => { if (filled(fs)) fs.classList.remove("decision-empty"); });
+    const ok = who.value.trim() && !empty.length;
+    button.disabled = !ok;
+    why.textContent = ok ? "" : (!who.value.trim() ? t("Type who decides") : t("{n} not decided yet", {n: empty.length}));
+  }
+  who.addEventListener("input", () => { try { sessionStorage.setItem("sf-changer", who.value.trim()); } catch (e) {} });
+  form.addEventListener("input", check); form.addEventListener("change", check); check();
+})();
+</script>
+{% endblock %}

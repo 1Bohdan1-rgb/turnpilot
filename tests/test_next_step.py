@@ -30,9 +30,9 @@ def test_calculate_then_approve_then_gcode_then_ready_then_order(client):
             op.status = "approved"
     db.session.commit()
     step = services.next_step(job)
-    assert step.key == "generate" and step.post and step.endpoint == "main.job_gcode"
+    assert step.key == "generate" and not step.post and step.endpoint == "main.job_decisions"  # the decisions screen
     page = client.get(f"/jobs/{job.id}/operations").get_data(as_text=True)
-    assert f'<form method="post" action="/jobs/{job.id}/gcode" class="next-step-form">' in page
+    assert f'href="/jobs/{job.id}/decisions">Generate the G-code →</a>' in page
     _, record = services.generate_gcode(job, machine)
     step = services.next_step(job)
     assert step.key in ("ready", "installed", "fix") and step.args == {"program_id": record.id}
@@ -52,7 +52,7 @@ def test_a_new_calculation_is_asked_for_after_the_tools_changed(client):
     db.session.commit()
     if job.tools_changed_since_calculation:
         step = services.next_step(job)
-        assert step.key == "calculate" and step.post
+        assert step.key == "calculate" and step.endpoint == "main.job_decisions"
 
 
 def test_the_step_in_ukrainian(app):

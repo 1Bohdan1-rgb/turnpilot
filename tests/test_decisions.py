@@ -175,3 +175,37 @@ def test_the_centring_is_skipped_with_its_reason_and_the_depth_decided(app):
                                                                             decisions.CENTRING_SKIP_NOTE)
     assert bore.depth_decided_by == "Bohdan" and bore.depth_mode in ("full_diameter", "tip")
     assert result.done[-1].endswith("1 skipped")
+
+
+# --- the screen ----------------------------------------------------------------------------------------------------
+
+def test_the_screen_shows_the_proposals_and_confirms_all(app, client):
+    machine = ready_machine()
+    job = open_job(machine)
+    assert services.next_step(job).endpoint == "main.job_decisions"
+    page = client.get(f"/jobs/{job.id}/decisions").get_data(as_text=True)
+    arc = next(f for f in job.features if f.type == "arc")
+    assert f'name="arc-{arc.id}" value="drawn" checked' in page and "keeps the profile under it" in page
+    from markupsafe import escape
+    assert 'name="free_end" value="left" checked' in page and str(escape(decisions.CHUCK_ASSUMPTION)) in page
+    assert 'name="stickout" type="number" step="any" min="0" value="65.0"' in page
+    assert "Confirm all and make the program" in page and 'id="decided-by"' in page
+    form = decisions.proposal_form(decisions.operator_decisions(job))
+    response = client.post(f"/jobs/{job.id}/decisions", data=form, follow_redirects=True)
+    assert "The operator&#39;s name is required to confirm the decisions" in response.get_data(as_text=True)
+    assert arc.radius_decisions == []
+    response = client.post(f"/jobs/{job.id}/decisions", data={**form, "decided_by": "Bohdan"})
+    assert response.status_code == 302 and "/gcode/" in response.location
+    assert arc.radius_decisions[-1].decided_by == "Bohdan"
+
+
+def test_z0_at_the_end_a_blind_bore_opens_when_the_largest_diameter_does_not_tell(app):
+    """Завіса 36 bushing: one Ø along the part, so the largest Ø is not at one end; its blind bore opens at the right."""
+    ready_machine()
+    job = make_job([Feature(type="face"), Feature(type="od_turn", diameter=34.8, length=80),
+                    Feature(type="bore", diameter=22, length=32, bore_open_end="right", bore_from_mm=0,
+                            bore_bottom="drill_point"), Feature(type="parting")], blank=38, length=85, stickout=90)
+    job.free_end = None
+    db.session.commit()
+    free = decisions.operator_decisions(job).setup[0]
+    assert (free.value, free.source, free.why) == ("right", "the drawing's bore", decisions.BORE_END)

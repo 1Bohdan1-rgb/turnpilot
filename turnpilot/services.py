@@ -2594,23 +2594,24 @@ def next_step(job):
     if not job.active_features:
         return NextStep("features", "main.job_detail", to_job, "add-feature")
     ops = job.current_operations
+    decide = "main.job_decisions"  # the operator's decisions on one screen, up to the program
     if (not ops or job.calculated_machine_id not in (None, machine.id) or job.tools_changed_since_calculation):
-        return NextStep("calculate", "main.calculate", to_job, post=True)
+        return NextStep("calculate", decide, to_job)
     if turret_setup_proposal(job, machine).rows:
-        return NextStep("setup", "main.job_detail", to_job, "setup")
+        return NextStep("setup", decide, to_job)
     no_tool = [op for op in ops if op.tool_id is None and op.status != "skipped"]
     if no_tool:
-        return NextStep("no_tool", "main.operations", to_job, values={"n": no_tool[0].sequence})
+        return NextStep("no_tool", decide, to_job, values={"n": no_tool[0].sequence})
     pending = [op for op in ops if op.status not in ("approved", "skipped")]
     if pending:
-        return NextStep("approve", "main.operations", to_job, values={"n": len(pending)})
+        return NextStep("approve", decide, to_job, values={"n": len(pending)})
     record = latest_program(job, machine)
     if record is None or gcode_stale(record, machine):
         if gcode_readiness(job, machine).blockers:
-            return NextStep("blocked", "main.job_gcode", to_job)
+            return NextStep("blocked", decide, to_job)
         if record is None:
-            return NextStep("generate", "main.job_gcode", to_job, post=True)
-        return NextStep("regenerate", "main.job_gcode", to_job, values={"n": record.id}, post=True)
+            return NextStep("generate", decide, to_job)
+        return NextStep("regenerate", decide, to_job, values={"n": record.id})
     to_program = {"program_id": record.id}
     if record.status != "ready":
         sim = json.loads(record.simulation)

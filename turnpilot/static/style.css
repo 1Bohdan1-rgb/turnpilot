@@ -160,6 +160,12 @@ button.info { border: none; background: none; padding: 0 4px; color: var(--accen
   border-radius: 6px; background: var(--card); color: var(--text); box-shadow: 0 6px 24px rgba(0, 0, 0, .25);
   font-size: 13px; line-height: 1.5; }
 .note-pop .notes { margin-top: 6px; white-space: pre-line; }
+/* the operator's decisions on one screen */
+.decisions fieldset.decision { margin: 8px 0; }
+.decisions fieldset.decision legend { font-weight: 600; }
+.decisions fieldset.decision-empty { border: 2px solid var(--sf-warn); background: var(--warn-bg); }
+.decisions-who input { min-width: 16em; }
+.decisions-actions { position: sticky; bottom: 0; background: var(--sf-sheet); padding: 8px 0; }
 .warning { background: var(--warn-bg); color: var(--warn); padding: 4px 6px; border-radius: 4px; }
 tr.has-warning { background: color-mix(in srgb, var(--sf-warn) 7%, var(--sf-sheet)); }
 .row-actions { display: flex; gap: 6px; white-space: nowrap; }

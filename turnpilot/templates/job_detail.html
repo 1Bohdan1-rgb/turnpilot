@@ -9,6 +9,7 @@
   {% if job.extraction %}· {{ _("created from drawing") }} <a href="{{ url_for('main.extraction_file', extraction_id=job.extraction.id, which='original') }}" target="_blank">{{ job.extraction.original_filename }}</a>{% endif %}
 </p>
 {% include "_next_step.html" %}
+<p class="small"><a href="{{ url_for('main.job_decisions', job_id=job.id) }}">{{ _("Operator's decisions: everything up to the program on one screen") }}</a> · {{ _("the forms below are for changing one thing") }}</p>
 <form method="post" action="{{ url_for('main.set_job_machine', job_id=job.id) }}" class="inline-form">
   <label class="small">{{ _("Planned for the machine") }}
     <select name="machine_id" aria-label="{{ _("Machine") }}">{% for m in machines %}<option value="{{ m.id }}" {% if m.id == job_machine.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select></label>
