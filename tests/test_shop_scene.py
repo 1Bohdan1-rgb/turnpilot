@@ -96,3 +96,25 @@ def test_statuses_and_conflicts_are_the_2d_ones(app, client):
         assert (by_id[m["id"]]["status"], by_id[m["id"]]["alarm"], by_id[m["id"]]["conflicts"]) == (
             m["status"], m["alarm"], m["conflicts"])
     assert by_id[machine.id]["conflicts"] and by_id[machine.id]["height"] == 2100
+
+
+def test_the_shop_page_has_the_3d_view(app, client):
+    import json
+    from pathlib import Path
+
+    machine = lathe(ready_machine())
+    upload_plan(client)
+    place(client, machine, 9000, 6000)
+    page = client.get("/shop").get_data(as_text=True)
+    assert 'data-view="2d" aria-pressed="true"' in page and 'data-view="3d" aria-pressed="false"' in page
+    assert '<div class="sf-3d" id="sf-3d" data-scene="#sf-scene" hidden>' in page and "/static/shop3d.js" in page
+    start = page.index('<script type="application/json" id="sf-scene">') + len('<script type="application/json" id="sf-scene">')
+    scene = json.loads(page[start:page.index("</script>", start)])
+    assert [m["name"] for m in scene["machines"]] == [machine.name] and scene["conditional"]["machines"] == [machine.name]
+    assert "The walls' height is conditional (3000 mm): the plan gives none." in page
+    assert f"Conditional height by the type (*): {machine.name}" in page
+    script = (Path(__file__).parent.parent / "turnpilot" / "static" / "shop3d.js").read_text(encoding="utf-8")
+    assert 'from "./webgl.js"' in script and "new THREE.WebGLRenderer" not in script  # the page's one renderer
+    assert "castShadow" not in script and "shadowMap" not in script  # no shadows
+    assert "window.turnpilotShop.select(" in script  # a click: the 2D card
+    assert "window.turnpilotShop = {select:" in page

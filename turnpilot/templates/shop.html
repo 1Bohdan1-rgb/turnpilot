@@ -25,6 +25,10 @@
   <div>
     <div class="sf-planbox" id="sf-planbox">
     {% if plan %}
+      <div class="sf-view" role="group" aria-label="{{ _("2D plan or 3D view") }}">
+        <button type="button" class="sf-chip" data-view="2d" aria-pressed="true">2D</button>
+        <button type="button" class="sf-chip" data-view="3d" aria-pressed="false">3D</button>
+      </div>
       <div class="sf-zoom" role="group" aria-label="{{ _("Plan scale") }}">
         <button type="button" class="sf-chip" id="sf-zoom-in" aria-label="{{ _("Zoom in") }}">+</button>
         <button type="button" class="sf-chip" id="sf-zoom-out" aria-label="{{ _("Zoom out") }}">−</button>
@@ -37,6 +41,15 @@
         {{ svg }}
         <g id="sf-machines"></g>
       </svg>
+      <div class="sf-3d" id="sf-3d" data-scene="#sf-scene" hidden>
+        <div class="sf-3d-view" role="img" aria-label="{{ _("The shop in 3D: look only; places are changed in 2D") }}"></div>
+        <button type="button" class="sf-chip sf-3d-fit">{{ _("Fit") }}</button>
+        <p class="sf-3d-note">{{ _("3D: look only (turn: drag; zoom: the wheel or two fingers); places are changed in 2D.") }}
+          {% if scene.conditional.walls %}{{ _("The walls' height is conditional ({mm} mm): the plan gives none.", mm=scene.conditional.wall_height) }}{% endif %}
+          {% if scene.conditional.machines %}{{ _("Conditional height by the type (*): {names}; the Machine page takes the real one.", names=scene.conditional.machines|join(", ")) }}{% endif %}
+          {% if scene.conditional.openings %}{{ _("Doors and windows: panels on the walls, their height conditional.") }}{% endif %}</p>
+      </div>
+      <script type="application/json" id="sf-scene">{{ scene|tojson }}</script>
     {% else %}
       <p class="sf-empty">{{ _("No shop plan yet: upload its JSON file on the {link} (an example: {file}).", link=link(url_for('main.shop_plan_page'), _("plan page")), file=("<code>%s</code>"|safe) % "docs/shop_plan_example.json") }}</p>
     {% endif %}
@@ -175,6 +188,7 @@
       document.querySelectorAll(`[data-id="${m.id}"]`).forEach(e => e.classList.toggle("dim", !ok));
     });
     document.getElementById("sf-count").textContent = t("{n} of {total} shown", {n: n, total: M.length});
+    dispatchEvent(new CustomEvent("tp-shop-filter", {detail: shown()}));
   }
   document.getElementById("sf-q").addEventListener("input", apply);
   document.querySelectorAll(".sf-chip[data-s]").forEach(c => c.addEventListener("click", () => {
@@ -183,9 +197,19 @@
     apply();
   }));
 
+  function shown() {  // the machines the search and the status filter leave (the 3D view dims the others)
+    const q = document.getElementById("sf-q").value.trim().toLowerCase();
+    return new Set(M.filter(m => {
+      const hay = [m.name, m.kind_label, m.control, LABEL[m.status], m.status_label, m.order && m.order.job].join(" ").toLowerCase();
+      return (!q || hay.includes(q)) && (!filterS || m.status === filterS);
+    }).map(m => m.id));
+  }
+  window.turnpilotShop = {select: id => select(id), shown, selected: () => sel};
+
   // the card
   function select(id) {
     sel = id;
+    dispatchEvent(new CustomEvent("tp-shop-select", {detail: id}));
     const m = M.find(x => x.id === id);
     document.querySelectorAll("#sf-machines .m").forEach(e => e.classList.toggle("sel", Number(e.dataset.id) === id));
     const o = m.order, warn = [];
@@ -203,6 +227,7 @@
         <dt>${esc(t("Control"))}</dt><dd>${esc(m.control || t("not set"))}</dd>
         <dt>${esc(t("Capacity"))}</dt><dd>${esc(m.capacity)}</dd>
         <dt>${esc(t("Footprint"))}</dt><dd>${m.length && m.width ? `${m.length} × ${m.width} ${esc(t("mm"))}` : esc(t("not set"))}</dd>
+        <dt>${esc(t("Height"))}</dt><dd>${m.height ? `${m.height} ${esc(t("mm"))}` : esc(t("not set: conditional in 3D"))}</dd>
         ${m.status_by ? `<dt>${esc(t("Status by"))}</dt><dd>${esc(m.status_by)}${m.status_note ? ": " + esc(m.status_note) : ""}</dd>` : ""}
         ${m.changed_by ? `<dt>${esc(m.removed ? t("Taken off the plan") : t("Placed"))}</dt><dd>${esc(t("changed by {name}, {at}", {name: m.changed_by, at: m.changed_at}))}</dd>` : ""}
         ${o ? `<dt>${esc(t("Order"))}</dt><dd>${o.id} · ${esc(o.job)}</dd><dt>${esc(t("Done"))}</dt><dd>${esc(t("{done} of {quantity}", {done: o.done, quantity: o.quantity}))}</dd>
@@ -220,6 +245,7 @@
         <p class="sf-note legend"><span class="key k3-done"></span> ${esc(t("marked done"))} <span class="key k3-next"></span>
           ${esc(t("the next operation"))} <span class="key k3-bar"></span> ${esc(t("not machined yet"))}</p>
         <p class="small warning part3d-info"></p></div>` : ""}
+      <p class="sf-note sf-3d-only">${esc(t("Places are changed in 2D."))}</p>
       <div class="sf-btns">
         <a class="sf-button" href="${URLS.upload(m.id)}">${esc(t("Upload drawing"))}</a>
         <a class="sf-button ghost" href="${URLS.machine(m.id)}">${esc(t("Machine page"))}</a>
@@ -439,4 +465,5 @@
   else if (M.length) select((M.find(m => m.order) || M[0]).id);
 })();
 </script>
+<script type="module" src="{{ url_for('static', filename='shop3d.js') }}"></script>
 {% endblock %}

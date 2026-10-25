@@ -68,6 +68,8 @@ def js_strings():
 
 # texts used by scripts (looked up with t("…") in the browser)
 JS_KEYS = (
+    "This browser cannot show 3D (no WebGL): use the 2D plan.", "Places are changed in 2D.", "Height",
+    "not set: conditional in 3D",
     "Bores are shown (Half section: the button); flats are not shown.", "Half section", "Whole part",
     "Running", "Setup", "Stopped", "Free", "Reading…",
     # the program page
@@ -599,6 +601,15 @@ UK = {
     "Finishing pass kept by the operator ({name}, {at})": "Чистовий прохід лишив оператор ({name}, {at})",
     "Keep the finishing pass": "Лишити чистовий прохід",
     "Bore Ø{d}: the finishing pass is kept ({name}). Calculate the job again.": "Отвір Ø{d}: чистовий прохід лишено ({name}). Розрахуйте завдання знову.",
+    "2D plan or 3D view": "2D-план або 3D-вигляд",
+    "The shop in 3D: look only; places are changed in 2D": "Цех у 3D: лише перегляд; місця змінюються у 2D",
+    "3D: look only (turn: drag; zoom: the wheel or two fingers); places are changed in 2D.": "3D: лише перегляд (обертання: перетягнути; наближення: коліщатко або два пальці); місця змінюються у 2D.",
+    "The walls' height is conditional ({mm} mm): the plan gives none.": "Висота стін умовна ({mm} мм): план її не дає.",
+    "Conditional height by the type (*): {names}; the Machine page takes the real one.": "Умовна висота за типом (*): {names}; справжню вписують на сторінці верстата.",
+    "Doors and windows: panels on the walls, their height conditional.": "Двері й вікна: панелі на стінах, їхня висота умовна.",
+    "This browser cannot show 3D (no WebGL): use the 2D plan.": "Цей браузер не показує 3D (немає WebGL): користуйтеся 2D-планом.",
+    "Places are changed in 2D.": "Місця змінюються у 2D.",
+    "not set: conditional in 3D": "не задано: у 3D умовна",
     "inner": "внутрішній",
     "inner profile: a bore row (in-sample)": "внутрішній профіль: рядок отвору (in-sample)",
     "Place: {where}": "Місце: {where}",

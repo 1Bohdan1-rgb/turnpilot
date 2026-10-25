@@ -1897,10 +1897,11 @@ def _local(url):
 def shop():
     from .models import MACHINE_STATUSES
 
-    from . import shop_svg
+    from . import shop_scene, shop_svg
 
     record, plan = services.current_shop_plan()
     machines = services.shop_machines()
+    scene = shop_scene.build(plan, machines) if plan else None
     for m in machines:  # the page's language
         m["status_label"] = i18n.label(m["status_label"])
         if m["kind_label"]:
@@ -1913,7 +1914,7 @@ def shop():
                            svg=shop_svg.plan_svg(plan) if plan else None,
                            view_box=shop_svg.view_box(plan) if plan else None,
                            text_size=shop_svg.text_size(plan) if plan else None,
-                           machines=machines)
+                           machines=machines, scene=scene)
 
 
 @bp.route("/shop/machines/<int:machine_id>")

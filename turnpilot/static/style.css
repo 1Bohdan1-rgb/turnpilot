@@ -295,6 +295,17 @@ tr.row-demo td { background: color-mix(in srgb, var(--sf-aisle) 18%, var(--sf-sh
 svg.sf-plan { display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
 svg.sf-plan.panning { cursor:grabbing; }
 .sf-zoom { position:absolute; top:8px; right:8px; display:flex; gap:4px; z-index:2; }
+/* the shop in 3D (7.2b): looking only; the 2D plan, its zoom and the card's place controls are hidden there */
+.sf-view { position:absolute; top:8px; left:8px; display:flex; gap:4px; z-index:3; }
+.sf-3d { position:absolute; inset:0; background:var(--sf-paper); }
+.sf-3d-view { width:100%; height:100%; }
+.sf-3d-fit { position:absolute; top:8px; right:8px; z-index:2; }
+.sf-3d-note { position:absolute; left:8px; right:8px; bottom:6px; margin:0; font-size:12px; color:var(--sf-ink2);
+  background:color-mix(in srgb, var(--sf-sheet) 80%, transparent); padding:2px 6px; border-radius:3px; }
+.shop-floor.mode-3d svg.sf-plan, .shop-floor.mode-3d .sf-zoom, .shop-floor.mode-3d .sf-place,
+.shop-floor.mode-3d #sf-rotate, .shop-floor.mode-3d #sf-unplace { display:none; }
+.sf-3d-only { display:none; } .shop-floor.mode-3d .sf-3d-only { display:block; }
+.shop-floor.mode-3d .sf-machine-chip { pointer-events:none; opacity:.6; }  /* placed by dragging: in 2D only */
 .sf-zoom .sf-chip { min-width:34px; justify-content:center; font-size:14px; }
 .p-label.covered, .p-zone-label.covered { opacity:.2; }
 .sf-card { overflow:auto; }
