@@ -2240,7 +2240,8 @@ def read_catalogue_document(document, instance_path, config, client=None):
 def read_catalogue_text(document, instance_path):
     """The picked pages read from their text by code (catalogue_text: no model, no call). The rows become rows to
     check (status "read", origin "page_text"); the earlier unconfirmed text rows of this document are set aside.
-    Returns (rows added, not taken)."""
+    A page continuing a picked one is read with it. Returns (rows added, not taken, [(continuation label, the label of
+    the page it continues)] for the continuations not picked)."""
     from . import catalogue_text
 
     pages = document.selected
@@ -2253,8 +2254,8 @@ def read_catalogue_text(document, instance_path):
     others = [(title, p["texts"]) for d, title, p in documents if d != document.id]
     materials = [(m.catalogue_group, m.kc1, m.hardness_hb)
                  for m in db.session.execute(db.select(Material)).scalars() if m.catalogue_group]
-    rows, not_taken = catalogue_text.read(texts, pages, document.material_groups, document.codes, materials,
-                                          document.title or document.original_filename, others)
+    rows, not_taken, also = catalogue_text.read(texts, pages, document.material_groups, document.codes, materials,
+                                                document.title or document.original_filename, others)
     for row in db.session.execute(db.select(CuttingDataRow).filter_by(
             document_id=document.id, status="read", origin=catalogue_text.ORIGIN)).scalars():
         row.status, row.note = "rejected", "set aside: the pages' text was read again"
@@ -2268,7 +2269,8 @@ def read_catalogue_text(document, instance_path):
         {"row": {"kind": "text", "insert_code": item["code"], "material_group": "", "pdf_page": item["pdf_page"],
                  "quote": item["quote"]}, "reason": item["reason"]} for item in not_taken], ensure_ascii=False)
     db.session.commit()
-    return len(rows), not_taken
+    label = lambda n: catalogue_text.page_label(texts[n - 1]) or f"PDF {n}"  # noqa: E731
+    return len(rows), not_taken, [(label(m), label(named)) for m, named in also]
 
 
 def drawings_dir(instance_path):

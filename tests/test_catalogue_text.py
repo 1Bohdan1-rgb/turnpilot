@@ -158,7 +158,7 @@ def test_the_material_row_is_the_one_with_its_kc1():
     mc, where = ct.full_code([("TT", {282: TURNING})], "M1.0", {1800})
     assert (mc, where) == ("M1.0.Z.AQ", "TT A278 (PDF 282)")  # not .PH (2850) or the cast .C.UT (1700)
     assert ct.full_code([("TT", {282: TURNING})], "M1.0", {2000})[0] is None
-    rows, not_taken = ct.read([TURNING], [1], "M1.0", "", MATERIALS, "TT")
+    rows, not_taken, _also = ct.read([TURNING], [1], "M1.0", "", MATERIALS, "TT")
     found = by(rows, None)
     assert set(found) == {("GC1115", "turning"), ("GC2015", "turning")} and not not_taken
     gc1115 = found["GC1115", "turning"]
@@ -170,19 +170,19 @@ def test_the_material_row_is_the_one_with_its_kc1():
 
 
 def test_a_material_of_another_hardness_gets_a_check():
-    rows, _ = ct.read([TURNING], [1], "M1.0", "", [("M1.0", 1800, 200)], "TT")
+    rows, _, _also = ct.read([TURNING], [1], "M1.0", "", [("M1.0", 1800, 200)], "TT")
     assert "HB 180 in the table, the material's 200" in rows[0]["checks"]
 
 
 def test_threading_has_one_vc_per_grade_without_feeds():
-    rows, not_taken = ct.read([TURNING, THREADING], [2], "M1.0", "", MATERIALS, "TT")
+    rows, not_taken, _also = ct.read([TURNING, THREADING], [2], "M1.0", "", MATERIALS, "TT")
     found = by(rows, None)
     assert found["GC1125", "threading"]["vc_points"] == "140" and found["H13A", "threading"]["vc_points"] == "75"
     assert found["GC1125", "threading"]["page"] == "C73" and not not_taken  # the row by kc1 found on page 1
 
 
 def test_geometry_rows_only_for_the_codes_asked_for():
-    rows, not_taken = ct.read([GEOMETRY], [1], "M1.0", "CNMG 12 04 08-MM\nCNMG120408-XX", MATERIALS, "TT")
+    rows, not_taken, _also = ct.read([GEOMETRY], [1], "M1.0", "CNMG 12 04 08-MM\nCNMG120408-XX", MATERIALS, "TT")
     found = by(rows, None)
     assert set(found) == {"CNMG120408-MM"}  # -MF not asked for
     mm = found["CNMG120408-MM"]
@@ -199,7 +199,7 @@ def test_a_page_without_the_column_header_gives_no_geometry():
 
 def test_drilling_min_start_max_with_the_grade_of_the_product_pages():
     texts = [DRILLING, PRODUCT]
-    rows, not_taken = ct.read(texts, [1], "M1.0", "", MATERIALS, "SRT", others=[("TT", [TURNING])])
+    rows, not_taken, _also = ct.read(texts, [1], "M1.0", "", MATERIALS, "SRT", others=[("TT", [TURNING])])
     assert len(rows) == 1 and not not_taken  # the inch table is left out
     row = rows[0]
     assert (row["grade"], row["application"], row["vc_min"], row["vc_points"], row["vc_max"]) == (
@@ -211,13 +211,13 @@ def test_drilling_min_start_max_with_the_grade_of_the_product_pages():
 
 
 def test_without_a_kc1_table_nothing_is_taken():
-    rows, not_taken = ct.read([DRILLING, PRODUCT], [1], "M1.0", "", MATERIALS, "SRT")
+    rows, not_taken, _also = ct.read([DRILLING, PRODUCT], [1], "M1.0", "", MATERIALS, "SRT")
     assert rows == [] and not_taken[0]["reason"] == "no M1.0 row with kc1 1800 in the catalogues: not taken"
 
 
 def test_a_row_that_does_not_match_the_header_is_not_taken():
     broken = TURNING.replace("265-215-165\n290-240-190", "265-215-165\nGC9999")
-    rows, not_taken = ct.read([broken], [1], "M1.0", "", MATERIALS, "TT")
+    rows, not_taken, _also = ct.read([broken], [1], "M1.0", "", MATERIALS, "TT")
     assert rows == [] and not_taken[0]["reason"] == "the row's cells do not match the header's grades: not taken"
 
 
@@ -253,3 +253,69 @@ def test_read_from_the_text_makes_rows_to_check(app, client):
     statuses = [r.status for r in db.session.execute(db.select(CuttingDataRow).filter_by(
         document_id=document.id)).scalars()]
     assert statuses.count("read") == 3 and statuses.count("rejected") == 3
+
+
+# --- a page continuing a table without naming its rows (TT A279 after A278, SRT B81 after B80) ------------------------
+
+# TT A279 as its text layer: more grade columns of A278's table, the cells row by row (the rows: A278's)
+TURNING_ON = """A 279
+Cutting data
+GENERAL TURNING
+Cutting speed recommendations
+TOUGHNESS >>>>
+GC2025
+GC2035
+0.2-0.4-0.6
+0.2-0.4-0.6
+190-145-110
+170-145-115
+100-70-45
+85-65-45
+-
+95-70-50"""
+
+def test_a_continuation_is_read_with_the_page_it_continues():
+    rows, not_taken, also = ct.read([TURNING, TURNING_ON], [1], "M1.0", "", MATERIALS, "TT")
+    assert also == [(2, 1)] and not not_taken
+    found = by([r for r in rows if r["pdf_page"] == 2], None)
+    assert set(found) == {("GC2025", "turning"), ("GC2035", "turning")}
+    gc2025 = found["GC2025", "turning"]
+    assert gc2025["vc_points"] == "0.2:190, 0.4:145, 0.6:110" and gc2025["page"] == "A279"
+    assert gc2025["quote"] == "GC2025 0.2-0.4-0.6 190-145-110" and gc2025["coolant"] is True
+    assert gc2025["checks"] == ["row 1 of the table on A278 (M1.0.Z.AQ): A279 names no rows, the row is taken by its "
+                                "place"]
+    rows, _, also = ct.read([TURNING, TURNING_ON], [1, 2], "M1.0", "", MATERIALS, "TT")
+    assert also == [] and len([r for r in rows if r["pdf_page"] == 2]) == 2  # picked: read, not "also"
+    rows, _, _ = ct.read([TURNING, TURNING_ON], [1], "M1.0", "", [("M1.0", 2850, 330)], "TT")  # the PH row: 2nd
+    assert by([r for r in rows if r["pdf_page"] == 2], None)["GC2025", "turning"]["vc_points"] == "0.2:100, 0.4:70, 0.6:45"
+    rows, _, _ = ct.read([TURNING, TURNING_ON], [1], "M1.0", "", [("M1.0", 1700, 180)], "TT")  # the cast row: 3rd
+    assert [r["grade"] for r in rows if r["pdf_page"] == 2] == ["GC2035"]  # "-": no value, left out
+
+
+def test_a_continuation_whose_cells_do_not_fit_is_not_taken():
+    short = TURNING_ON.replace("-\n95-70-50", "95-70-50")  # 5 cells: not 3 rows × 2 columns
+    rows, not_taken, _ = ct.read([TURNING, short], [1], "M1.0", "", MATERIALS, "TT")
+    assert [r for r in rows if r["pdf_page"] == 2] == []
+    assert not_taken[0]["reason"] == ("no block of A279 has as many cells as the section of M1.0.Z.AQ on A278 "
+                                      "(rows × columns): not taken")
+
+
+def test_a_continuation_that_fits_two_sections_is_not_taken():
+    page = TURNING + "\nISO K\nK1.1.C.NS\n07.2\nPearlitic\n900\n230\n1-1-1\n1-1-1\nK2.1.C.UT\n08.1\nGrey\n890\n180" \
+        "\n1-1-1\n1-1-1\nK2.2.C.UT\n08.2\nGrey\n970\n220\n1-1-1\n1-1-1"
+    assert [len(s) for s in ct.table_sections(page)] == [3, 3]
+    rows, not_taken, _ = ct.read([page, TURNING_ON], [1], "M1.0", "", MATERIALS, "TT")
+    assert [r for r in rows if r["pdf_page"] == 2] == []
+    assert not_taken[0]["reason"] == "6 cells in 2 columns fit 2 sections of A278: not taken"
+
+
+def test_the_page_says_what_continuation_was_read_too(app, client):
+    client.post("/cutting-data/catalogues", data={"title": "TT test", "catalogue": (
+        io.BytesIO(catalogue_pdf(TURNING.replace("≈", "~"), TURNING_ON)), "tt.pdf")}, content_type="multipart/form-data")
+    document = db.session.execute(db.select(CatalogueDocument)).scalar_one()
+    client.post(f"/cutting-data/catalogues/{document.id}", data={"pages": "1", "material_groups": "M1.0", "codes": ""})
+    page = client.post(f"/cutting-data/catalogues/{document.id}/read-text", follow_redirects=True).get_data(as_text=True)
+    assert "4 row(s) read from the text, 0 not taken." in page
+    assert "Also read: A279 (continuation of A278)." in page
+    rows = db.session.execute(db.select(CuttingDataRow).filter_by(page="A279")).scalars().all()
+    assert sorted(r.grade for r in rows) == ["GC2025", "GC2035"] and all(r.status == "read" for r in rows)

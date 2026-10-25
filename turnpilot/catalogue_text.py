@@ -18,7 +18,7 @@ import re
 
 from .catalogue_tools import DRILL_CODE, page_grade, page_label
 
-MC_CODE = re.compile(r"^([PMKNSH]\d+\.\d+)\.[A-Z]\.[A-Z]{2}$")
+MC_CODE = re.compile(r"^([PMKNSH]\d+\.\d+)\.[A-Z]\.[A-Z]{2}(?:\.\d)?$")  # "P2.5.Z.HT.1" on SRT B70
 ISO_SECTION = re.compile(r"^ISO\s*([PMKNSH])?\s*(?:MC No\.)?$")
 CMC = re.compile(r"^\d{2}\.\d{1,2}$")
 INT = re.compile(r"^\d+$")
@@ -237,12 +237,144 @@ def drill_geometry(text: str) -> str | None:
     return found.pop() if len(found) == 1 else None
 
 
+# --- a continuation page: the cells of the table whose rows are named on the page before ------------------------------
+
+TOUGHNESS = "TOUGHNESS >>>>"
+FEED_CELL = re.compile(r"^\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)+$")
+LOOK_BACK = 3  # pages back to the page that names the continued table's rows
+
+
+def table_sections(text: str) -> list[list[str | None]]:
+    """The rows of a cutting speed table in their order, by section (a line "ISO ..." starts one): each row its MC code
+    (None for a row the page gives without one). A table with CMC numbers (TT) counts its rows by them, else by the MC
+    codes (SRT). The inch table is left out."""
+    lines = _lines(text)
+    by_cmc = any(CMC.match(line) for line in lines)
+    sections, inch = [[]], False
+    for i, line in enumerate(lines):
+        if "m/min" in line or "ft/min" in line:
+            inch = "ft/min" in line
+        if inch:
+            continue
+        if line.startswith("ISO") and sections[-1]:
+            sections.append([])
+        if by_cmc and CMC.match(line):
+            sections[-1].append(lines[i - 1] if i and MC_CODE.match(lines[i - 1]) else None)
+        elif not by_cmc and MC_CODE.match(line):
+            sections[-1].append(line)
+    return [s for s in sections if s]
+
+
+def continuation_blocks(text: str) -> list[dict]:
+    """The blocks of a page that continues a table without naming its rows: grade columns ("TOUGHNESS >>>>", the
+    grades, a feed per grade, then the cells row by row)."""
+    lines = _lines(text)
+    blocks = []
+    for i, line in enumerate(lines):
+        if line == TOUGHNESS:
+            j, grades = i + 1, []
+            while j < len(lines) and GRADE.match(lines[j]):
+                grades.append(lines[j])
+                j += 1
+            feeds = lines[j:j + len(grades)]
+            if not grades or len(feeds) < len(grades) or not all(FEED_CELL.match(f) for f in feeds):
+                continue
+            j += len(grades)
+            cells = []
+            while j < len(lines) and CELL.match(lines[j]):
+                cells.append(lines[j])
+                j += 1
+            blocks.append({"kind": "grades", "columns": grades, "feeds": feeds, "cells": cells})
+    return blocks
+
+
+def is_continuation(text: str) -> bool:
+    return bool(applications(text)) and not material_rows(text) and bool(continuation_blocks(text))
+
+
+def named_page(texts: list[str], n: int) -> int | None:
+    """The page (1-based) before page n that names the rows of the table n continues: the same kind of cutting data
+    and material rows, at most LOOK_BACK pages back over continuations."""
+    apps = applications(texts[n - 1])
+    for m in range(n - 1, max(0, n - 1 - LOOK_BACK), -1):
+        text = texts[m - 1] or ""
+        if applications(text) == apps and material_rows(text):
+            return m
+        if not is_continuation(text):
+            return None
+    return None
+
+
+def continuation_rows(texts, n: int, group: str, mc: str, codes) -> tuple[list[dict], list[dict]]:
+    """(rows, not taken) of the material's row `mc` on continuation page n. A block is the section of the named page
+    whose rows x columns are its cell count (only one may fit); the row is the material's place in that section. Every
+    row says the page names no rows."""
+    text, rows, not_taken = texts[n - 1], [], []
+    named = named_page(texts, n)
+    if named is None:
+        return rows, [{"code": mc, "pdf_page": n, "quote": "", "reason": "a continuation with no page before it that "
+                       "names its rows: not taken"}]
+    sections, label, named_label = table_sections(texts[named - 1]), page_label(text), page_label(texts[named - 1])
+    apps = applications(text)
+    named_text = texts[named - 1]
+    coolant = True if any("valid for use with cutting fluid" in t or "coolant supply" in t
+                          for t in (text, named_text)) else None
+    blocks, found = continuation_blocks(text), False
+    for b, block in enumerate(blocks, start=1):
+        width = len(block["columns"])
+        fits = [s for s in sections if len(s) * width == len(block["cells"])]
+        if len(fits) > 1 and any(mc in s for s in fits):
+            not_taken.append({"code": f"{mc} (block {b})", "pdf_page": n, "quote": "", "reason":
+                              f"{len(block['cells'])} cells in {width} columns fit {len(fits)} sections of "
+                              f"{named_label}: not taken"})
+            found = True
+            continue
+        if len(fits) != 1 or mc not in fits[0]:
+            continue
+        found, section = True, fits[0]
+        k = section.index(mc)
+        cells = block["cells"][k * width:(k + 1) * width]
+        said = (f"row {k + 1} of the table on {named_label} ({mc}): {label} names no rows, the row is taken by its "
+                f"place")
+        for grade, feed, cell in zip(block["columns"], block["feeds"], cells):
+            if cell == "-":
+                continue
+            values = _vc_points(feed, cell)
+            if values is None:
+                not_taken.append({"code": f"{mc} {grade}", "pdf_page": n, "quote": cell,
+                                  "reason": "no Vc that checks: not taken"})
+                continue
+            for app in apps:
+                rows.append(dict(kind="grade_vc", grade=grade, application=app, material_group=group,
+                                 coolant=coolant, page=label, pdf_page=n, quote=f"{grade} {feed} {cell}",
+                                 checks=[said], **values))
+    if not found and any(mc in s for s in sections):
+        not_taken.append({"code": mc, "pdf_page": n, "quote": "", "reason": f"no block of {label} has as many cells "
+                          f"as the section of {mc} on {named_label} (rows × columns): not taken"})
+    return rows, not_taken
+
+
+def continuations(texts: list[str], pages) -> list[tuple[int, int]]:
+    """(continuation page, the page it continues) after each picked page: read with it whether picked or not."""
+    out = []
+    for n in sorted(pages):
+        m = n + 1
+        while m <= len(texts) and is_continuation(texts[m - 1] or "") and named_page(texts, m) is not None:
+            if (m, named_page(texts, m)) not in out:
+                out.append((m, named_page(texts, m)))
+            m += 1
+    return out
+
+
 def read(texts: list[str], pages: list[int], groups: str, codes: str | None, materials, title: str = "",
-         others=()) -> tuple[list[dict], list[dict]]:
-    """(rows, not taken) of the picked pages (1-based) for the groups asked for. `materials`: (group, kc1, HB) of the
-    materials, to find their row in the tables; others: (catalogue, page texts) of the other catalogues, for a table
-    without kc1 (SRT: the row is found by kc1 in TT)."""
+         others=()) -> tuple[list[dict], list[dict], list[tuple[int, int]]]:
+    """(rows, not taken, continuations read) of the picked pages (1-based) for the groups asked for. A page continuing a
+    picked one (its rows named on the picked page) is read with it; the third item gives (that page, the one it
+    continues) for those not picked. `materials`: (group, kc1, HB) of the materials, to find their row in the tables;
+    others: (catalogue, page texts) of the other catalogues, for a table without kc1 (SRT: found by kc1 in TT)."""
     picked = {n: texts[n - 1] for n in pages}
+    also = [(m, named) for m, named in continuations(texts, pages) if m not in picked]
+    continued = {n for n in picked if is_continuation(picked[n] or "")} | {m for m, _ in also}
     sources = [(title, picked), (title, dict(enumerate(texts, start=1)))]
     sources += [(t, dict(enumerate(other, start=1))) for t, other in others]
     wanted_codes = [c for c in re.split(r"[\n,]", codes or "") if c.strip()]
@@ -252,7 +384,16 @@ def read(texts: list[str], pages: list[int], groups: str, codes: str | None, mat
         hbs = {m[2] for m in materials if m[0] == group and m[2]}
         hb = hbs.pop() if len(hbs) == 1 else None
         mc, why = full_code(sources, group, kc1s)
+        for n in sorted(continued):
+            if mc is None:
+                not_taken.append({"code": group, "pdf_page": n, "quote": "", "reason": why + ": not taken"})
+                continue
+            got, lost = continuation_rows(texts, n, group, mc, wanted_codes)
+            rows += got
+            not_taken += lost
         for n, text in picked.items():
+            if n in continued:
+                continue
             got, lost = geometry_rows(text, n, wanted_codes, group)
             rows += got
             not_taken += lost
@@ -266,4 +407,4 @@ def read(texts: list[str], pages: list[int], groups: str, codes: str | None, mat
             got, lost = vc_rows(text, n, group, mc, hb, grade, why)
             rows += got
             not_taken += lost
-    return rows, not_taken
+    return rows, not_taken, also

@@ -58,7 +58,8 @@
 {% if estimate %}
 <h2>{{ _("Read the picked pages") }}</h2>
 <form method="post" action="{{ url_for('main.read_catalogue_text', document_id=document.id) }}" class="card">
-  <p>{{ _("From the pages' text, by code: free, no model. Cutting speed tables (the material's row found by its kc1) and depth of cut / feed tables (the codes listed above); a table the code cannot read is left to the model.") }}</p>
+  <p>{{ _("From the pages' text, by code: free, no model. Cutting speed tables (the material's row found by its kc1) and depth of cut / feed tables (the codes listed above); a table the code cannot read is left to the model.") }}
+    {{ _("A page that continues a picked one without naming its rows (A279 after A278) is read with it: its rows are taken by their place on the picked page, each with a check.") }}</p>
   <button type="submit">{{ _("Read from the text (no model)") }}</button>
 </form>
 <form method="post" action="{{ url_for('main.read_catalogue', document_id=document.id) }}" class="card">
