@@ -31,6 +31,7 @@ function textSprite(THREE, text, height, colour, background) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({map: tex, depthTest: false, transparent: true}));
   s.scale.set(height * c.width / c.height, height, 1);
   s.renderOrder = 5;
+  s.userData.textHeight = height;
   return s;
 }
 
@@ -119,7 +120,7 @@ async function start(el) {
     scene.add(m);
   });
   // the floor areas: walkways marked (yellow edges), zones dashed, storage and fixtures filled; their labels
-  const text = Math.max(W, D) / 90;
+  const text = Math.max(W, D) / 45;  // labels readable in the "Fit" view
   scene3.areas.forEach(a => {
     const w = a.w * MM, d = a.d * MM, cx = (a.x + a.w / 2) * MM, cz = (a.y + a.d / 2) * MM;
     if (a.role === "storage" || a.role === "fixture") {
@@ -132,13 +133,13 @@ async function start(el) {
     edge.position.set(cx, 0.006, cz);
     scene.add(edge);
     if (a.label) {
-      const s = textSprite(THREE, a.label, text * 0.6, colour("--sf-ink2"));
+      const s = textSprite(THREE, a.label, text * 0.7, colour("--sf-ink"), colour("--sf-sheet"));
       s.position.set(cx, 0.3, cz);
       scene.add(s);
     }
   });
   scene3.labels.forEach(lb => {
-    const s = textSprite(THREE, lb.text, text * 0.8, colour("--sf-ink"));
+    const s = textSprite(THREE, lb.text, text, colour("--sf-ink"), colour("--sf-sheet"));
     s.position.set(lb.x * MM, 0.4, lb.y * MM);
     scene.add(s);
   });
@@ -172,7 +173,7 @@ async function start(el) {
     const sel = outline(THREE, m.length * MM + 0.25, m.height * MM + 0.1, m.width * MM + 0.25, colour("--sf-accent"));
     sel.position.y = (m.height * MM + 0.1) / 2; sel.visible = false; g.add(sel);
     scene.add(g);
-    const label = textSprite(THREE, m.name.toUpperCase() + (m.height_source === "conditional" ? " *" : ""), 0.35,
+    const label = textSprite(THREE, m.name.toUpperCase() + (m.height_source === "conditional" ? " *" : ""), 0.6,
       colour("--sf-ink"), colour("--sf-sheet"));
     label.position.set(m.x * MM, m.height * MM + 0.45, m.y * MM);
     scene.add(label);
@@ -187,6 +188,8 @@ async function start(el) {
                         size: Math.max(m.length, m.width, m.height) * MM});
   });
 
+  const sprites = [];
+  scene.traverse(o => { if (o.isSprite) sprites.push(o); });
   const up = new THREE.Vector3();
   let w = 600, h = 400;
   function render() {
@@ -195,6 +198,11 @@ async function start(el) {
     const above = Math.asin(Math.min(1, up.y / (up.length() || 1))) > 25 * Math.PI / 180;
     wallMaterial.opacity = above ? 0.28 : 0.85;
     wallMaterial.depthWrite = !above;
+    // a text smaller than 1.2% of the camera's distance is too small to read: hidden
+    sprites.forEach(s => {
+      const d = camera.position.distanceTo(s.getWorldPosition(up.clone())) || 1;
+      s.visible = s.userData.textHeight / d > 0.012;
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.setClearColor(colour("--sf-paper"));
     renderer.setSize(w, h, false);
@@ -283,6 +291,7 @@ async function start(el) {
           mm.needsUpdate = true;
         });
         v.label.material.opacity = on ? 1 : 0.3;
+        if (v.alarm) v.alarm.material.opacity = on ? 1 : 0.3;
       });
       render();
     },
