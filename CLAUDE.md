@@ -1270,8 +1270,16 @@ frozen by `dxf-blind-freeze` untouched.
   in AISI 304 on Lathe 1: set-up T1 / T2 / T3, all turning from confirmed M1.0 rows (rough Vc 277.5 at f 0.25),
   parting skipped (no M parting feed: graph); 111 lines, 0 errors, complete. jobs/7, 8, 11 the same byte for byte as at
   5f82a21 (323 / 154 / 201 lines).
-- Open: M parting / grooving feeds (graphs, by hand), the A279 grades (one call with the grades listed), an M parting
-  insert in the library; the operator confirms the rows.
+- Third call (the user's "так", 2026-10-25): TT A279 (PDF 283), M1.0, GC2025 / GC2035; estimate 5 698 input; real
+  input 7 455, output 10 130 (8 820 thinking) ≈ $0.116. Rows added without setting aside the document's other "read"
+  rows (scratchpad `a279_read.py`; the app's path would have rejected rows 27–33 and 37–50). **All 6 rows wrong**:
+  the model took the 1st–3rd pairs (P5.0 ferritic / martensitic) as M1.0; M1.0.Z.AQ is the 4th pair (A278 order):
+  GC2025 0.2:190, 0.4:145, 0.6:110; GC2035 0.2:170, 0.4:145, 0.6:115. Checks with these values on rows 52–57.
+  The model's table-row choice failed on both unlabeled pages (B81, A279); the numbers were on the page, the code's
+  check silent. DB backup `instance/turnpilot.db.bak-2026-10-25-before-a279`.
+- Open: M parting / grooving feeds (graphs, by hand), an M parting insert in the library; the operator confirms the
+  rows. Idea, not built: for an unlabeled continuation page, take the row by its index from the labelled page
+  (A278 → A279, B80 → B81) by code instead of by the model.
 
 ## Duplicate a machine (2026-10-25)
 The user's request after the AISI 304 stage (no plan asked). No migration (no new table or column). `services.
