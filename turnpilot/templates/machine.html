@@ -139,6 +139,13 @@
     {% if c.programming %}{% set values = c.programming|fromjson %}<div class="muted">{{ _("programming values taken:") }}
       {% for name, (was, now) in values.items() %}{{ _(field_labels[name]) }} {{ was if was is not none else "—" }} → {{ now }}{% if not loop.last %}; {% endif %}{% else %}{{ _("none (the other machine has none filled in)") }}{% endfor %}</div>{% endif %}</li>{% endfor %}
 </ul></details>{% endif %}
+<form method="post" action="{{ url_for('main.duplicate_machine', machine_id=machine.id) }}" class="card inline-form">
+  <label>{{ _("New machine's name") }} <input name="name" maxlength="100" placeholder="{{ _("e.g. Lathe 3") }}" required></label>
+  <label>{{ _("Copies") }} <input name="count" type="number" min="1" max="10" step="1" value="1" required></label>
+  <input name="by" maxlength="100" placeholder="{{ _("operator's name (required)") }}" aria-label="{{ _("Operator's name") }}" required>
+  <button type="submit">{{ _("Duplicate the machine") }}</button>
+  <span class="small muted">{{ _("copies its type, passport (footprint, height), programming values and turret, each with the source \"copied from\"; not its place on the plan, status, orders or the jobs' set-ups. Several copies are numbered on from the name (Lathe 3, Lathe 4 …).") }}</span>
+</form>
 
 <h2>{{ _("Tool library") }}</h2>
 <div class="card">

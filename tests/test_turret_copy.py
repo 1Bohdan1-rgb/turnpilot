@@ -93,3 +93,47 @@ def test_a_demo_value_stays_demo_when_copied(app, client):
     machine = lathe2(client)
     services.copy_turret(machine, lathe1, "Bohdan")
     assert machine.clearance_x == 2.0 and machine.source_of("clearance_x").source == SOURCE_DEMO
+
+
+def test_duplicate_the_machine(app, client):
+    from turnpilot.machine_spec import MACHINE_FIELDS, PROGRAMMING_FIELDS, SOURCE_COPIED
+    from turnpilot.models import MachinePlacement, MachineStatus
+
+    lathe1 = ready_machine()
+    services.set_machine_value(lathe1, "height_mm", 2100, "passport", page=12, quote="Height 2100 mm", document_id=5)
+    services.set_machine_value(lathe1, "footprint_length_mm", 3200, "operator")
+    lathe1.machine_kind = "cnc_lathe"
+    db.session.add(MachineStatus(machine_id=lathe1.id, status="running", decided_by="Bohdan"))
+    db.session.commit()
+    before = {f.name: getattr(lathe1, f.name) for f in MACHINE_FIELDS + PROGRAMMING_FIELDS}
+    sources_before = {s.field: (s.source, s.quote) for s in lathe1.sources}
+    slots_before = [s.tool_id for s in lathe1.slots]
+    page = client.get(f"/machines/{lathe1.id}").get_data(as_text=True)
+    assert "Duplicate the machine" in page
+    url = f"/machines/{lathe1.id}/duplicate"
+    client.post(url, data={"name": "Lathe 3", "count": "2"})  # no operator's name
+    client.post(url, data={"name": "Lathe 3", "count": "11", "by": "Bohdan"})
+    assert db.session.execute(db.select(Machine).filter(Machine.name.like("Lathe 3%"))).scalar() is None
+    response = client.post(url, data={"name": "Lathe 3", "count": "2", "by": "Bohdan"}, follow_redirects=True)
+    assert "Lathe 3, Lathe 4: copies of Lathe 1 by Bohdan" in response.get_data(as_text=True)
+    copies = [db.session.execute(db.select(Machine).filter_by(name=n)).scalar_one() for n in ("Lathe 3", "Lathe 4")]
+    for m in copies:
+        assert {f.name: getattr(m, f.name) for f in MACHINE_FIELDS + PROGRAMMING_FIELDS} == before
+        assert m.machine_kind == "cnc_lathe" and [s.tool_id for s in m.slots] == slots_before
+        height = m.source_of("height_mm")
+        assert (height.source, height.quote, height.page, height.document_id) == (SOURCE_COPIED, "Lathe 1, Bohdan", 12, 5)
+        assert height.label.startswith("copied from Lathe 1, Bohdan ")
+        assert m.source_of("clearance_x").source == SOURCE_COPIED
+        assert m.placement is None and m.status is None  # not on the plan ("not placed yet"), no status
+        (copy,) = services.turret_copies(m)  # its own history
+        assert copy.from_machine_id == lathe1.id and copy.copied_by == "Bohdan"
+    assert copies[0].sources[0].id != copies[1].sources[0].id
+    # the original unchanged
+    assert {f.name: getattr(lathe1, f.name) for f in MACHINE_FIELDS + PROGRAMMING_FIELDS} == before
+    assert {s.field: (s.source, s.quote) for s in lathe1.sources} == sources_before
+    assert [s.tool_id for s in lathe1.slots] == slots_before and services.turret_copies(lathe1) == []
+    assert db.session.execute(db.select(MachinePlacement)).scalars().all() == []
+    # a name taken: nothing made
+    response = client.post(url, data={"name": "Lathe 4", "count": "1", "by": "Bohdan"}, follow_redirects=True)
+    assert "A machine named Lathe 4 exists already" in response.get_data(as_text=True)
+    assert services.duplicate_names("Lathe", 2) == ["Lathe 1", "Lathe 2"]

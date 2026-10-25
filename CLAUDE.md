@@ -1273,6 +1273,16 @@ frozen by `dxf-blind-freeze` untouched.
 - Open: M parting / grooving feeds (graphs, by hand), the A279 grades (one call with the grades listed), an M parting
   insert in the library; the operator confirms the rows.
 
+## Duplicate a machine (2026-10-25)
+The user's request after the AISI 304 stage (no plan asked). No migration (no new table or column). `services.
+duplicate_machine` / route `/machines/<id>/duplicate`, the form on the machine page: the new name and the operator's
+name required, 1–10 copies (several: numbered on from the name's last number, else "<name> 1", "<name> 2"; a name
+taken refuses all). Copied: the type, every passport field with a value (source "copied", quote "<machine>, <name>",
+the original's page and document kept; DEMO stays DEMO), the turret and the programming values by `copy_turret`
+(a MachineTurretCopy each). Not copied: the place on the plan, the status, the orders, the jobs' set-ups, the hex bar
+list, "not in passport" facts. Test: the copies have the same values and their own sources and history; the original
+is unchanged.
+
 ## Deferred
 - A "shop time zone" setting (now Europe/London written out in `turnpilot/localtime.py`).
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
@@ -1283,7 +1293,7 @@ frozen by `dxf-blind-freeze` untouched.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1288 tests pass (2026-10-25). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1289 tests pass (2026-10-25). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

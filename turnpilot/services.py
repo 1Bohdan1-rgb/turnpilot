@@ -510,6 +510,59 @@ def copy_turret(machine, source, name):
     return copy
 
 
+MAX_DUPLICATES = 10
+
+
+def duplicate_names(name, count):
+    """The new machines' names: the name itself for one; for several, numbered on from a number the name ends with
+    ("Lathe 3" ×2: Lathe 3, Lathe 4), else "<name> 1", "<name> 2"."""
+    name = (name or "").strip()[:100]
+    if count == 1:
+        return [name]
+    m = re.match(r"^(.*?)(\d+)$", name)
+    if m:
+        return [f"{m.group(1)}{int(m.group(2)) + i}" for i in range(count)]
+    return [f"{name} {i + 1}" for i in range(count)]
+
+
+def duplicate_machine(source, name, by, count=1):
+    """New machines like `source`, by the operator (the new name and the operator's name required; 1–10 copies): its
+    type, the passport values (footprint and height among them) with the source "copied from <machine>, <name>" (a
+    DEMO value stays DEMO; an empty one stays empty), and its turret with the programming values as "Copy the turret"
+    does (a MachineTurretCopy each). Not copied: the place on the plan, the status, the orders, the jobs' set-ups.
+    Refused as a whole when a name is taken. Returns the new machines."""
+    by = (by or "").strip()[:100]
+    if not (name or "").strip():
+        raise MachineError("The new machine's name is required")
+    if not by:
+        raise MachineError("The operator's name is required to duplicate a machine")
+    if not 1 <= count <= MAX_DUPLICATES:
+        raise MachineError(f"Copies: 1 to {MAX_DUPLICATES}")
+    names = duplicate_names(name, count)
+    taken = [n for n in names if db.session.execute(db.select(Machine).filter_by(name=n)).scalar() is not None]
+    if taken:
+        raise MachineError(f"A machine named {', '.join(taken)} exists already")
+    made = []
+    for new_name in names:
+        machine = add_machine(new_name, {k: getattr(source, k) for k in NEW_MACHINE_FIELDS})
+        machine.machine_kind = source.machine_kind
+        for field in machine_spec.MACHINE_FIELDS:
+            value = getattr(source, field.name)
+            if value is None or value == "":
+                continue
+            theirs = source.source_of(field.name)
+            if theirs is not None and theirs.source == machine_spec.SOURCE_DEMO:  # a DEMO value stays DEMO
+                set_machine_value(machine, field.name, value, machine_spec.SOURCE_DEMO)
+            else:
+                set_machine_value(machine, field.name, value, machine_spec.SOURCE_COPIED,
+                                  page=theirs.page if theirs else None, quote=f"{source.name}, {by}"[:200],
+                                  document_id=theirs.document_id if theirs else None)
+        db.session.flush()
+        copy_turret(machine, source, by)  # the turret and the programming values, with the history (commits)
+        made.append(machine)
+    return made
+
+
 def turret_copies(machine):
     from .models import MachineTurretCopy
 

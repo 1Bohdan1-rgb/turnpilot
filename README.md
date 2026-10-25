@@ -486,6 +486,11 @@ machine's turret and the other jobs keep theirs. Undoing a change keeps it in th
 - **Copy a turret:** the machine page copies another machine's turret (the operator's name; refused when the other
   holds tools at positions this one lacks); both turrets as they were are kept. Programs made before are out of date,
   calculations made before block the G-code until the job is calculated again.
+- **Duplicate a machine:** the machine page makes 1–10 new machines like it (the new name and the operator's name
+  required; several are numbered on from the name: Lathe 3, Lathe 4): the type, the passport values (footprint and
+  height among them) with the source "copied from <machine>, <name>" (DEMO stays DEMO, empty stays empty), and the
+  turret with the programming values as "Copy the turret" (with its history). Not copied: the place on the plan (a new
+  machine is under "not placed yet"), the status, the orders, the jobs' set-ups, the bar stock list.
 - The calculation, the G-code and its simulation take the job's turret; the program's header, its page and the
   operator's checklist list the changes for the setter; a program made before a change is out of date. Calculations
   made before keep their operations.

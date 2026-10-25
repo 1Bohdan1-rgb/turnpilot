@@ -230,6 +230,23 @@ def machine(machine_id=None):
 MAX_PASSPORT_PAGES = 20  # pages sent to the model in one reading (cost)
 
 
+@bp.route("/machines/<int:machine_id>/duplicate", methods=["POST"])
+def duplicate_machine(machine_id):
+    """New machines like this one (its type, passport, programming values and turret), by the operator."""
+    source = db.get_or_404(Machine, machine_id)
+    try:
+        count = _number(request.form, "count", int, required=True)
+        made = services.duplicate_machine(source, request.form.get("name"), request.form.get("by"), count)
+    except (FormError, services.MachineError, services.TurretChangeError) as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return redirect(url_for("main.machine", machine_id=source.id))
+    flash(_("{names}: copies of {machine} by {name} (the type, the passport, the programming values and the turret; "
+            "not the place on the plan, the status or the orders).", names=", ".join(m.name for m in made),
+            machine=source.name, name=request.form.get("by", "").strip()))
+    return redirect(url_for("main.machine", machine_id=made[0].id))
+
+
 @bp.route("/machine/passport", methods=["GET", "POST"])
 @bp.route("/machines/<int:machine_id>/passport", methods=["GET", "POST"])
 def machine_passport(machine_id=None):
