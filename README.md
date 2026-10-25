@@ -548,6 +548,23 @@ as not set; unless all three are from the passport the time is marked "without t
   part's time, the time left, incomplete without the passport's values; Upload drawing for a job on this machine,
   Machine page, Status and order), a light and a dark theme on this page; on a phone the plan scrolls in its box.
 
+## The shop in 3D (stage 7.2b)
+
+- The shop page has a 2D / 3D switch; 2D is the default and the only place a machine is placed, moved, turned or
+  taken off. The 3D view is built (`turnpilot/shop_scene.py`) from the same plan and machine data as 2D: statuses,
+  alarms and conflicts are the 2D ones.
+- The floor, the walls (a box per segment), doors / roller doors / exits / windows as panels on the walls (not cut
+  out), columns, walkways marked on the floor, zones dashed, storage and fixtures as filled floor areas, the labels.
+- The machines by type, scaled to their footprint and turned as on the plan: CNC lathe (cabinet, headstock end, door
+  window, control panel), manual lathe (stand, bed, headstock, carriage, tailstock), machining centre (cabinet, window,
+  tool magazine, spindle head), saw (base, blade, arm, roller conveyor), CMM (granite table, gantry, probe); a machine
+  without a type or footprint is a grey frame with "?", as in 2D. A status plate under each, the name above.
+- Heights: a wall's `height_mm` or the plan's `wall_height_mm` (optional in the plan file), else a conditional 3000 mm;
+  a machine's height (Machine page, passport or the operator), else a conditional height by its type, its name marked
+  " *". The page says what is conditional. All conditional numbers are in one place (`shop_scene.py`).
+- Orbit and zoom by mouse or touch, "Fit", a click on a machine opens the same card as in 2D. The page's one WebGL
+  renderer (`static/webgl.js`, shared with the part's 3D view), drawn only when it changes, no shadows.
+
 ## The part in 3D (stage 7.3)
 
 - The stock after every block N is kept from the program's own simulation (its 0.01 mm grid, simplified to within

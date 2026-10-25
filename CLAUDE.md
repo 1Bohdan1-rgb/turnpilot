@@ -1223,6 +1223,19 @@ commit.
 - In the user's DB jobs/11 is not calculated again: its program 22 stays as it was until the operator presses
   Calculate.
 
+## Stage 7.2b: the shop in 3D (built 2026-10-25)
+Plan 1–4 agreed with the user (machine heights: an optional "height, mm" of the machine, passport or operator; empty:
+a conditional height by type, marked). Commits cda39e2 (scene, heights; migration b9d3f7a1c5e2 `Machine.height_mm`,
+DB backup `instance/turnpilot.db.bak-2026-10-25-before-machine-height`), 29bbdfc (one renderer: `static/webgl.js`),
+7ace8e4 (the page) and the docs commit. The files frozen by `dxf-blind-freeze` untouched.
+- `turnpilot/shop_scene.py`: shapes in mm from `shop_plan.Plan` + `services.shop_machines()`; conditional values in one
+  place: `CONDITIONAL_WALL_HEIGHT_MM` 3000, `CONDITIONAL_MACHINE_HEIGHT_MM` by type, the openings' heights, the window
+  sill; the scene lists what is conditional and the page says so. Plan file: optional `wall_height_mm`, a wall's
+  `height_mm`.
+- `static/shop3d.js`: looking only; 2D the default (localStorage `tp-shop-view`); the 2D card on a click; the search /
+  filter dim the others; a theme change builds it again. Not checked in a browser (the user's rule for this stage).
+- Machine passport reading: `height_mm` is in `MACHINE_FIELDS`, so the passport prompt version changed (no call made).
+
 ## Deferred
 - A "shop time zone" setting (now Europe/London written out in `turnpilot/localtime.py`).
 - SVG preview of a DXF on the review screen (plan commit 7): postponed until the decision on 2026-10-09.
@@ -1233,7 +1246,7 @@ commit.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1267 tests pass (2026-10-24). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1275 tests pass (2026-10-25). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
