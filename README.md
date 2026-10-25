@@ -75,8 +75,12 @@ Planning rules (`turnpilot/planner.py`, pure functions without Flask):
     the header's feeds (turning, grooving and parting, threading) or Vc min-start-max (drilling: a grade not on the
     page is taken from the series' product pages, with a check); a depth of cut / feed table's ap / f (Rec, Min,
     Max) for the codes listed, as rows of the ISO letter. Every row keeps a quote; a row that does not match its
-    header is not taken; an HB other than the material's is a check. Inch tables are left out. Written on the
-    Sandvik 2020 pages: in-sample for the parser;
+    header is not taken; an HB other than the material's is a check. Inch tables are left out. A page that
+    continues a picked one without naming its rows (TT A279 after A278, B131 after B130, SRT B71 / B77 / B81) is
+    read with it, and the page says so ("Also read: A279 (continuation of A278)"): each block is the one section
+    of the named page whose rows × columns equal its cells, the material's row is its place there (a check on
+    every row); drill feeds by Ø are taken for the drill codes listed whose geometry the page names, in the
+    column of the code's Ø only. Written on the Sandvik 2020 pages: in-sample for the parser;
   - the operator, by hand (values the catalogue gives only as a graph), with catalogue and page required.
   On the review screen the operator confirms (as read or corrected: then recorded as the operator's), rejects or
   leaves each row. A row that gives other values than a confirmed one replaces it only on the operator's tick.

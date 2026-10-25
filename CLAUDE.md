@@ -1281,6 +1281,24 @@ frozen by `dxf-blind-freeze` untouched.
   rows. Idea, not built: for an unlabeled continuation page, take the row by its index from the labelled page
   (A278 → A279, B80 → B81) by code instead of by the model.
 
+## Continuation pages read by code (2026-10-25)
+Plan 1–3 agreed with the user, plus: a continuation is read with the picked page it continues, and the page says it
+("Also read: A279 (continuation of A278)"). Commits c78d0eb (grade columns), 242dee4 (drill feeds by Ø) and the docs
+commit. No migration, no call; the files frozen by `dxf-blind-freeze` untouched.
+- `catalogue_text`: `table_sections` (rows by CMC on TT, by MC code on SRT; inch tables left out), `continuation_blocks`
+  ("TOUGHNESS >>>>" grades + feeds; "Drill diameter, mm"), `named_page` (≤ 3 pages back, the same application),
+  `continuation_rows`: a block = the one section with rows × columns = its cells (two fit: not taken), the row by its
+  place, a check "row k of the table on A278 (MC): A279 names no rows". `MC_CODE` takes "P2.5.Z.HT.1" (SRT B70: 12
+  rows, not 9).
+- In-sample check (scratchpad `cont_check.py`), all equal: the confirmed P1.2 rows A279 GC4325 0.1:455 / 0.4:305 /
+  0.8:215, B131 GC1125 parting 0.05:265 / 0.5:115, B71 860-GM Ø6 / Ø8 / Ø10, B77 860-PM Ø20 0.24-0.33-0.48; for M1.0 the
+  values found by hand: A279 GC2025 190-145-110, GC2035 170-145-115 (row 4), B81 Ø6 / Ø8 / Ø10 0.088 / 0.096 / 0.112…
+  (row 2). B77's two NM blocks fit two N sections each: not taken (not the material's).
+- User's DB (backup `instance/turnpilot.db.bak-2026-10-25-before-continuations`): text readings TT "282, 434, 531"
+  (A279 and B131 read with them) and SRT "280" (B81 with it), M1.0: rows 84–117 "read" (A278 4, A279 2, B130 6, B131 14,
+  C73 4, B80 1, B81 3). The earlier text rows 37–51 set aside (read again). The model's wrong rows 34–36 (B81) and
+  52–57 (A279) stay "read" with their checks: the operator rejects them.
+
 ## Duplicate a machine (2026-10-25)
 The user's request after the AISI 304 stage (no plan asked). No migration (no new table or column). `services.
 duplicate_machine` / route `/machines/<id>/duplicate`, the form on the machine page: the new name and the operator's
@@ -1301,7 +1319,7 @@ is unchanged.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1289 tests pass (2026-10-25). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1294 tests pass (2026-10-25). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;
