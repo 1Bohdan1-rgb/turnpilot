@@ -55,7 +55,7 @@ def test_a_machine_in_its_frame_with_its_footprint_and_height():
     assert lathe_3d["height_source"] == "conditional" and saw["height_source"] == "machine" and saw["height"] == 1450
     assert scene["conditional"]["machines"] == ["Lathe 1"]
     plate, body = lathe_3d["parts"][:2]
-    assert plate["role"] == "status" and (plate["sx"], plate["sy"]) == (4700, 2500)
+    assert plate["role"] == "status" and (plate["sx"], plate["sy"]) == (5000, 2800)
     assert (body["sx"], body["sy"], body["sh"]) == (4400, 2200, 1900 * .9)
     for m in scene["machines"]:  # every shape inside the footprint and the height
         for p in m["parts"][1:]:
@@ -118,5 +118,5 @@ def test_the_shop_page_has_the_3d_view(app, client):
     assert "castShadow" not in script and "shadowMap" not in script  # no shadows
     assert "window.turnpilotShop.select(" in script  # a click: the 2D card
     assert "controls.zoomToCursor = true" in script and 'addEventListener("dblclick"' in script
-    assert "wallMaterial.opacity = above ?" in script
+    assert "wallMaterial.opacity = above ?" in script and "MeshBasicMaterial({color: colour(STATUS" in script
     assert "window.turnpilotShop = {select:" in page

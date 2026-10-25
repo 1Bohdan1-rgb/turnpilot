@@ -20,8 +20,8 @@ import math
 CONDITIONAL_WALL_HEIGHT_MM = 3000
 CONDITIONAL_MACHINE_HEIGHT_MM = {"cnc_lathe": 1900, "manual_lathe": 1300, "mill": 2500, "saw": 1200, "cmm": 2200}
 UNKNOWN_MACHINE_MM = 800  # a machine with no type or footprint: a grey frame of this size, not to scale (as in 2D)
-STATUS_PLATE_MM = 20  # the status plate on the floor under a machine, its thickness
-STATUS_MARGIN_MM = 150  # how far it shows round the footprint
+STATUS_PLATE_MM = 30  # the status plate on the floor under a machine, its thickness
+STATUS_MARGIN_MM = 300  # how far it shows round the footprint (seen from afar)
 OPENING_HEIGHT_MM = {"door": 2100, "roller_door": None, "exit": 2100, "window": 1200}  # CONDITIONAL; None: wall high
 WINDOW_SILL_MM = 900  # CONDITIONAL
 

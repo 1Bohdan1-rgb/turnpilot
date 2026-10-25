@@ -150,9 +150,10 @@ async function start(el) {
     g.position.set(m.x * MM, 0, m.y * MM);
     g.rotation.y = -m.rotation * Math.PI / 180;  // as the plan's rotate(), with Y down
     const own = {};  // its own materials (a dimmed machine fades alone)
-    const material = role => own[role] || (own[role] = new THREE.MeshLambertMaterial({
-      color: colour(role === "status" ? STATUS[m.status] || "--sf-free" : ROLE[role] || "--sf-mach"),
-      transparent: role === "glass", opacity: role === "glass" ? 0.45 : 1}));
+    const material = role => own[role] || (own[role] = role === "status"
+      ? new THREE.MeshBasicMaterial({color: colour(STATUS[m.status] || "--sf-free")})  // unlit: bright from afar
+      : new THREE.MeshLambertMaterial({color: colour(ROLE[role] || "--sf-mach"), transparent: role === "glass",
+                                       opacity: role === "glass" ? 0.45 : 1}));
     m.parts.forEach(p => { const mesh = part(THREE, p, material(p.role)); mesh.userData.id = m.id; g.add(mesh); pickable.push(mesh); });
     if (!m.known) {  // no type or footprint: a grey frame and "?", as in 2D
       const frame = outline(THREE, m.length * MM, m.height * MM, m.width * MM, colour("--sf-free"));
