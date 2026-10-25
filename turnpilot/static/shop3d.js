@@ -80,6 +80,7 @@ async function start(el) {
   scene.add(sun);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = false;
+  controls.zoomToCursor = true;  // the wheel and two fingers zoom to the point under them, not to the centre
   controls.maxPolarAngle = Math.PI / 2 - 0.05;  // stays above the floor
   controls.screenSpacePanning = false;
 
@@ -179,7 +180,9 @@ async function start(el) {
       alarm.position.set(m.x * MM, m.height * MM + 1.1, m.y * MM);
       scene.add(alarm);
     }
-    machines.set(m.id, {group: g, materials: own, sel, label, alarm});
+    machines.set(m.id, {group: g, materials: own, sel, label, alarm,
+                        centre: new THREE.Vector3(m.x * MM, m.height / 2 * MM, m.y * MM),
+                        size: Math.max(m.length, m.width, m.height) * MM});
   });
 
   let w = 600, h = 400;
@@ -227,6 +230,35 @@ async function start(el) {
       camera);
     const hit = ray.intersectObjects(pickable, false)[0];
     if (hit && window.turnpilotShop) window.turnpilotShop.select(hit.object.userData.id);
+  });
+
+  // a double click on a machine: the camera flies to it (and its card opens, as on a click)
+  let flight = null;
+  function flyTo(v) {
+    const from = {p: camera.position.clone(), t: controls.target.clone()};
+    const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+    const to = {t: v.centre.clone(), p: v.centre.clone().addScaledVector(dir, Math.max(4, v.size * 2.5))};
+    const t0 = performance.now(), ms = 600;
+    if (flight) cancelAnimationFrame(flight);
+    const step = now => {
+      const k = Math.min(1, (now - t0) / ms), e = k * k * (3 - 2 * k);
+      camera.position.lerpVectors(from.p, to.p, e);
+      controls.target.lerpVectors(from.t, to.t, e);
+      controls.update();
+      render();
+      flight = k < 1 ? requestAnimationFrame(step) : null;
+    };
+    flight = requestAnimationFrame(step);
+  }
+  canvas.addEventListener("dblclick", e => {
+    const r = canvas.getBoundingClientRect();
+    ray.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1),
+      camera);
+    const hit = ray.intersectObjects(pickable, false)[0];
+    if (!hit) return;
+    const id = hit.object.userData.id;
+    if (window.turnpilotShop) window.turnpilotShop.select(id);
+    flyTo(machines.get(id));
   });
 
   return {
