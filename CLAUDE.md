@@ -1299,6 +1299,31 @@ commit. No migration, no call; the files frozen by `dxf-blind-freeze` untouched.
   C73 4, B80 1, B81 3). The earlier text rows 37–51 set aside (read again). The model's wrong rows 34–36 (B81) and
   52–57 (A279) stay "read" with their checks: the operator rejects them.
 
+## The operator's decisions on one screen (2026-10-25)
+Plan 1–4 agreed with the user (answers: Z0 by the largest Ø proposed; the stock 2 mm placeholder proposed; the depth to
+the full Ø proposed; a stop keeps what was written) plus the correction: an arc's radius is the dimension, but the
+geometry when the dimension's top rises above the neighbouring Ø. Commits 32bdf1e (collect), 5c6de39 (apply), 1b2a5be
+(screen) and the docs commit. No migration; G-code generator and golden files untouched; the files frozen by
+`dxf-blind-freeze` untouched.
+- "Regression" asked about first (jobs/7 program 31, line 195: 2.58 mm > ap max 1.5): program 31 is jobs/10 (another
+  НД 012 job made 2026-10-25), not jobs/7. Its arc was decided R20.46 (the dimension): the convex arc's top D38.62
+  rises above the Ø38.5 neck, so the arc's roughing goes down 4° towards the chuck (the CNMG has no RMPX: not
+  generated) and the neck behind it needs plunging (not generated); the finishing DNMG then cuts 2.58 mm, and the
+  simulation says so. Not a code change: on a copy jobs/7 now 323 lines, 0 errors; jobs/10 with R51.608 0 errors.
+  Not built (a later decision): roughing a convex arc going down by a tool whose RMPX covers it, now that Z0 is known.
+- `decisions.operator_decisions(job)`: read only; `apply_decisions(job, form, name)`: writes in order (drawing, Z0 /
+  stock / stick-out, calculation when needed, set-up by its signature, skips, approvals by "feature:type:mode", G-code).
+  Approvals add an Edit row "approved (name)" (before this, approving kept no name).
+- The screen calculates a job not calculated yet on opening (as the Calculate button: no operator data).
+- Checked in the browser on a copy of the user's DB (port 5002, scratchpad `dec_copy/prepare.py`: НД 012 and Завіса 36
+  bushing uploaded from the DXF and confirmed with the review page's own form): НД 012 one confirmation → program 46,
+  323 lines, 0 errors, the whole profile (R51.608 proposed with the reason, set-up T3 / T5 accepted); the bushing: Z0
+  was empty at first (no end has the largest Ø), now proposed at the end its blind bore opens → program 47, 0 errors,
+  the Ø20 drill set up, the centring skipped with its reason. Phone width: no horizontal scroll. jobs/7, 8, 11 through
+  "Confirm all" (after a new calculation, as before): byte for byte the same as at 0c6aab5 (scratchpad `dec_bytes.py`).
+- The server on :5000 had a write lock left by a request that failed in debug mode (jobs/14 G-code, 17:32): restarted;
+  the failed requests' writes were rolled back.
+
 ## Duplicate a machine (2026-10-25)
 The user's request after the AISI 304 stage (no plan asked). No migration (no new table or column). `services.
 duplicate_machine` / route `/machines/<id>/duplicate`, the form on the machine page: the new name and the operator's
@@ -1319,7 +1344,7 @@ is unchanged.
   gives no conflict. The value would be in seeing which boundaries the model binds each dimension to.
   Compare with the 9 features runs already made (right reading 5/9). Not approved; do not run.
 
-- 1294 tests pass (2026-10-25). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
+- 1305 tests pass (2026-10-25). Features is the default mode (dimensions_first ~2× tokens, no clear win out of sample).
 - The new features prompt `b423ae0e` stays. It replaces `d7924a66` and adds the taper-end rule, Rz,
   general tolerance, chamfer position and internal thread. Taper-rule eval, option B (11 calls):
   - 07 diameters 81→90%;

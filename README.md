@@ -468,6 +468,26 @@ presses Start after the machine check.
   `--tip-direction 4=3`, `--install 3=N123E2-0200-0002-GM` and `--max-ramp 4=27` set a tip direction, put a
   library tool at a position and give an RMPX in its temporary database only).
 
+## The operator's decisions on one screen
+
+`/jobs/<id>/decisions` (`turnpilot/decisions.py`); the job's next step leads there for every step up to the program.
+Everything the G-code needs from the operator, with the program's proposal chosen, why and its source; what cannot be
+proposed without inventing a number is empty and marked, and the button waits for it:
+- an arc whose drawn radius differs from its dimension: the dimension, or the geometry when the dimension's convex top
+  rises above the neighbouring Ø (НД 012: R20.46 tops at D38.62 > D38.5, so R51.608);
+- a bore's depth: to the full Ø (the drafting convention), to the drill's point when the drill has no point angle;
+  the finishing pass of a bore bored to size; a bore's place and an arc's shape only from the DXF;
+- Z0: opposite the largest Ø (assumption: the chuck holds it), else the end a blind bore opens at; the stock beyond
+  Z0: the blank's facing allowance (a placeholder); the stick-out: the hint;
+- the turret set-up from the library; an operation with no tool: a centring skipped with its reason, else empty;
+  the operations approved (their warnings shown); the machine's and the tools' missing data listed apart.
+The operator's name is typed once (kept in the tab, as on the shop plan). "Confirm all and make the program" writes
+every decision through the same services as the job page's forms (the same history; an approval adds an Edit row
+"approved (name)"), calculates when needed, accepts the set-up shown, skips, approves, makes the G-code and opens the
+program with its simulation. It stops and says where when the set-up or the operations differ from the ones shown, or
+something blocks the program; what was written before stays. A job not calculated is calculated on opening. The job
+page's forms stay for changing one thing.
+
 ## Turret set-up per job
 
 The machine's turret is its standing set-up, and a job uses it by default. A job that needs another tool gets its
