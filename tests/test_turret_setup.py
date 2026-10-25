@@ -89,3 +89,27 @@ def test_what_the_library_cannot_give_is_said(app, client):
     proposal = services.turret_setup_proposal(job, machine)
     assert proposal.missing[0].startswith("the library has no parting tool for ISO P checked by the catalogue for "
                                           "P1.2: parting (row ")
+
+
+def test_a_turret_tool_without_checked_data_is_replaced_in_its_place(app, client):
+    ready_machine()
+    machine = lathe2(client)
+    own = Tool(name="Facing SCMT (own data)", type="facing", iso_group="P", insert_code="SCMT120408-XX", vc_min=150,
+               vc_max=250, f_min=0.1, f_max=0.3, ap_min=0.5, ap_max=3)
+    db.session.add(own)
+    machine.slots[6].tool = own  # T7: fits the facing, but no confirmed catalogue row for P1.2
+    db.session.commit()
+    job = pin_on(machine)
+    proposal = services.turret_setup_proposal(job, machine)
+    rows = {r.position: r for r in proposal.rows}
+    assert rows[7].install.insert_code == "SCMT120408-PM" and rows[7].remove.id == own.id
+    assert rows[7].reasons == ["T7 Facing SCMT (own data): its cutting data are not from a confirmed catalogue row "
+                               "for P1.2"]
+    assert [rows[p].install.insert_code for p in (1, 2, 3, 4)] == [
+        "CNMG120408-PM", "DNMG150604-PF", "N123G2-0300-0003-GM", "QD-NG-0300-0002-CM"]
+    tool("SCMT120408-PM").is_retired = True
+    db.session.commit()
+    proposal = services.turret_setup_proposal(job, machine)
+    assert 7 not in [r.position for r in proposal.rows]
+    assert "T7 Facing SCMT (own data): its cutting data are not from a confirmed catalogue row for P1.2, and the " \
+           "library has no checked facing tool for ISO P: its operations stay out of the program" in proposal.missing

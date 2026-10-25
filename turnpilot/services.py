@@ -297,7 +297,9 @@ def turret_setup_proposal(job, machine) -> SetupProposal:
     dry run with the checked library tools added beyond the real positions, a check run with the set-up. A tool that is
     in the turret and fits stays; a library tool is taken only for an operation whose tool is missing or does not fit;
     it goes to an empty position first (the lowest), else to one whose tool the job does not use; the order is the
-    operations' order. Library tools: not retired, the material's ISO group, cutting data from confirmed catalogue rows
+    operations' order. A turret tool whose cutting data are not from confirmed catalogue rows for the material's group
+    (its operations would be left out of the program) is replaced in its own position by a checked library tool when
+    there is one. Library tools: not retired, the material's ISO group, cutting data from confirmed catalogue rows
     for the material's group. Nothing is written."""
     material = job.material
     rows = confirmed_rows()
@@ -308,11 +310,17 @@ def turret_setup_proposal(job, machine) -> SetupProposal:
     specs = {f.id: f for f in job_spec(job).features}
     tools = {t.id: t for t in db.session.execute(db.select(Tool)).scalars()}
     skipped = {(op.feature_id, op.tool_type, op.rough_finish) for op in job.current_operations if op.status == "skipped"}
+    group = material.catalogue_group or material.name
     needs = {}  # (feature id, tool type) -> reason
+    unchecked = {}  # position -> (feature id, tool type) of a turret tool without checked cutting data
     for op in first:
         if (op.feature_id, op.tool_type, op.mode) in skipped:  # left out by the operator: needs no tool
             continue
         reason = _needs_another_tool(op, features, specs, job, tools)
+        if not reason and op.tool_id is not None and op.data_origin == "tool" and op.turret_position:
+            reason = (f"T{op.turret_position} {tools[op.tool_id].name}: its cutting data are not from a confirmed "
+                      f"catalogue row for {group}")
+            unchecked.setdefault(op.turret_position, (op.feature_id, op.tool_type))
         if reason:
             needs.setdefault((op.feature_id, op.tool_type), reason)
     proposal = SetupProposal()
@@ -328,24 +336,37 @@ def turret_setup_proposal(job, machine) -> SetupProposal:
             continue
         candidates.append(planner.TurretEntry(VIRTUAL_POSITION + len(candidates), spec))
     wanted = {}  # tool id -> reasons, in the operations' order
-    for op in _plan(job, machine, base + candidates):
+    own_place = {}  # tool id -> the position of the unchecked turret tool it replaces
+    by_key = {key: position for position, key in unchecked.items()}
+    for op in _plan(job, machine, [e for e in base if e.position not in unchecked] + candidates):
         key = (op.feature_id, op.tool_type)
         if op.turret_position and op.turret_position >= VIRTUAL_POSITION and key in needs:
             reasons = wanted.setdefault(op.tool_id, [])
             if needs[key] not in reasons:
                 reasons.append(needs[key])
+            if key in by_key:
+                own_place.setdefault(op.tool_id, by_key[key])
     used = {op.turret_position for op in first if op.tool_id is not None and op.turret_position}
     free = [s for s in slots if s.tool is None] + [s for s in slots if s.tool is not None and s.position not in used]
+    taken = set()
     for tool_id, reasons in wanted.items():
         tool = tools[tool_id]
-        if not free:
+        slot = next((s for s in slots if s.position == own_place.get(tool_id) and s.position not in taken), None)
+        if slot is None and not free:
             proposal.unplaced.append((tool, "; ".join(reasons)))
             continue
-        slot = free.pop(0)
+        slot = slot or free.pop(0)
+        taken.add(slot.position)
         others = sorted({m.name for m in db.session.execute(db.select(Machine)).scalars() if m.id != machine.id
                          and any(s.tool_id == tool_id for s in m.slots)})
         proposal.rows.append(SetupRow(slot.position, tool, slot.tool, reasons, others))
     placed = {r.position: r.install for r in proposal.rows}
+    for position, (feature_id, tool_type) in unchecked.items():
+        if position not in placed:
+            name = next(s.tool.name for s in slots if s.position == position)
+            proposal.missing.append(f"T{position} {name}: its cutting data are not from a confirmed catalogue row for "
+                                    f"{group}, and the library has no checked {tool_type} tool for ISO "
+                                    f"{material.iso_group}: its operations stay out of the program")
     check = [planner.TurretEntry(s.position, tool_spec(placed.get(s.position, s.tool), material, rows))
              for s in slots if placed.get(s.position, s.tool) is not None]
     said = set()
