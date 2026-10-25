@@ -11,7 +11,8 @@ from datetime import datetime, timedelta, timezone
 from . import catalogue_file, localtime, catalogue_reader, cutting_data, drawing_reader, dxf_adapter, dxf_inner, dxf_input, dxf_reader, machine_spec, passport_reader, pdf_text, planner
 from .extraction_schema import DrawingData, normalize_tolerance
 from .models import (
-    CatalogueDocument, CuttingDataRow, DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Operation, Tool, TurretSlot, db,
+    CatalogueDocument, CuttingDataRow, DrawingExtraction, Edit, Machine, MachineDocument, MachineSpecSource, Material, Operation,
+    Tool, TurretSlot, db,
 )
 
 # Extra names a material may appear under on a drawing (compared after normalization).
@@ -2146,6 +2147,40 @@ def read_catalogue_document(document, instance_path, config, client=None):
     document.not_taken = json.dumps(not_taken, ensure_ascii=False)
     db.session.commit()
     return document
+
+
+def read_catalogue_text(document, instance_path):
+    """The picked pages read from their text by code (catalogue_text: no model, no call). The rows become rows to
+    check (status "read", origin "page_text"); the earlier unconfirmed text rows of this document are set aside.
+    Returns (rows added, not taken)."""
+    from . import catalogue_text
+
+    pages = document.selected
+    if not pages or not document.material_groups:
+        raise UploadError("Pick the pages and the material groups first.")
+    documents = catalogue_documents(instance_path)
+    texts = next((p["texts"] for d, _t, p in documents if d == document.id), None)
+    if texts is None:
+        texts = catalogue_pages(document, instance_path)["texts"]
+    others = [(title, p["texts"]) for d, title, p in documents if d != document.id]
+    materials = [(m.catalogue_group, m.kc1, m.hardness_hb)
+                 for m in db.session.execute(db.select(Material)).scalars() if m.catalogue_group]
+    rows, not_taken = catalogue_text.read(texts, pages, document.material_groups, document.codes, materials,
+                                          document.title or document.original_filename, others)
+    for row in db.session.execute(db.select(CuttingDataRow).filter_by(
+            document_id=document.id, status="read", origin=catalogue_text.ORIGIN)).scalars():
+        row.status, row.note = "rejected", "set aside: the pages' text was read again"
+    for data in rows:
+        checks = data.pop("checks")
+        db.session.add(CuttingDataRow(
+            catalogue=document.title, document_id=document.id, origin=catalogue_text.ORIGIN, status="read",
+            checks=json.dumps(checks, ensure_ascii=False) if checks else None,
+            note="read from the page's text by code (no model)", **data))
+    document.not_taken = json.dumps([
+        {"row": {"kind": "text", "insert_code": item["code"], "material_group": "", "pdf_page": item["pdf_page"],
+                 "quote": item["quote"]}, "reason": item["reason"]} for item in not_taken], ensure_ascii=False)
+    db.session.commit()
+    return len(rows), not_taken
 
 
 def drawings_dir(instance_path):

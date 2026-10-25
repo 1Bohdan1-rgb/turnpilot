@@ -57,6 +57,10 @@
 
 {% if estimate %}
 <h2>{{ _("Read the picked pages") }}</h2>
+<form method="post" action="{{ url_for('main.read_catalogue_text', document_id=document.id) }}" class="card">
+  <p>{{ _("From the pages' text, by code: free, no model. Cutting speed tables (the material's row found by its kc1) and depth of cut / feed tables (the codes listed above); a table the code cannot read is left to the model.") }}</p>
+  <button type="submit">{{ _("Read from the text (no model)") }}</button>
+</form>
 <form method="post" action="{{ url_for('main.read_catalogue', document_id=document.id) }}" class="card">
   <p>{{ _("Pages {pages} (each as text and as an image), groups {groups}", pages=document.selected_pages, groups=document.material_groups) }} ·
     <strong>{{ _("{n} API call", n=estimate.calls) }}</strong> {{ _("to {model}, about {tokens} input tokens, at most {out} output tokens.", model=model, tokens=estimate.input_tokens, out=estimate.max_output_tokens) }}</p>

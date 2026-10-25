@@ -344,7 +344,7 @@ class Material(db.Model):
 
 CUTTING_DATA_KINDS = ("geometry", "grade_vc")  # ap / f of an insert or drill; Vc of a grade
 CUTTING_DATA_APPLICATIONS = ("turning", "grooving", "parting", "threading", "drilling")
-CUTTING_DATA_ORIGINS = ("hand_typed", "model", "operator")
+CUTTING_DATA_ORIGINS = ("hand_typed", "model", "operator", "page_text")  # page_text: catalogue_text, by code
 CUTTING_DATA_STATUSES = ("read", "confirmed", "rejected", "replaced")
 
 

@@ -590,6 +590,22 @@ def read_catalogue(document_id):
     return redirect(url_for("main.cutting_data_review", document=document.id))
 
 
+@bp.route("/cutting-data/catalogues/<int:document_id>/read-text", methods=["POST"])
+def read_catalogue_text(document_id):
+    """The picked pages read from their text by code: free, no model."""
+    document = db.get_or_404(CatalogueDocument, document_id)
+    try:
+        added, not_taken = services.read_catalogue_text(document, current_app.instance_path)
+    except services.UploadError as e:
+        flash(str(e), "error")
+        return redirect(url_for("main.catalogue_pages", document_id=document.id))
+    flash(_("{added} row(s) read from the text, {lost} not taken.", added=added, lost=len(not_taken)),
+          "error" if not added else "info")
+    if not added:
+        return redirect(url_for("main.catalogue_pages", document_id=document.id))
+    return redirect(url_for("main.cutting_data_review", document=document.id))
+
+
 @bp.route("/cutting-data/catalogues/<int:document_id>/file")
 def catalogue_file(document_id):
     document = db.get_or_404(CatalogueDocument, document_id)

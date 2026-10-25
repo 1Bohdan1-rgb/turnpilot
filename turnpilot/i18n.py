@@ -610,6 +610,9 @@ UK = {
     "This browser cannot show 3D (no WebGL): use the 2D plan.": "Цей браузер не показує 3D (немає WebGL): користуйтеся 2D-планом.",
     "Places are changed in 2D.": "Місця змінюються у 2D.",
     "not set: conditional in 3D": "не задано: у 3D умовна",
+    "{added} row(s) read from the text, {lost} not taken.": "З тексту прочитано рядків: {added}; не взято: {lost}.",
+    "From the pages' text, by code: free, no model. Cutting speed tables (the material's row found by its kc1) and depth of cut / feed tables (the codes listed above); a table the code cannot read is left to the model.": "З тексту сторінок, кодом: безкоштовно, без моделі. Таблиці швидкостей різання (рядок матеріалу — за його kc1) і таблиці глибини та подачі (коди, вписані вище); таблицю, яку код не прочитає, лишаємо моделі.",
+    "Read from the text (no model)": "Прочитати з тексту (без моделі)",
     "inner": "внутрішній",
     "inner profile: a bore row (in-sample)": "внутрішній профіль: рядок отвору (in-sample)",
     "Place: {where}": "Місце: {where}",
@@ -1162,6 +1165,7 @@ LABELS = {
     "proposed": "запропоновано", "approved": "затверджено", "edited": "змінено", "skipped": "пропущено",
     # drawing readings, documents, cutting data rows, programs, orders
     "pending": "очікує", "uploaded": "завантажено", "extracted": "прочитано", "failed": "помилка",
+    "page_text": "з тексту сторінки", "model": "модель", "hand_typed": "файл, набраний вручну",
     "confirmed": "підтверджено", "read": "прочитано", "rejected": "відхилено", "replaced": "замінено",
     "simulated": "змодельовано", "ready": "готово до запуску", "open": "відкрите", "closed": "закрите",
     # machine statuses
