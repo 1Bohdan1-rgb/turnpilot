@@ -118,4 +118,5 @@ def test_the_shop_page_has_the_3d_view(app, client):
     assert "castShadow" not in script and "shadowMap" not in script  # no shadows
     assert "window.turnpilotShop.select(" in script  # a click: the 2D card
     assert "controls.zoomToCursor = true" in script and 'addEventListener("dblclick"' in script
+    assert "wallMaterial.opacity = above ?" in script
     assert "window.turnpilotShop = {select:" in page

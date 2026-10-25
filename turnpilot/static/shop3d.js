@@ -94,10 +94,11 @@ async function start(el) {
   floor.rotation.x = -Math.PI / 2; floor.position.set(W / 2, 0, D / 2);
   scene.add(floor);
   // the walls: a box per segment
+  // walls and columns: one grey; see-through when the camera looks down on the shop (they do not hide the machines)
+  const wallMaterial = new THREE.MeshLambertMaterial({color: colour("--sf-ink2"), transparent: true, opacity: 0.85});
   scene3.walls.forEach(w => {
     const dx = (w.x1 - w.x0) * MM, dz = (w.y1 - w.y0) * MM, len = Math.hypot(dx, dz) + w.thickness * MM;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(len, w.height * MM, w.thickness * MM),
-      mat(w.conditional ? "wall-conditional" : "wall", colour("--sf-wall"), w.conditional ? 0.55 : 0.85));
+    const m = new THREE.Mesh(new THREE.BoxGeometry(len, w.height * MM, w.thickness * MM), wallMaterial);
     m.position.set((w.x0 + w.x1) / 2 * MM, w.height / 2 * MM, (w.y0 + w.y1) / 2 * MM);
     m.rotation.y = -Math.atan2(dz, dx);
     scene.add(m);
@@ -113,7 +114,7 @@ async function start(el) {
   });
   // the columns
   scene3.columns.forEach(c => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(c.size * MM, c.height * MM, c.size * MM), mat("col", colour("--sf-wall")));
+    const m = new THREE.Mesh(new THREE.BoxGeometry(c.size * MM, c.height * MM, c.size * MM), wallMaterial);
     m.position.set(c.x * MM, c.height / 2 * MM, c.y * MM);
     scene.add(m);
   });
@@ -185,8 +186,14 @@ async function start(el) {
                         size: Math.max(m.length, m.width, m.height) * MM});
   });
 
+  const up = new THREE.Vector3();
   let w = 600, h = 400;
   function render() {
+    // from above (more than 25° over the floor) the walls are see-through; from the side, solid
+    up.subVectors(camera.position, controls.target);
+    const above = Math.asin(Math.min(1, up.y / (up.length() || 1))) > 25 * Math.PI / 180;
+    wallMaterial.opacity = above ? 0.28 : 0.85;
+    wallMaterial.depthWrite = !above;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.setClearColor(colour("--sf-paper"));
     renderer.setSize(w, h, false);
