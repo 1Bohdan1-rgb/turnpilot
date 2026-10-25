@@ -13,6 +13,9 @@ KC_PLACEHOLDER = "PLACEHOLDER: catalogue-type value for {group} (e.g. Sandvik Co
 KC1_P12_SOURCE = "Sandvik TT 2020 A278 (PDF 282), P1.2"  # kc1 1600 verified for P1.2 (stage 2, 2026-10-08)
 S355_KC1_SOURCE = (f"{KC1_P12_SOURCE}; group P1.2: TT cross reference list (PDF 682), S355J2G3 = P1.2.Z.AN")
 MC_NOT_VERIFIED = "not verified"
+AISI304_KC1_SOURCE = ("Sandvik TT 2020 A278 (PDF 282), M1.0.Z.AQ (CMC 05.21, Austenitic, HB 180); group M1.0: TT cross "
+                      "reference list H30 (PDF 684), X5CrNi18-10 / 1.4301 = M1.1.Z.AQ, CMC 05.21, given as M1.0.Z.AQ "
+                      "in the cutting data tables")
 MATERIALS = [
     dict(name="Steel 45 (C45)", iso_group="P", hardness_hb=200, kc1=1600, mc=0.25,
          kc1_source=KC1_P12_SOURCE, mc_source=MC_NOT_VERIFIED,
@@ -20,9 +23,11 @@ MATERIALS = [
     # S355J2+N is the current name of S355J2G3 (1.0570 / 1.0841), which Sandvik's cross reference list puts in P1.2
     dict(name="S355J2+N (EN 10025-2)", iso_group="P", hardness_hb=None, kc1=1600, mc=0.25,
          kc1_source=S355_KC1_SOURCE, mc_source=MC_NOT_VERIFIED, catalogue_group="P1.2"),
-    dict(name="AISI 304", iso_group="M", hardness_hb=180, kc1=2000, mc=0.21,
-         kc1_source=KC_PLACEHOLDER.format(group="ISO M austenitic stainless steel", code="M2"),
-         mc_source=KC_PLACEHOLDER.format(group="ISO M austenitic stainless steel", code="M2")),
+    # AISI 304 = X5CrNi18-10 / 1.4301: M1.1.Z.AQ, CMC 05.21 in TT H30 (PDF 684); the cutting data tables give CMC 05.21
+    # as M1.0.Z.AQ (A278, B130, C73): group M1.0, the user's choice (2026-10-25)
+    dict(name="AISI 304", iso_group="M", hardness_hb=180, kc1=1800, mc=0.21,
+         kc1_source=AISI304_KC1_SOURCE, mc_source="not verified (not in the TT / SRT 2020 text)",
+         catalogue_group="M1.0"),
     dict(name="Aluminium 6061", iso_group="N", hardness_hb=95, kc1=600, mc=0.25,
          kc1_source=KC_PLACEHOLDER.format(group="ISO N wrought aluminium alloy", code="N1.2"),
          mc_source=KC_PLACEHOLDER.format(group="ISO N wrought aluminium alloy", code="N1.2")),

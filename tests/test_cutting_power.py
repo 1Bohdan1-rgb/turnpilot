@@ -17,8 +17,12 @@ def test_seed_kc_values_carry_their_own_sources(app):
     assert (c45.kc1, c45.mc) == (1600, 0.25)
     assert (c45.kc1_source, c45.mc_source) == ("Sandvik TT 2020 A278 (PDF 282), P1.2", "not verified")
     assert s355.kc1_source.startswith("Sandvik TT 2020 A278 (PDF 282), P1.2") and s355.mc_source == "not verified"
-    assert all(m.kc1_source.startswith("PLACEHOLDER") and m.mc_source.startswith("PLACEHOLDER")
-               for name, m in materials.items() if name in ("AISI 304", "Aluminium 6061"))
+    steel304, alu = materials["AISI 304"], materials["Aluminium 6061"]
+    assert (steel304.kc1, steel304.catalogue_group) == (1800, "M1.0")
+    assert steel304.kc1_source.startswith("Sandvik TT 2020 A278 (PDF 282), M1.0.Z.AQ (CMC 05.21")
+    assert "H30 (PDF 684), X5CrNi18-10 / 1.4301 = M1.1.Z.AQ" in steel304.kc1_source
+    assert steel304.mc_source == "not verified (not in the TT / SRT 2020 text)"
+    assert alu.kc1_source.startswith("PLACEHOLDER") and alu.mc_source.startswith("PLACEHOLDER")
     assert services.get_machine().drive_efficiency is None  # not guessed
 
 

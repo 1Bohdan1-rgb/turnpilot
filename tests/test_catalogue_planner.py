@@ -104,10 +104,18 @@ def test_rows_not_confirmed_are_not_used(app):
 
 def test_material_without_a_group_asks_to_check_every_tool(app):
     confirm_p12_catalogue()
-    job = make_job(material_name="AISI 304")  # ISO M: the seed T3 roughs, the rest has no M tool
+    job = make_job(material_name="Aluminium 6061")  # ISO N, no catalogue group (AISI 304 has M1.0 since 2026-10-25)
     services.calculate_operations(job, services.get_machine())
     rough = next(op for op in job.current_operations if op.tool_type == "turning_rough")
-    assert "AISI 304 has no catalogue group" in rough.warning
+    assert "Aluminium 6061 has no catalogue group" in rough.warning
+
+
+def test_aisi_304_in_m1_0_without_confirmed_rows(app):
+    confirm_p12_catalogue()
+    job = make_job(material_name="AISI 304")  # the seed T3 (M/N) roughs; no confirmed M1.0 row yet
+    services.calculate_operations(job, services.get_machine())
+    rough = next(op for op in job.current_operations if op.tool_type == "turning_rough")
+    assert "no confirmed catalogue ap / f for CNMG 120408 in M1.0" in rough.warning
 
 
 def test_tools_outside_the_catalogue_applications():
